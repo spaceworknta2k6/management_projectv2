@@ -1,0 +1,164 @@
+const ProjectPeriod = require('../../models/ProjectPeriod');
+const WorkflowEvent = require('../../models/WorkflowEvent');
+const Lecturer = require('../../models/Lecturer');
+
+// Utility helper to create workflow events for audit logs
+const logWorkflowEvent = async ({
+  entityId,
+  fromStatus,
+  toStatus,
+  actorId,
+  actorRoles,
+  action,
+  reason = '',
+}) => {
+  return await WorkflowEvent.create({
+    entityType: 'ProjectPeriod',
+    entityId,
+    fromStatus,
+    toStatus,
+    actorId,
+    actorRoles,
+    action,
+    reason,
+  });
+};
+
+const createPeriod = async (periodData, actorId) => {
+  let { facultyId, departmentId } = periodData;
+
+  // Auto-resolve facultyId and departmentId from Lecturer profile of the staff member if missing
+  if (!facultyId || !departmentId) {
+    const lecturer = await Lecturer.findOne({ userId: actorId });
+    if (lecturer) {
+      facultyId = facultyId || lecturer.facultyId;
+      departmentId = departmentId || lecturer.departmentId;
+    }
+  }
+
+  const period = new ProjectPeriod({
+    ...periodData,
+    facultyId,
+    departmentId,
+    status: 'draft',
+    createdBy: actorId,
+    updatedBy: actorId,
+  });
+
+  await period.save();
+
+  // Log creation event
+  await logWorkflowEvent({
+    entityId: period._id,
+    fromStatus: '',
+    toStatus: 'draft',
+    actorId,
+    actorRoles: ['FACULTY_STAFF'],
+    action: 'CREATE_PERIOD',
+    reason: 'Khởi tạo đợt đồ án mới',
+  });
+
+  return period;
+};
+
+const getAllPeriods = async (query = {}) => {
+  return await ProjectPeriod.find(query).sort({ createdAt: -1 });
+};
+
+const getPeriodById = async (id) => {
+  const period = await ProjectPeriod.findById(id);
+  if (!period) {
+    throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
+  }
+  return period;
+};
+
+const updatePeriod = async (id, updateData, actorId) => {
+  const period = await ProjectPeriod.findById(id);
+  if (!period) {
+    throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
+  }
+
+  // Business constraint: locked/archived periods cannot be modified
+  if (['result_locked', 'archived'].includes(period.status)) {
+    throw { status: 400, message: `Không thể chỉnh sửa đợt đồ án đã ở trạng thái [${period.status}].` };
+  }
+
+  // Update allowed fields
+  Object.keys(updateData).forEach((key) => {
+    period[key] = updateData[key];
+  });
+  period.updatedBy = actorId;
+
+  await period.save();
+
+  await logWorkflowEvent({
+    entityId: period._id,
+    fromStatus: period.status,
+    toStatus: period.status,
+    actorId,
+    actorRoles: ['FACULTY_STAFF'],
+    action: 'UPDATE_PERIOD',
+    reason: 'Cập nhật cấu hình đợt đồ án',
+  });
+
+  return period;
+};
+
+// Transition status machine states
+const transitionStatus = async (id, toStatus, action, actorId, actorRoles = ['FACULTY_STAFF'], reason = '') => {
+  const period = await ProjectPeriod.findById(id);
+  if (!period) {
+    throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
+  }
+
+  const fromStatus = period.status;
+
+  // Validate state machine flow rules
+  const allowedTransitions = {
+    'draft': ['registration_open', 'cancelled'],
+    'registration_open': ['topic_review', 'in_progress', 'cancelled'],
+    'topic_review': ['in_progress', 'cancelled'],
+    'in_progress': ['defense', 'cancelled'],
+    'defense': ['scoring', 'result_locked'],
+    'scoring': ['result_locked'],
+    'result_locked': ['archived'],
+    'archived': [],
+  };
+
+  if (!allowedTransitions[fromStatus] || !allowedTransitions[fromStatus].includes(toStatus)) {
+    throw {
+      status: 400,
+      message: `Chuyển đổi trạng thái không hợp lệ: Không thể chuyển từ trạng thái [${fromStatus}] sang [${toStatus}].`,
+    };
+  }
+
+  period.status = toStatus;
+  period.updatedBy = actorId;
+  if (toStatus === 'result_locked') {
+    period.lockedAt = new Date();
+  }
+
+  await period.save();
+
+  // Write secure audit log
+  await logWorkflowEvent({
+    entityId: period._id,
+    fromStatus,
+    toStatus,
+    actorId,
+    actorRoles,
+    action,
+    reason,
+  });
+
+  return period;
+};
+
+module.exports = {
+  createPeriod,
+  getAllPeriods,
+  getPeriodById,
+  updatePeriod,
+  transitionStatus,
+};

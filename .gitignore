@@ -32,26 +32,11 @@ coverage/
 backend/uploads/
 backend/tmp/
 
-# ==========================================
-# Cấu hình bỏ qua các thư mục/file theo yêu cầu:
-# ==========================================
 
 # Thư mục tài liệu và kiểm thử
 docs/
 UI_test/
 
-# Các file tài liệu cá nhân / hướng dẫn AI
-AI_FEATURES.md
-Bao_Cao_Do_An_Tot_Nghiep.docx
-CODING_GUIDE_FOR_AI.md
-DEPLOYMENT_GUIDE.md
-ENV_EXAMPLE.md
-FLOW.md
-FOLDER_STRUCTURE.md
-MODELS.md
-ROUTES.md
-TECH_STACK.md
-TESTING_GUIDE.md
-VALIDATION.md
-README_AI.md
-.vscode
+# Các file tài liệu cá nhân
+helper/
+.agents/
