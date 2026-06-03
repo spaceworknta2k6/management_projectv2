@@ -122,7 +122,7 @@ export default function LoginPage() {
           {/* Decorative Plane (login-line-1.png) */}
           <div style={{
             position: 'absolute',
-            top: '-20px',
+            top: '-32px',
             right: '-12px',
             width: '274px',
             height: '89px',
@@ -150,7 +150,7 @@ export default function LoginPage() {
           }} />
 
           {/* Title */}
-          <div style={{ textAlign: 'center', marginBottom: '24px', marginTop: '20px', position: 'relative', zIndex: 1 }}>
+          <div style={{ textAlign: 'center', marginBottom: '24px', marginTop: '36px', position: 'relative', zIndex: 1 }}>
             <h1 style={{
               fontSize: '22px',
               fontWeight: 700,

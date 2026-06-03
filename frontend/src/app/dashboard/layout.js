@@ -71,6 +71,7 @@ function Sidebar({ collapsed, onToggle, userRole }) {
     >
       {/* Logo area */}
       <div
+        onClick={() => router.push('/dashboard')}
         style={{
           height: 'var(--header-height)',
           display: 'flex',
@@ -79,6 +80,7 @@ function Sidebar({ collapsed, onToggle, userRole }) {
           gap: '10px',
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
+          cursor: 'pointer',
         }}
       >
         <div
