@@ -41,9 +41,9 @@ export default function DefensesPage() {
     try {
       setLoading(true);
       const [sessionsRes, projectsRes, committeesRes] = await Promise.all([
-        api.get('/defense-sessions', { headers: { Authorization: `Bearer ${token}` } }),
-        api.get('/projects', { headers: { Authorization: `Bearer ${token}` } }),
-        api.get('/committees', { headers: { Authorization: `Bearer ${token}` } }),
+        api.get('/defense-sessions', token),
+        api.get('/projects', token),
+        api.get('/committees', token),
       ]);
       
       setSessions(sessionsRes.data.data);
@@ -72,9 +72,7 @@ export default function DefensesPage() {
       if (payload.mode === 'offline') delete payload.meetingUrl;
       if (payload.mode === 'online') delete payload.room;
       
-      await api.post('/defense-sessions', payload, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post('/defense-sessions', payload, token);
       toast.success('Đã xếp lịch bảo vệ thành công');
       setShowModal(false);
       setForm({

@@ -55,9 +55,7 @@ export default function ScoresPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/defense-sessions', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/defense-sessions', token);
       setSessions(res.data.data);
     } catch (err) {
       toast.error('Lỗi khi tải danh sách dự án cần chấm');
@@ -115,16 +113,12 @@ export default function ScoresPage() {
 
     try {
       setSubmitting(true);
-      await api.post('/scores/score-sheets', payload, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post('/scores/score-sheets', payload, token);
       toast.success('Đã nộp phiếu điểm thành công');
       setShowModal(false);
       // Optional: Call aggregate final grade
       try {
-        await api.post(`/scores/final-grades/aggregate/${projectId}`, {}, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await api.post(`/scores/final-grades/aggregate/${projectId}`, {}, token);
       } catch (e) {
         console.error('Aggregate failed', e);
       }

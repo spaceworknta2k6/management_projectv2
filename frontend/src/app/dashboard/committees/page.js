@@ -36,9 +36,9 @@ export default function CommitteesPage() {
     try {
       setLoading(true);
       const [committeesRes, periodsRes, lecturersRes] = await Promise.all([
-        api.get('/committees', { headers: { Authorization: `Bearer ${token}` } }),
-        api.get('/periods', { headers: { Authorization: `Bearer ${token}` } }),
-        api.get('/auth/lecturers', { headers: { Authorization: `Bearer ${token}` } }),
+        api.get('/committees', token),
+        api.get('/periods', token),
+        api.get('/auth/lecturers', token),
       ]);
       
       setCommittees(committeesRes.data.data);
@@ -95,9 +95,7 @@ export default function CommitteesPage() {
 
     try {
       setSubmitting(true);
-      await api.post('/committees', form, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post('/committees', form, token);
       toast.success('Đã tạo Hội đồng thành công');
       setShowModal(false);
       setForm({
