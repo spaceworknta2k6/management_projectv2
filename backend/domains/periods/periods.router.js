@@ -13,7 +13,7 @@ router.get('/', periodsController.getPeriods);
 router.get('/:id', periodsController.getPeriodById);
 
 // Administrative operations restrict to staff only
-router.use(requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF']));
+router.use(requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']));
 
 router.post('/', periodsValidator.validatePeriodCreate, periodsController.createPeriod);
 router.patch('/:id', periodsValidator.validatePeriodUpdate, periodsController.updatePeriod);

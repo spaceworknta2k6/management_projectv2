@@ -22,11 +22,27 @@ const createCommittee = async (data, user) => {
 };
 
 const getCommittees = async (query = {}) => {
-  return await Committee.find(query).populate('periodId');
+  return await Committee.find(query)
+    .populate('periodId')
+    .populate({
+      path: 'members.lecturerId',
+      populate: {
+        path: 'userId',
+        select: 'fullName email',
+      },
+    });
 };
 
 const getCommitteeById = async (id) => {
-  const committee = await Committee.findById(id).populate('periodId');
+  const committee = await Committee.findById(id)
+    .populate('periodId')
+    .populate({
+      path: 'members.lecturerId',
+      populate: {
+        path: 'userId',
+        select: 'fullName email',
+      },
+    });
   if (!committee) {
     throw { status: 404, message: 'Hội đồng chấm không tồn tại.' };
   }

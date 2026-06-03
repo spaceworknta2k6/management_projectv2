@@ -119,6 +119,16 @@ const seedData = async () => {
     });
     console.log('🏢 Seeded Faculty Staff: Lê Thị Hương (huonglt@hust.edu.vn / GV002)');
 
+    // 5. Seed System Admin: Quản trị viên Karl
+    await User.create({
+      fullName: 'Quản trị viên Karl',
+      email: 'admin@st.phenikaa-uni.edu.vn',
+      passwordHash,
+      roles: ['SYSTEM_ADMIN'],
+      status: 'active',
+    });
+    console.log('👑 Seeded System Admin: Quản trị viên Karl (admin@st.phenikaa-uni.edu.vn / password123)');
+
     console.log('\n✅ Database Seeding Completed SUCCESSFUL!');
     await mongoose.disconnect();
     process.exit(0);

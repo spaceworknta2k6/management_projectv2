@@ -14,6 +14,7 @@ const path = require('path');
 const SUITES = [
   { file: 'db.test.js',                  label: 'Database Connection' },
   { file: 'auth.test.js',                label: 'Authentication & JWT' },
+  { file: 'users.test.js',               label: 'User Management & Roles' },
   { file: 'periods-rosters.test.js',     label: 'Periods & Rosters' },
   { file: 'groups-topics.test.js',       label: 'Groups & Topics' },
   { file: 'projects-milestones.test.js', label: 'Projects & Milestones' },

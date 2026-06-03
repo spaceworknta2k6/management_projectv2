@@ -13,10 +13,10 @@ router.get('/:id', projectsController.getProjectById);
 router.post('/:id/mark-in-progress', projectsController.markInProgress);
 
 // Staff administrative actions
-router.post('/:id/assign-reviewer', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF']), projectsValidator.validateAssignReviewer, projectsController.assignReviewer);
-router.post('/:id/mark-defense-eligible', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF']), projectsController.markDefenseEligible);
-router.post('/:id/finalize', requireRole(['FACULTY_STAFF']), projectsController.finalizeProject);
-router.post('/:id/cancel', requireRole(['FACULTY_STAFF']), projectsController.cancelProject);
+router.post('/:id/assign-reviewer', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), projectsValidator.validateAssignReviewer, projectsController.assignReviewer);
+router.post('/:id/mark-defense-eligible', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), projectsController.markDefenseEligible);
+router.post('/:id/finalize', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), projectsController.finalizeProject);
+router.post('/:id/cancel', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), projectsController.cancelProject);
 
 // Nest Milestones Router under /projects/:projectId/milestones
 const milestonesRouter = require('../milestones/milestones.router');

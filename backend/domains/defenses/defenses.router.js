@@ -6,7 +6,8 @@ const defensesValidator = require('./defenses.validator');
 const { protect, requireRole } = require('../../middlewares/auth.middleware');
 
 const checkSecretaryOrStaff = async (req, res, next) => {
-  if (['FACULTY_STAFF', 'DEPARTMENT_STAFF'].includes(req.user.role)) {
+  const isStaff = req.user.roles && req.user.roles.some(r => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(r));
+  if (isStaff) {
     return next();
   }
   
@@ -39,16 +40,16 @@ const checkSecretaryOrStaff = async (req, res, next) => {
 router.use(protect);
 
 router.get('/', defensesController.getSessions);
-router.post('/', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF']), defensesValidator.validateScheduleSession, defensesController.scheduleSession);
+router.post('/', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesValidator.validateScheduleSession, defensesController.scheduleSession);
 router.get('/:id', defensesController.getSessionById);
-router.patch('/:id', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF']), defensesController.updateSession);
+router.patch('/:id', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesController.updateSession);
 
 router.post('/:id/check-identity', checkSecretaryOrStaff, defensesController.checkIdentity);
 router.post('/:id/start', checkSecretaryOrStaff, defensesController.startSession);
 router.post('/:id/report-incident', checkSecretaryOrStaff, defensesValidator.validateReportIncident, defensesController.reportIncident);
 router.post('/:id/upload-recording', checkSecretaryOrStaff, defensesController.uploadRecording);
 router.post('/:id/complete', checkSecretaryOrStaff, defensesController.completeSession);
-router.post('/:id/reschedule', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF']), defensesController.rescheduleSession);
-router.post('/:id/mark-no-show', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF']), defensesController.markNoShow);
+router.post('/:id/reschedule', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesController.rescheduleSession);
+router.post('/:id/mark-no-show', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesController.markNoShow);
 
 module.exports = router;

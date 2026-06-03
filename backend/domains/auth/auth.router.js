@@ -8,6 +8,9 @@ const { protect } = require('../../middlewares/auth.middleware');
 // Public Endpoints
 router.post('/login', authValidator.validateLogin, authController.login);
 router.post('/logout', authController.logout);
+router.get('/google', authController.startGoogleLogin);
+router.get('/google/callback', authController.handleGoogleCallback);
+router.get('/google/session', authController.consumeGoogleSession);
 
 // Mock stateless token refresh endpoint for complete compliance with ROUTES.md
 router.post('/refresh', (req, res) => {
