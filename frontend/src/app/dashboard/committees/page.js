@@ -41,12 +41,12 @@ export default function CommitteesPage() {
         api.get('/auth/lecturers', token),
       ]);
       
-      setCommittees(committeesRes.data.data);
-      setPeriods(periodsRes.data.data);
-      setLecturers(lecturersRes.data.data);
+      setCommittees(committeesRes.data || []);
+      setPeriods(periodsRes.data || []);
+      setLecturers(lecturersRes.data || []);
       
-      if (periodsRes.data.data.length > 0 && !form.periodId) {
-        setForm(prev => ({ ...prev, periodId: periodsRes.data.data[0]._id }));
+      if (periodsRes.data && periodsRes.data.length > 0 && !form.periodId) {
+        setForm(prev => ({ ...prev, periodId: periodsRes.data[0]._id }));
       }
     } catch (err) {
       toast.error('Lỗi khi tải dữ liệu hội đồng');

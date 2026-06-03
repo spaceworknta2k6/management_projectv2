@@ -56,7 +56,7 @@ export default function ScoresPage() {
     try {
       setLoading(true);
       const res = await api.get('/defense-sessions', token);
-      setSessions(res.data.data);
+      setSessions(res.data || []);
     } catch (err) {
       toast.error('Lỗi khi tải danh sách dự án cần chấm');
     } finally {

@@ -46,10 +46,9 @@ export default function DefensesPage() {
         api.get('/committees', token),
       ]);
       
-      setSessions(sessionsRes.data.data);
-      // Only show defense-eligible projects if not admin, but for now show all to easily test
-      setProjects(projectsRes.data.data);
-      setCommittees(committeesRes.data.data);
+      setSessions(sessionsRes.data || []);
+      setProjects(projectsRes.data || []);
+      setCommittees(committeesRes.data || []);
       
     } catch (err) {
       toast.error('Lỗi khi tải dữ liệu lịch bảo vệ');
