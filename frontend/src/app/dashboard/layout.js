@@ -18,8 +18,11 @@ import {
   SignOut,
   CaretLeft,
   List,
+  Sun,
+  Moon,
 } from '@phosphor-icons/react';
 import useAuthStore from '@/store/auth.store';
+import useThemeStore from '@/store/theme.store';
 import { authService } from '@/services/auth.service';
 import Spinner from '@/components/ui/Spinner';
 import { getRoleLabel } from '@/lib/utils';
@@ -209,6 +212,7 @@ function Sidebar({ collapsed, onToggle, userRole }) {
 function Header({ user, sidebarCollapsed, onMobileMenuToggle }) {
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
+  const { theme, toggleTheme } = useThemeStore();
 
   const handleLogout = () => {
     logout();
@@ -249,7 +253,36 @@ function Header({ user, sidebarCollapsed, onMobileMenuToggle }) {
       <div /> {/* Spacer */}
 
       {/* User area */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '36px',
+            height: '36px',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+            backgroundColor: 'transparent',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            transition: 'background-color 0.15s, color 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--bg-raised)';
+            e.currentTarget.style.color = 'var(--accent)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.color = 'var(--text-muted)';
+          }}
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
+
         {user && (
           <div style={{ textAlign: 'right' }}>
             <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
@@ -296,8 +329,14 @@ function Header({ user, sidebarCollapsed, onMobileMenuToggle }) {
 export default function DashboardLayout({ children }) {
   const router = useRouter();
   const { token, user, isLoading, hydrate, setUser, logout } = useAuthStore();
+  const { applyTheme } = useThemeStore();
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
+
+  // Apply saved theme on mount
+  useEffect(() => {
+    applyTheme();
+  }, [applyTheme]);
 
   // Hydrate auth from cookie on mount
   useEffect(() => {

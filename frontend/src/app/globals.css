@@ -1,14 +1,19 @@
 @import "tailwindcss";
 
 /* ============================================================
-   EPISTEME DESIGN SYSTEM — CSS Variables (Dark Mode Only)
+   EPISTEME DESIGN SYSTEM — Dark Mode (default)
    ============================================================ */
-:root {
+:root,
+[data-theme="dark"] {
   /* Backgrounds */
   --bg-base:      #09090f;
   --bg-surface:   #101018;
   --bg-raised:    #18182a;
   --bg-hover:     #1e1e30;
+
+  /* Surface variants */
+  --surface:        #101018;
+  --surface-sunken: #09090f;
 
   /* Borders */
   --border:       #242438;
@@ -21,30 +26,74 @@
   --accent-text:  #8ab8fa;
 
   /* Text */
-  --text-primary: #ededf5;
+  --text-primary:   #ededf5;
   --text-secondary: #9898b0;
-  --text-muted:   #5a5a72;
+  --text-muted:     #5a5a72;
 
   /* Semantic */
-  --success:      #22c55e;
-  --success-bg:   rgba(34, 197, 94, 0.1);
-  --warning:      #f59e0b;
-  --warning-bg:   rgba(245, 158, 11, 0.1);
-  --error:        #ef4444;
-  --error-bg:     rgba(239, 68, 68, 0.1);
-  --info:         #4f8ef7;
-  --info-bg:      rgba(79, 142, 247, 0.1);
+  --success:    #22c55e;
+  --success-bg: rgba(34, 197, 94, 0.1);
+  --warning:    #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --error:      #ef4444;
+  --error-bg:   rgba(239, 68, 68, 0.1);
+  --info:       #4f8ef7;
+  --info-bg:    rgba(79, 142, 247, 0.1);
 
   /* Radius */
-  --radius-sm:    6px;
-  --radius-md:    8px;
-  --radius-lg:    12px;
-  --radius-xl:    16px;
-  --radius-full:  9999px;
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
 
-  /* Sidebar */
+  /* Layout */
   --sidebar-width: 240px;
   --header-height: 60px;
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   EPISTEME DESIGN SYSTEM — Light Mode
+   ============================================================ */
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg-base:    #f4f5f9;
+  --bg-surface: #ffffff;
+  --bg-raised:  #eef0f6;
+  --bg-hover:   #e8eaf2;
+
+  /* Surface variants */
+  --surface:        #ffffff;
+  --surface-sunken: #f4f5f9;
+
+  /* Borders */
+  --border:       #dde0ec;
+  --border-light: #c8ccdc;
+
+  /* Accent */
+  --accent:      #2d6edb;
+  --accent-dim:  #1f54b5;
+  --accent-glow: rgba(45, 110, 219, 0.1);
+  --accent-text: #1d4ed8;
+
+  /* Text */
+  --text-primary:   #13131f;
+  --text-secondary: #4b4b6a;
+  --text-muted:     #8888aa;
+
+  /* Semantic */
+  --success:    #16a34a;
+  --success-bg: rgba(22, 163, 74, 0.1);
+  --warning:    #d97706;
+  --warning-bg: rgba(217, 119, 6, 0.1);
+  --error:      #dc2626;
+  --error-bg:   rgba(220, 38, 38, 0.1);
+  --info:       #2d6edb;
+  --info-bg:    rgba(45, 110, 219, 0.1);
+
+  color-scheme: light;
 }
 
 /* ============================================================
@@ -57,7 +106,6 @@
 }
 
 html {
-  color-scheme: dark;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
 }
@@ -71,6 +119,7 @@ body {
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* ============================================================
@@ -136,6 +185,11 @@ body {
   to   { transform: rotate(360deg); }
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ============================================================
    RESPONSIVE — Mobile sidebar
    ============================================================ */
@@ -156,4 +210,3 @@ button[aria-label="Open Next.js Dev Tools"] {
   opacity: 0 !important;
   pointer-events: none !important;
 }
-
