@@ -21,6 +21,12 @@ const VARIANTS = {
     hoverBg: 'var(--bg-raised)',
     border: 'transparent',
   },
+  outline: {
+    bg: 'transparent',
+    color: 'var(--text-primary)',
+    hoverBg: 'var(--bg-raised)',
+    border: 'var(--border)',
+  },
   danger: {
     bg: 'var(--error-bg)',
     color: 'var(--error)',
