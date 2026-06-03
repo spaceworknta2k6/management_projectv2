@@ -16,4 +16,9 @@ export const authService = {
    * POST /auth/logout (if backend supports it)
    */
   logout: (token) => api.post('/auth/logout', {}, token),
+
+  /**
+   * GET /auth/google/session — consume one-time Google login code
+   */
+  googleSession: (code) => api.get(`/auth/google/session?code=${encodeURIComponent(code)}`),
 };
