@@ -26,6 +26,22 @@ const UserSchema = new mongoose.Schema({
     enum: ['active', 'inactive', 'locked'],
     default: 'active',
   },
+  phoneNumber: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  cohort: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    default: '',
+  },
+  avatarUrl: {
+    type: String,
+    trim: true,
+    default: '',
+  },
   isDeleted: {
     type: Boolean,
     default: false,

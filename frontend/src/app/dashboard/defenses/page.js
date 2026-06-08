@@ -10,7 +10,7 @@ import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import { formatDate, hasAnyRole } from '@/lib/utils';
+import { formatDate, getTechnicalLabel, hasAnyRole } from '@/lib/utils';
 import { Sword, Plus, ArrowsClockwise, VideoCamera, MapPin, Clock, PencilSimple, Trash } from '@phosphor-icons/react';
 
 export default function DefensesPage() {
@@ -140,7 +140,7 @@ export default function DefensesPage() {
       case 'in_progress': return <Badge variant="warning">Đang diễn ra</Badge>;
       case 'completed': return <Badge variant="success">Đã hoàn thành</Badge>;
       case 'cancelled': return <Badge variant="danger">Đã hủy</Badge>;
-      default: return <Badge>{status}</Badge>;
+      default: return <Badge>{getTechnicalLabel(status)}</Badge>;
     }
   };
 

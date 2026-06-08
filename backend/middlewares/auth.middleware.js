@@ -54,6 +54,11 @@ const protect = async (req, res, next) => {
       email: user.email,
       roles: user.roles,
       status: user.status,
+      phoneNumber: user.phoneNumber || '',
+      cohort: user.cohort || '',
+      avatarUrl: user.avatarUrl || '',
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     };
 
     // Proactively query specific role profiles
@@ -62,6 +67,7 @@ const protect = async (req, res, next) => {
       if (student) {
         req.user.studentId = student._id;
         req.user.studentCode = student.studentCode;
+        req.user.cohort = user.cohort || student.cohort || '';
       }
     }
 

@@ -11,7 +11,7 @@ import Spinner from '@/components/ui/Spinner';
 import Pagination from '@/components/ui/Pagination';
 import Tabs from '@/components/ui/Tabs';
 import { useToast } from '@/components/ui/Toast';
-import { formatDateTime, getRoleLabel, truncate } from '@/lib/utils';
+import { formatDateTime, getAuditActionLabel, getRoleLabel, getStatus, truncate } from '@/lib/utils';
 import {
   ArrowsClockwise,
   ClockCounterClockwise,
@@ -34,6 +34,33 @@ const auditEntityTypeOptions = [
 const auditEntityTypeLabels = Object.fromEntries(
   auditEntityTypeOptions.map((option) => [option.value, option.label])
 );
+
+const auditActionOptions = [
+  'PROPOSE_TOPIC',
+  'REVIEW_TOPIC_APPROVE',
+  'REVIEW_TOPIC_REJECT',
+  'REVIEW_TOPIC_REQUEST-REVISION',
+  'RESUBMIT_TOPIC',
+  'ASSIGN_SUPERVISOR',
+  'SPAWN_PROJECT',
+  'CREATE_GROUP',
+  'INVITE_MEMBER',
+  'ACCEPT_INVITATION',
+  'CONFIRM_GROUP',
+  'UPDATE_GROUP',
+  'SOFT_DELETE_GROUP',
+  'CREATE_PERIOD',
+  'UPDATE_PERIOD',
+  'SOFT_DELETE_PERIOD',
+  'START_PROJECT',
+  'ASSIGN_REVIEWER',
+  'MARK_DEFENSE_ELIGIBLE',
+  'FINALIZE_PROJECT',
+  'CANCEL_PROJECT',
+  'IMPORT_ROSTER',
+  'ADD_STUDENT_ROSTER',
+  'REMOVE_STUDENT_ROSTER',
+];
 
 const auditTabs = [
   { id: 'general', label: 'Nháº­t kÃ½ chung' },
@@ -83,6 +110,20 @@ function serializeMetadata(metadata) {
     return JSON.stringify(Object.fromEntries(entries), null, 2);
   }
   return String(metadata);
+}
+
+function getStatusLabel(status) {
+  if (!status) return 'Không có';
+  return getStatus(status).label || getAuditActionLabel(status);
+}
+
+function getStatusTransitionLabel(fromStatus, toStatus) {
+  if (!fromStatus && !toStatus) return '';
+  return `${getStatusLabel(fromStatus)} -> ${getStatusLabel(toStatus)}`;
+}
+
+function translateReason(reason = '') {
+  return String(reason).replace(/\[([a-zA-Z0-9_-]+)\]/g, (_, status) => `[${getStatusLabel(status)}]`);
 }
 
 function SelectField({ label, name, value, onChange, error, children, style }) {
@@ -143,18 +184,146 @@ function SelectField({ label, name, value, onChange, error, children, style }) {
   );
 }
 
-function AuditEventRow({ event }) {
+function DetailLine({ label, value }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '150px minmax(0, 1fr)', gap: '14px', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{label}</span>
+      <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500, wordBreak: 'break-word' }}>
+        {value || 'Không có'}
+      </span>
+    </div>
+  );
+}
+
+function AuditEventDetailDialog({ event, onClose }) {
+  if (!event) return null;
+
   const metadata = serializeMetadata(event.metadata);
   const actorRoles = event.actorRoles || event.actorId?.roles || [];
 
   return (
     <div
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 220,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        backgroundColor: 'rgba(15, 23, 42, 0.55)',
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="audit-detail-title"
+        style={{
+          width: '100%',
+          maxWidth: '720px',
+          maxHeight: '88dvh',
+          overflow: 'auto',
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: '0 18px 60px rgba(15, 23, 42, 0.28)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <h3 id="audit-detail-title" style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Chi tiết bản ghi nhật ký
+            </h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              {formatDateTime(event.createdAt)}
+            </p>
+          </div>
+          <Button type="button" variant="secondary" size="sm" icon={<X size={16} />} onClick={onClose} />
+        </div>
+
+        <div style={{ padding: '20px 22px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <Badge variant={getActionTone(event.action)}>{getAuditActionLabel(event.action)}</Badge>
+            <Badge variant="neutral">{getEntityTypeLabel(event.entityType)}</Badge>
+            {actorRoles.map((role) => (
+              <Badge key={role} variant="neutral">{getRoleLabel(role)}</Badge>
+            ))}
+          </div>
+
+          <DetailLine label="Mã nhật ký" value={getId(event._id)} />
+          <DetailLine label="Mã bản ghi" value={getId(event.entityId)} />
+          <DetailLine label="Người thao tác" value={getActorName(event.actorId)} />
+          <DetailLine label="Hành động" value={getAuditActionLabel(event.action)} />
+          <DetailLine label="Đối tượng" value={getEntityTypeLabel(event.entityType)} />
+          <DetailLine label="Trạng thái" value={getStatusTransitionLabel(event.fromStatus, event.toStatus)} />
+          <DetailLine label="Địa chỉ IP" value={event.ipAddress} />
+          <DetailLine label="Nội dung" value={event.reason ? translateReason(event.reason) : ''} />
+
+          {metadata && (
+            <div style={{ marginTop: '16px' }}>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>Dữ liệu bổ sung</p>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: '12px',
+                  backgroundColor: 'var(--bg-raised)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-secondary)',
+                  fontSize: '12px',
+                  lineHeight: 1.5,
+                  overflowX: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {metadata}
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuditEventRow({ event, onSelect }) {
+  const metadata = serializeMetadata(event.metadata);
+  const actorRoles = event.actorRoles || event.actorId?.roles || [];
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(event)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(event);
+        }
+      }}
       style={{
         display: 'grid',
         gridTemplateColumns: '40px minmax(0, 1fr)',
         gap: '14px',
         padding: '16px 20px',
         borderBottom: '1px solid var(--border)',
+        cursor: 'pointer',
+        transition: 'background-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = 'var(--bg-raised)';
+        e.currentTarget.style.transform = 'translateX(4px)';
+        e.currentTarget.style.boxShadow = 'inset 3px 0 0 var(--accent)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = 'transparent';
+        e.currentTarget.style.transform = 'translateX(0)';
+        e.currentTarget.style.boxShadow = 'inset 0 0 0 var(--accent)';
       }}
     >
       <div
@@ -175,7 +344,7 @@ function AuditEventRow({ event }) {
 
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
-          <Badge variant={getActionTone(event.action)}>{event.action}</Badge>
+          <Badge variant={getActionTone(event.action)}>{getAuditActionLabel(event.action)}</Badge>
           <Badge variant="neutral">{getEntityTypeLabel(event.entityType)}</Badge>
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             {formatDateTime(event.createdAt)}
@@ -205,7 +374,7 @@ function AuditEventRow({ event }) {
           </p>
           {(event.fromStatus || event.toStatus) && (
             <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Trạng thái: <span style={{ color: 'var(--text-secondary)' }}>{event.fromStatus || 'N/A'} {'->'} {event.toStatus || 'N/A'}</span>
+              Trạng thái: <span style={{ color: 'var(--text-secondary)' }}>{getStatusTransitionLabel(event.fromStatus, event.toStatus)}</span>
             </p>
           )}
           {event.ipAddress && (
@@ -217,7 +386,7 @@ function AuditEventRow({ event }) {
 
         {event.reason && (
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: metadata ? '10px' : 0 }}>
-            {event.reason}
+            {translateReason(event.reason)}
           </p>
         )}
 
@@ -250,11 +419,12 @@ export default function AuditPage() {
   const toast = useToast();
   const [events, setEvents] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 6;
+  const PAGE_SIZE = 4;
   const [activeAuditTab, setActiveAuditTab] = useState('general');
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [filters, setFilters] = useState({
     entityType: '',
     actorId: '',
@@ -406,14 +576,20 @@ export default function AuditPage() {
                 onChange={(e) => handleFilterChange('actorId', e.target.value)}
                 style={{ flex: '1 1 220px' }}
               />
-              <Input
+              <SelectField
                 label="Hành động"
                 name="audit-action"
-                placeholder="APPROVE_TOPIC..."
                 value={filters.action}
                 onChange={(e) => handleFilterChange('action', e.target.value)}
                 style={{ flex: '1 1 190px' }}
-              />
+              >
+                <option value="">Tất cả hành động</option>
+                {auditActionOptions.map((action) => (
+                  <option key={action} value={action}>
+                    {getAuditActionLabel(action)}
+                  </option>
+                ))}
+              </SelectField>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <Button type="submit" variant="primary" icon={<Funnel size={16} />}>
                   Lọc
@@ -464,7 +640,7 @@ export default function AuditPage() {
           ) : (
             <Card title="Dòng sự kiện" subtitle="Sắp xếp từ mới nhất đến cũ nhất" noPadding style={{ marginBottom: '18px' }}>
               {paginatedEvents.map((event) => (
-                <AuditEventRow key={event._id} event={event} />
+                <AuditEventRow key={event._id} event={event} onSelect={setSelectedEvent} />
               ))}
               <Pagination
                 currentPage={currentPage}
@@ -519,7 +695,7 @@ export default function AuditPage() {
           ) : history.length > 0 ? (
             <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
               {history.map((event) => (
-                <AuditEventRow key={event._id} event={event} />
+                <AuditEventRow key={event._id} event={event} onSelect={setSelectedEvent} />
               ))}
             </div>
           ) : (
@@ -529,6 +705,7 @@ export default function AuditPage() {
           )}
         </Card>
       )}
+      <AuditEventDetailDialog event={selectedEvent} onClose={() => setSelectedEvent(null)} />
     </div>
   );
 }

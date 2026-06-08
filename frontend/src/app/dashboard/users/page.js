@@ -10,7 +10,7 @@ import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import Pagination from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
-import { formatDate, getRoleLabel } from '@/lib/utils';
+import { formatDate, getRoleLabel, getTechnicalLabel } from '@/lib/utils';
 import { 
   Users, 
   ArrowsClockwise, 
@@ -195,7 +195,7 @@ export default function UsersPage() {
       case 'inactive':
         return <Badge variant="warning">Không hoạt động</Badge>;
       default:
-        return <Badge>{status}</Badge>;
+        return <Badge>{getTechnicalLabel(status)}</Badge>;
     }
   };
 

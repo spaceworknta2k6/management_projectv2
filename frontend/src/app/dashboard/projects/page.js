@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { hasAnyRole } from '@/lib/utils';
+import { getTechnicalLabel, hasAnyRole } from '@/lib/utils';
 import { FolderSimple, UserCheck, ShieldCheck, CheckSquare, ArrowsClockwise } from '@phosphor-icons/react';
 
 export default function ProjectsPage() {
@@ -139,7 +139,7 @@ export default function ProjectsPage() {
       case 'cancelled':
         return <Badge variant="error">Đã hủy</Badge>;
       default:
-        return <Badge variant="secondary">{status}</Badge>;
+        return <Badge variant="secondary">{getTechnicalLabel(status)}</Badge>;
     }
   };
 

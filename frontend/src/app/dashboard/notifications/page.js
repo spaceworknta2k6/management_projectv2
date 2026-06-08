@@ -9,7 +9,7 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, getNotificationTypeLabel } from '@/lib/utils';
 import {
   ArrowsClockwise,
   Bell,
@@ -26,9 +26,35 @@ function getNotificationTone(notification) {
   return notification.readAt ? 'neutral' : 'info';
 }
 
+function getNotificationActionUrl(notification) {
+  const rawUrl = notification.actionUrl || '';
+  if (rawUrl.startsWith('http')) return rawUrl;
+  if (rawUrl.startsWith('/dashboard')) return rawUrl;
+
+  if (rawUrl === '/admin/users') return '/dashboard/users';
+  if (rawUrl.startsWith('/admin/')) return `/dashboard/${rawUrl.slice('/admin/'.length)}`;
+
+  const entityType = notification.entityType;
+  if (entityType === 'ProjectTopic') return '/dashboard/topics';
+  if (entityType === 'Project') return '/dashboard/projects';
+  if (entityType === 'SubmissionPackage' || entityType === 'Milestone') return '/dashboard/submissions';
+  if (entityType === 'ExtensionRequest') return '/dashboard/extensions';
+  if (entityType === 'Committee') return '/dashboard/committees';
+  if (entityType === 'DefenseSession') return '/dashboard/defenses';
+  if (entityType === 'User') return '/dashboard/users';
+
+  if (rawUrl === '/topics') return '/dashboard/topics';
+  if (rawUrl === '/projects') return '/dashboard/projects';
+  if (rawUrl === '/submissions') return '/dashboard/submissions';
+  if (rawUrl === '/extensions') return '/dashboard/extensions';
+
+  return rawUrl;
+}
+
 function NotificationRow({ notification, markingId, onMarkRead }) {
   const isRead = Boolean(notification.readAt);
   const tone = getNotificationTone(notification);
+  const actionUrl = getNotificationActionUrl(notification);
 
   return (
     <div
@@ -63,7 +89,7 @@ function NotificationRow({ notification, markingId, onMarkRead }) {
             {notification.title || 'Thông báo hệ thống'}
           </h3>
           <Badge variant={tone}>{isRead ? 'Đã đọc' : 'Chưa đọc'}</Badge>
-          {notification.type && <Badge variant="neutral">{notification.type}</Badge>}
+          {notification.type && <Badge variant="neutral">{getNotificationTypeLabel(notification.type)}</Badge>}
         </div>
 
         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
@@ -79,9 +105,9 @@ function NotificationRow({ notification, markingId, onMarkRead }) {
               Hạn: {formatDateTime(notification.deadlineAt)}
             </span>
           )}
-          {notification.actionUrl && (
+          {actionUrl && (
             <Link
-              href={notification.actionUrl}
+              href={actionUrl}
               style={{
                 fontSize: '12px',
                 fontWeight: 600,

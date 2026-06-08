@@ -207,6 +207,40 @@ const changePassword = async (req, res, next) => {
   }
 };
 
+const updateMe = async (req, res, next) => {
+  try {
+    const result = await authService.updateProfile(req.user._id, req.body);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật thông tin cá nhân thành công!',
+      data: result.user,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
+const updateAvatar = async (req, res, next) => {
+  try {
+    const result = await authService.updateAvatar(req.user._id, req.file);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật ảnh đại diện thành công!',
+      data: result.user,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 const logout = async (req, res, next) => {
   try {
     return res.status(200).json({
@@ -224,6 +258,8 @@ module.exports = {
   handleGoogleCallback,
   consumeGoogleSession,
   getMe,
+  updateMe,
+  updateAvatar,
   changePassword,
   logout,
 };

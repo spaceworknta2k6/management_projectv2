@@ -85,6 +85,62 @@ export function getStatus(status) {
   return STATUS_MAP[status] || { label: status, variant: 'neutral' };
 }
 
+const TECHNICAL_LABELS = {
+  TOPIC_APPROVED: 'Đề tài được duyệt',
+  TOPIC_REJECTED: 'Đề tài bị từ chối',
+  TOPIC_NEEDS_REVISION: 'Đề tài cần chỉnh sửa',
+  TOPIC_SUBMITTED: 'Đề tài đã gửi duyệt',
+  TOPIC_PROPOSED: 'Đề xuất đề tài',
+  MILESTONE_DEADLINE_NEAR: 'Sắp đến hạn mốc báo cáo',
+  USER_REGISTER_GOOGLE: 'Người dùng đăng ký qua Google',
+
+  PROPOSE_TOPIC: 'Đề xuất đề tài',
+  REVIEW_TOPIC_APPROVE: 'Duyệt đề tài',
+  REVIEW_TOPIC_REJECT: 'Từ chối đề tài',
+  REVIEW_TOPIC_NEEDS_REVISION: 'Yêu cầu chỉnh sửa đề tài',
+  REVIEW_TOPIC_REQUEST_REVISION: 'Yêu cầu chỉnh sửa đề tài',
+  RESUBMIT_TOPIC: 'Gửi lại đề tài',
+  ASSIGN_SUPERVISOR: 'Phân công giảng viên hướng dẫn',
+  SPAWN_PROJECT: 'Tạo dự án từ đề tài',
+  START_PROJECT: 'Bắt đầu dự án',
+  ASSIGN_REVIEWER: 'Phân công giảng viên phản biện',
+  MARK_DEFENSE_ELIGIBLE: 'Đánh dấu đủ điều kiện bảo vệ',
+  FINALIZE_PROJECT: 'Hoàn tất dự án',
+  CANCEL_PROJECT: 'Hủy dự án',
+
+  CREATE_GROUP: 'Tạo nhóm',
+  INVITE_MEMBER: 'Mời thành viên',
+  ACCEPT_INVITATION: 'Chấp nhận lời mời',
+  CONFIRM_GROUP: 'Xác nhận nhóm',
+  UPDATE_GROUP: 'Cập nhật nhóm',
+  SOFT_DELETE_GROUP: 'Xóa nhóm',
+
+  CREATE_PERIOD: 'Tạo đợt đồ án',
+  UPDATE_PERIOD: 'Cập nhật đợt đồ án',
+  SOFT_DELETE_PERIOD: 'Xóa đợt đồ án',
+  IMPORT_ROSTER: 'Nhập danh sách sinh viên',
+  ADD_STUDENT_ROSTER: 'Thêm sinh viên vào danh sách',
+  REMOVE_STUDENT_ROSTER: 'Xóa sinh viên khỏi danh sách',
+  APPROVE_TOPIC: 'Duyệt đề tài',
+};
+
+export function getTechnicalLabel(value) {
+  if (!value) return '';
+  const key = String(value).toUpperCase().replace(/-/g, '_');
+  if (TECHNICAL_LABELS[key]) return TECHNICAL_LABELS[key];
+
+  return String(value)
+    .toLowerCase()
+    .replace(/-/g, '_')
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+export const getNotificationTypeLabel = getTechnicalLabel;
+export const getAuditActionLabel = getTechnicalLabel;
+
 /**
  * Truncate long strings.
  */

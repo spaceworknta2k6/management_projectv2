@@ -77,7 +77,47 @@ const validateChangePassword = (req, res, next) => {
   next();
 };
 
+const validateUpdateMe = (req, res, next) => {
+  const { fullName, phoneNumber = '', cohort = '' } = req.body;
+  const errors = [];
+
+  if (!fullName || typeof fullName !== 'string' || fullName.trim() === '') {
+    errors.push({
+      field: 'fullName',
+      code: 'FULL_NAME_REQUIRED',
+      message: 'Họ tên là bắt buộc.',
+    });
+  }
+
+  if (phoneNumber && (typeof phoneNumber !== 'string' || !/^[0-9+\-\s().]{8,20}$/.test(phoneNumber.trim()))) {
+    errors.push({
+      field: 'phoneNumber',
+      code: 'PHONE_INVALID',
+      message: 'Số điện thoại không hợp lệ.',
+    });
+  }
+
+  if (cohort && (typeof cohort !== 'string' || !/^K\d{1,3}$/i.test(cohort.trim()))) {
+    errors.push({
+      field: 'cohort',
+      code: 'COHORT_INVALID',
+      message: 'Khóa học phải có dạng K18, K67...',
+    });
+  }
+
+  if (errors.length > 0) {
+    return res.status(422).json({
+      success: false,
+      message: 'Dữ liệu thông tin cá nhân không hợp lệ',
+      errors,
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateLogin,
   validateChangePassword,
+  validateUpdateMe,
 };

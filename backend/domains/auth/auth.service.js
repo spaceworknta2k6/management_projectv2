@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const User = require('../../models/User');
 const Student = require('../../models/Student');
 const Lecturer = require('../../models/Lecturer');
@@ -10,15 +12,25 @@ const { getJwtSecret } = require('../../config/jwt');
 const buildAuthResult = async (user) => {
   let studentId = undefined;
   let lecturerId = undefined;
+  let studentCode = undefined;
+  let lecturerCode = undefined;
+  let cohort = user.cohort || '';
 
   if (user.roles.includes('STUDENT')) {
     const student = await Student.findOne({ userId: user._id, isDeleted: false });
-    if (student) studentId = student._id;
+    if (student) {
+      studentId = student._id;
+      studentCode = student.studentCode;
+      cohort = cohort || student.cohort || '';
+    }
   }
 
   if (user.roles.includes('LECTURER') || user.roles.includes('DEPARTMENT_STAFF')) {
     const lecturer = await Lecturer.findOne({ userId: user._id, isDeleted: false });
-    if (lecturer) lecturerId = lecturer._id;
+    if (lecturer) {
+      lecturerId = lecturer._id;
+      lecturerCode = lecturer.lecturerCode;
+    }
   }
 
   const tokenPayload = {
@@ -35,12 +47,21 @@ const buildAuthResult = async (user) => {
   return {
     accessToken,
     user: {
+      _id: user._id,
       id: user._id,
       fullName: user.fullName,
       email: user.email,
       roles: user.roles,
+      status: user.status,
+      phoneNumber: user.phoneNumber || '',
+      cohort,
+      avatarUrl: user.avatarUrl || '',
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
       studentId,
+      studentCode,
       lecturerId,
+      lecturerCode,
     }
   };
 };
@@ -85,6 +106,7 @@ const loginWithGoogleEmail = async (email, fullName = '') => {
       passwordHash,
       roles: ['STUDENT'],
       status: 'active',
+      cohort: 'K67',
     });
 
     // Tạo thông tin Student profile
@@ -116,7 +138,7 @@ const loginWithGoogleEmail = async (email, fullName = '') => {
           body: `Tài khoản sinh viên mới ${user.fullName} (${normalizedEmail}) đã tự động đăng ký vào hệ thống qua Google. Vui lòng duyệt lại vai trò nếu cần.`,
           entityType: 'User',
           entityId: user._id,
-          actionUrl: '/admin/users',
+          actionUrl: '/dashboard/users',
         });
       }
     } catch (notifyErr) {
@@ -178,8 +200,67 @@ const changePassword = async (userId, oldPassword, newPassword) => {
   return { success: true };
 };
 
+const updateProfile = async (userId, { fullName, phoneNumber = '', cohort = '' }) => {
+  const user = await User.findById(userId);
+  if (!user || user.isDeleted) {
+    throw { status: 404, message: 'Người dùng không tồn tại.' };
+  }
+
+  user.fullName = fullName.trim();
+  user.phoneNumber = phoneNumber.trim();
+  if (user.roles.includes('STUDENT')) {
+    user.cohort = cohort.trim().toUpperCase();
+  }
+  await user.save();
+
+  if (user.roles.includes('STUDENT')) {
+    await Student.findOneAndUpdate(
+      { userId: user._id, isDeleted: false },
+      { cohort: user.cohort }
+    );
+  }
+
+  return buildAuthResult(user);
+};
+
+const updateAvatar = async (userId, file) => {
+  const user = await User.findById(userId);
+  if (!user || user.isDeleted) {
+    throw { status: 404, message: 'Người dùng không tồn tại.' };
+  }
+
+  if (!file) {
+    throw { status: 400, message: 'Vui lòng chọn ảnh đại diện.' };
+  }
+
+  const allowedMime = {
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+  };
+  const extension = allowedMime[file.mimetype];
+  if (!extension) {
+    throw { status: 400, message: 'Ảnh đại diện chỉ hỗ trợ JPG, PNG hoặc WEBP.' };
+  }
+
+  const uploadDir = path.join(__dirname, '../../public/uploads/avatars');
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  const fileName = `${user._id}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${extension}`;
+  fs.writeFileSync(path.join(uploadDir, fileName), file.buffer);
+
+  user.avatarUrl = `/public/uploads/avatars/${fileName}`;
+  await user.save();
+
+  return buildAuthResult(user);
+};
+
 module.exports = {
   login,
   loginWithGoogleEmail,
   changePassword,
+  updateProfile,
+  updateAvatar,
 };

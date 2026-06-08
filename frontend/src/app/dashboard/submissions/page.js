@@ -10,7 +10,7 @@ import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import { formatDate, hasAnyRole } from '@/lib/utils';
+import { formatDate, getTechnicalLabel, hasAnyRole } from '@/lib/utils';
 import { FileText, Calendar, Plus, Upload, Check, X, Shield, Clock, Download, PlusSquare, PencilSimple, Trash } from '@phosphor-icons/react';
 
 export default function SubmissionsPage() {
@@ -316,7 +316,7 @@ export default function SubmissionsPage() {
       case 'locked':
         return <Badge variant="secondary">Đã khóa</Badge>;
       default:
-        return <Badge variant="secondary">{status}</Badge>;
+        return <Badge variant="secondary">{getTechnicalLabel(status)}</Badge>;
     }
   };
 

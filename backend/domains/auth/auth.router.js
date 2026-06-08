@@ -1,11 +1,17 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
 const router = express.Router();
 
 const authController = require('./auth.controller');
 const authValidator = require('./auth.validator');
 const { protect } = require('../../middlewares/auth.middleware');
 const { getJwtSecret } = require('../../config/jwt');
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
 
 // Public Endpoints
 router.post('/login', authValidator.validateLogin, authController.login);
@@ -34,6 +40,8 @@ router.post('/refresh', protect, (req, res, next) => {
 
 // Protected Endpoints
 router.get('/me', protect, authController.getMe);
+router.patch('/me', protect, authValidator.validateUpdateMe, authController.updateMe);
+router.patch('/me/avatar', protect, avatarUpload.single('avatar'), authController.updateAvatar);
 router.post('/change-password', protect, authValidator.validateChangePassword, authController.changePassword);
 
 // Fetch all lecturers

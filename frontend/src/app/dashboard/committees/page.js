@@ -10,7 +10,7 @@ import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import { formatDate, hasAnyRole } from '@/lib/utils';
+import { formatDate, getTechnicalLabel, hasAnyRole } from '@/lib/utils';
 import { Gavel, Plus, ArrowsClockwise, Users, Trash, CheckCircle, PlayCircle, PencilSimple } from '@phosphor-icons/react';
 
 export default function CommitteesPage() {
@@ -195,7 +195,7 @@ export default function CommitteesPage() {
       case 'approved': return <Badge variant="info">Đã duyệt</Badge>;
       case 'active': return <Badge variant="success">Đang hoạt động</Badge>;
       case 'finished': return <Badge variant="neutral">Đã kết thúc</Badge>;
-      default: return <Badge>{status}</Badge>;
+      default: return <Badge>{getTechnicalLabel(status)}</Badge>;
     }
   };
 

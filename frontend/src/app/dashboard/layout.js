@@ -22,6 +22,7 @@ import {
   Sun,
   Moon,
   Warning,
+  UserCircle,
 } from '@phosphor-icons/react';
 import useAuthStore from '@/store/auth.store';
 import useThemeStore from '@/store/theme.store';
@@ -33,6 +34,7 @@ import { ToastProvider } from '@/components/ui/Toast';
 
 /* ─── Navigation Items ──────────────────────────────────────────────── */
 const NAV_ITEMS = [
+  { href: '/dashboard/profile',    label: 'Th\u00f4ng tin c\u00e1 nh\u00e2n', icon: UserCircle, roles: null },
   { href: '/dashboard',            label: 'Tổng quan',     icon: House,            roles: null },
   { href: '/dashboard/periods',    label: 'Đợt đồ án',    icon: CalendarBlank,    roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/groups',     label: 'Nhóm',          icon: Users,            roles: ['STUDENT', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
