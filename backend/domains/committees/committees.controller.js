@@ -95,7 +95,7 @@ const finishCommittee = async (req, res, next) => {
 
 const deleteCommittee = async (req, res, next) => {
   try {
-    const result = await committeesService.deleteCommittee(req.params.id);
+    const result = await committeesService.deleteCommittee(req.params.id, req.user._id);
     res.status(200).json({
       success: true,
       message: result.message,

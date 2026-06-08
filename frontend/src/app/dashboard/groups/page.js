@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -9,8 +9,9 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { getStatus } from '@/lib/utils';
-import { Users, Plus, Check, UserPlus, Warning } from '@phosphor-icons/react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { getStatus, hasAnyRole } from '@/lib/utils';
+import { Users, Plus, Check, UserPlus, Warning, PencilSimple, Trash } from '@phosphor-icons/react';
 
 export default function GroupsPage() {
   const user = useAuthStore((s) => s.user);
@@ -21,6 +22,8 @@ export default function GroupsPage() {
   const [selectedPeriodId, setSelectedPeriodId] = useState('');
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [groupToDelete, setGroupToDelete] = useState(null);
+  const [deletingGroup, setDeletingGroup] = useState(false);
 
   // Student active group
   const [myGroup, setMyGroup] = useState(null);
@@ -32,10 +35,10 @@ export default function GroupsPage() {
   const [creating, setCreating] = useState(false);
   const [inviting, setInviting] = useState(false);
 
-  const isStaff = ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(user?.role || user?.roles?.[0]);
+  const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
 
   // Load periods
-  const loadPeriods = async () => {
+  const loadPeriods = useCallback(async () => {
     try {
       // In a real-world scenario, we fetch all active periods
       // Staff can call /periods, students might fetch indirectly or we can attempt to get the list
@@ -48,10 +51,10 @@ export default function GroupsPage() {
     } catch {
       // Suppress
     }
-  };
+  }, [token]);
 
   // Load all groups (Staff only)
-  const fetchAllGroups = async (periodId) => {
+  const fetchAllGroups = useCallback(async (periodId) => {
     if (!periodId) return;
     setLoading(true);
     try {
@@ -62,10 +65,10 @@ export default function GroupsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast, token]);
 
   // Load student-specific group data
-  const fetchStudentGroupData = async () => {
+  const fetchStudentGroupData = useCallback(async () => {
     if (!user?.studentId) {
       setLoading(false);
       return;
@@ -106,12 +109,12 @@ export default function GroupsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast, token, user?.studentId]);
 
   useEffect(() => {
     if (!token || !user) return;
     loadPeriods();
-  }, [token, user]);
+  }, [loadPeriods, token, user]);
 
   useEffect(() => {
     if (!token || !user) return;
@@ -120,7 +123,7 @@ export default function GroupsPage() {
     } else {
       fetchStudentGroupData();
     }
-  }, [selectedPeriodId, token, user]);
+  }, [fetchAllGroups, fetchStudentGroupData, isStaff, selectedPeriodId, token, user]);
 
   const handleCreateGroup = async (e) => {
     e.preventDefault();
@@ -189,6 +192,37 @@ export default function GroupsPage() {
     }
   };
 
+  const reloadGroups = () => {
+    if (isStaff) fetchAllGroups(selectedPeriodId);
+    else fetchStudentGroupData();
+  };
+
+  const handleEditGroup = async (group) => {
+    const name = window.prompt('Tên nhóm mới', group.name);
+    if (!name || !name.trim() || name.trim() === group.name) return;
+    try {
+      await api.patch(`/groups/${group._id}`, { name: name.trim() }, token);
+      toast.success('Đã cập nhật nhóm đồ án.');
+      reloadGroups();
+    } catch (err) {
+      toast.error(err.message || 'Không thể cập nhật nhóm');
+    }
+  };
+
+  const handleDeleteGroup = async (group) => {
+    setDeletingGroup(true);
+    try {
+      await api.delete(`/groups/${group._id}`, token);
+      toast.success('Đã xóa nhóm đồ án thành công.');
+      setGroupToDelete(null);
+      reloadGroups();
+    } catch (err) {
+      toast.error(err.message || 'Không thể xóa nhóm');
+    } finally {
+      setDeletingGroup(false);
+    }
+  };
+
   return (
     <div>
       {/* Page Title Header */}
@@ -246,7 +280,17 @@ export default function GroupsPage() {
                 const statusInfo = getStatus(g.status);
                 return (
                   <Card key={g._id} title={g.name} subtitle={`Trưởng nhóm: ${g.leaderStudentId?.userId?.fullName || 'Không rõ'}`}
-                    actions={<Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>}
+                    actions={
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                        <Button variant="secondary" size="sm" onClick={() => handleEditGroup(g)}>
+                          <PencilSimple size={14} /> Sửa
+                        </Button>
+                        <Button variant="danger" size="sm" onClick={() => setGroupToDelete(g)}>
+                          <Trash size={14} /> Xóa
+                        </Button>
+                      </div>
+                    }
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <p style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Thành viên nhóm:</p>
@@ -316,9 +360,17 @@ export default function GroupsPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <Badge variant={getStatus(myGroup.status).variant}>{getStatus(myGroup.status).label}</Badge>
                   {myGroup.status === 'draft' && myGroup.leaderStudentId?._id === user?.studentId && (
-                    <Button variant="primary" size="sm" onClick={handleConfirm}>
-                      Xác nhận chốt danh sách
-                    </Button>
+                    <>
+                      <Button variant="secondary" size="sm" onClick={() => handleEditGroup(myGroup)}>
+                        <PencilSimple size={14} /> Sửa
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => setGroupToDelete(myGroup)}>
+                        <Trash size={14} /> Xóa
+                      </Button>
+                      <Button variant="primary" size="sm" onClick={handleConfirm}>
+                        Xác nhận chốt danh sách
+                      </Button>
+                    </>
                   )}
                 </div>
               }
@@ -385,7 +437,7 @@ export default function GroupsPage() {
             <Card title="Thành lập nhóm mới" subtitle="Khởi tạo nhóm của riêng bạn để đăng ký đề tài">
               <div style={{ maxWidth: '480px' }}>
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                  Bạn chưa có nhóm đồ án nào trong học kỳ này. Hãy đặt tên nhóm và ấn "Khởi tạo nhóm" để bắt đầu mời các thành viên khác.
+                  Bạn chưa có nhóm đồ án nào trong học kỳ này. Hãy đặt tên nhóm và ấn &quot;Khởi tạo nhóm&quot; để bắt đầu mời các thành viên khác.
                 </p>
                 <form onSubmit={handleCreateGroup} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <Input
@@ -405,6 +457,15 @@ export default function GroupsPage() {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={Boolean(groupToDelete)}
+        title="Xóa nhóm đồ án"
+        message={groupToDelete ? `Bạn có chắc chắn muốn xóa nhóm "${groupToDelete.name}"?` : ''}
+        confirmLabel="Xóa"
+        loading={deletingGroup}
+        onCancel={() => setGroupToDelete(null)}
+        onConfirm={() => handleDeleteGroup(groupToDelete)}
+      />
     </div>
   );
 }

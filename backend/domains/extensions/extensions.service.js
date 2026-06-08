@@ -13,7 +13,7 @@ const createExtensionRequest = async (requestData, actorUserId, actorStudentId) 
   }
 
   // Verify group membership
-  const group = await ProjectGroup.findById(project.groupId);
+  const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
   if (!group || !group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted')) {
     throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
   }
@@ -79,13 +79,13 @@ const facultyDecide = async (requestId, status, note, actorUserId) => {
   // If approved, dynamically update the target entity deadline
   if (status === 'approved') {
     if (request.targetType === 'milestone') {
-      const milestone = await Milestone.findById(request.targetId);
+      const milestone = await Milestone.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
       if (milestone) {
         milestone.deadline = request.requestedTo;
         await milestone.save();
       }
     } else if (request.targetType === 'submission') {
-      const pkg = await SubmissionPackage.findById(request.targetId);
+      const pkg = await SubmissionPackage.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
       if (pkg) {
         pkg.deadline = request.requestedTo;
         await pkg.save();
@@ -96,11 +96,36 @@ const facultyDecide = async (requestId, status, note, actorUserId) => {
   return request;
 };
 
-const getRequests = async (query = {}) => {
-  return await ExtensionRequest.find(query)
+const getRequests = async (query = {}, actor = {}) => {
+  const filter = { ...query };
+  const roles = actor.roles || [];
+
+  if (roles.includes('STUDENT') && actor.studentId) {
+    const groups = await ProjectGroup.find({
+      isDeleted: { $ne: true },
+      members: {
+        $elemMatch: {
+          studentId: actor.studentId,
+          status: 'accepted',
+        },
+      },
+    }).select('_id');
+    filter.groupId = { $in: groups.map((group) => group._id) };
+  } else if (roles.includes('LECTURER') && actor.lecturerId) {
+    const projects = await Project.find({ supervisorId: actor.lecturerId }).select('_id');
+    filter.projectId = { $in: projects.map((project) => project._id) };
+  } else if (!roles.includes('FACULTY_STAFF') && !roles.includes('SYSTEM_ADMIN')) {
+    filter._id = { $exists: false };
+  }
+
+  return await ExtensionRequest.find(filter)
     .populate({
       path: 'projectId',
-      select: 'status'
+      select: 'status topicId supervisorId',
+      populate: [
+        { path: 'topicId', select: 'title' },
+        { path: 'supervisorId', populate: { path: 'userId', select: 'fullName email' } },
+      ],
     })
     .populate({
       path: 'groupId',
@@ -109,11 +134,15 @@ const getRequests = async (query = {}) => {
     .sort({ createdAt: -1 });
 };
 
-const getRequestById = async (id) => {
+const getRequestById = async (id, actor = {}) => {
   const request = await ExtensionRequest.findById(id)
     .populate({
       path: 'projectId',
-      select: 'status'
+      select: 'status topicId supervisorId',
+      populate: [
+        { path: 'topicId', select: 'title' },
+        { path: 'supervisorId', populate: { path: 'userId', select: 'fullName email' } },
+      ],
     })
     .populate({
       path: 'groupId',
@@ -123,6 +152,30 @@ const getRequestById = async (id) => {
   if (!request) {
     throw { status: 404, message: 'Yêu cầu gia hạn không tồn tại.' };
   }
+  const roles = actor.roles || [];
+  if (roles.includes('STUDENT') && actor.studentId) {
+    const group = await ProjectGroup.findOne({
+      _id: request.groupId?._id || request.groupId,
+      isDeleted: { $ne: true },
+      members: {
+        $elemMatch: {
+          studentId: actor.studentId,
+          status: 'accepted',
+        },
+      },
+    });
+    if (!group) {
+      throw { status: 403, message: 'Bạn không có quyền xem yêu cầu gia hạn này.' };
+    }
+  } else if (roles.includes('LECTURER') && actor.lecturerId) {
+    const supervisorId = request.projectId?.supervisorId?._id || request.projectId?.supervisorId;
+    if (!supervisorId || supervisorId.toString() !== actor.lecturerId.toString()) {
+      throw { status: 403, message: 'Bạn không có quyền xem yêu cầu gia hạn này.' };
+    }
+  } else if (!roles.includes('FACULTY_STAFF') && !roles.includes('SYSTEM_ADMIN')) {
+    throw { status: 403, message: 'Bạn không có quyền xem yêu cầu gia hạn này.' };
+  }
+
   return request;
 };
 

@@ -20,7 +20,7 @@ const getScoreSheets = async (req, res, next) => {
     if (req.query.rubricRole) filter.rubricRole = req.query.rubricRole;
     if (req.query.graderId) filter.graderId = req.query.graderId;
 
-    const sheets = await scoresService.getScoreSheets(filter);
+    const sheets = await scoresService.getScoreSheets(filter, req.user);
     res.status(200).json({
       success: true,
       data: sheets,
@@ -32,7 +32,7 @@ const getScoreSheets = async (req, res, next) => {
 
 const getScoreSheetById = async (req, res, next) => {
   try {
-    const sheet = await scoresService.getScoreSheetById(req.params.id);
+    const sheet = await scoresService.getScoreSheetById(req.params.id, req.user);
     res.status(200).json({
       success: true,
       data: sheet,
@@ -57,7 +57,7 @@ const updateScoreSheet = async (req, res, next) => {
 
 const lockScoreSheet = async (req, res, next) => {
   try {
-    const sheet = await scoresService.lockScoreSheet(req.params.id);
+    const sheet = await scoresService.lockScoreSheet(req.params.id, req.user);
     res.status(200).json({
       success: true,
       message: 'Phiếu điểm đã được khóa thành công.',
@@ -83,7 +83,7 @@ const aggregateFinalGrade = async (req, res, next) => {
 
 const getFinalGrade = async (req, res, next) => {
   try {
-    const grade = await scoresService.getFinalGrade(req.params.id);
+    const grade = await scoresService.getFinalGrade(req.params.id, req.user);
     res.status(200).json({
       success: true,
       data: grade,
@@ -95,7 +95,7 @@ const getFinalGrade = async (req, res, next) => {
 
 const getFinalGradeByProjectId = async (req, res, next) => {
   try {
-    const grade = await scoresService.getFinalGradeByProjectId(req.params.projectId);
+    const grade = await scoresService.getFinalGradeByProjectId(req.params.projectId, req.user);
     res.status(200).json({
       success: true,
       data: grade,

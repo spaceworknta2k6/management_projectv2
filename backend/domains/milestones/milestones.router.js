@@ -10,8 +10,12 @@ router.use(protect);
 
 router.get('/', milestonesController.getMilestones);
 router.post('/', milestonesValidator.validateMilestoneCreate, milestonesController.createMilestone);
+router.patch('/:id', milestonesValidator.validateMilestoneUpdate, milestonesController.updateMilestone);
+router.delete('/:id', milestonesController.deleteMilestone);
 router.post('/:id/submit', milestonesValidator.validateMilestoneSubmit, milestonesController.submitMilestoneWork);
 router.post('/:id/feedback', milestonesValidator.validateMilestoneFeedback, milestonesController.submitFeedback);
 router.post('/:id/lock', milestonesController.lockMilestone);
+router.post('/:id/unlock', milestonesController.unlockMilestone);
+
 
 module.exports = router;

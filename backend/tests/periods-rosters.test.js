@@ -1,5 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const { assertSafeTestDatabase } = require('./test-db-guard');
+assertSafeTestDatabase();
 
 const { app } = require('../app');
 const mongoose = require('mongoose');

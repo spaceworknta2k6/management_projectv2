@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -9,8 +9,9 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { formatDate } from '@/lib/utils';
-import { FileText, Calendar, Plus, Upload, Check, X, Shield, Clock, Download, PlusSquare } from '@phosphor-icons/react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { formatDate, hasAnyRole } from '@/lib/utils';
+import { FileText, Calendar, Plus, Upload, Check, X, Shield, Clock, Download, PlusSquare, PencilSimple, Trash } from '@phosphor-icons/react';
 
 export default function SubmissionsPage() {
   const user = useAuthStore((s) => s.user);
@@ -39,16 +40,19 @@ export default function SubmissionsPage() {
 
   // Form states for Creating Milestone (Staff/Lecturer)
   const [showCreateMilestoneModal, setShowCreateMilestoneModal] = useState(false);
+  const [editingMilestone, setEditingMilestone] = useState(null);
+  const [milestoneToDelete, setMilestoneToDelete] = useState(null);
   const [newMilestone, setNewMilestone] = useState({
     title: 'Báo cáo tiến độ 1',
     description: 'Nêu rõ kế hoạch khảo sát công nghệ và sơ đồ kiến trúc hệ thống đề xuất.',
     deadline: '2026-06-15T18:00',
   });
   const [creatingMilestone, setCreatingMilestone] = useState(false);
+  const [deletingMilestone, setDeletingMilestone] = useState(false);
 
-  const isStaff = ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(user?.role || user?.roles?.[0]);
-  const isLecturer = (user?.role || user?.roles?.[0]) === 'LECTURER';
-  const isStudent = (user?.role || user?.roles?.[0]) === 'STUDENT';
+  const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
+  const isLecturer = hasAnyRole(user, ['LECTURER']);
+  const isStudent = hasAnyRole(user, ['STUDENT']);
 
   const currentProject = projects.find(p => p._id === selectedProjectId);
   const isSupervisor = isLecturer && currentProject && (
@@ -56,7 +60,7 @@ export default function SubmissionsPage() {
   );
 
   // 1. Fetch active projects list to know which project we are working on
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get('/projects', token);
@@ -84,10 +88,10 @@ export default function SubmissionsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isLecturer, isStudent, toast, token, user?.id, user?.lecturerId, user?.studentId]);
 
   // 2. Fetch milestones for selected project
-  const loadMilestones = async (projId) => {
+  const loadMilestones = useCallback(async (projId) => {
     if (!projId) return;
     setLoadingMilestones(true);
     try {
@@ -98,19 +102,19 @@ export default function SubmissionsPage() {
     } finally {
       setLoadingMilestones(false);
     }
-  };
+  }, [toast, token]);
 
   useEffect(() => {
     if (token) {
-      loadProjects();
+      queueMicrotask(loadProjects);
     }
-  }, [token]);
+  }, [loadProjects, token]);
 
   useEffect(() => {
     if (selectedProjectId) {
-      loadMilestones(selectedProjectId);
+      queueMicrotask(() => loadMilestones(selectedProjectId));
     }
-  }, [selectedProjectId]);
+  }, [loadMilestones, selectedProjectId]);
 
   // File Upload handler (Multipart)
   const handleFileUpload = async (e) => {
@@ -178,6 +182,10 @@ export default function SubmissionsPage() {
   const handleFeedbackSubmit = async (e) => {
     e.preventDefault();
     if (!showFeedbackModal) return;
+    if (!feedbackComment.trim()) {
+      toast.error('Vui lòng nhập nhận xét chi tiết trước khi gửi đánh giá.');
+      return;
+    }
 
     setSubmittingFeedback(true);
     try {
@@ -204,14 +212,22 @@ export default function SubmissionsPage() {
 
     setCreatingMilestone(true);
     try {
-      await api.post(`/projects/${selectedProjectId}/milestones`, {
+      const payload = {
         title: newMilestone.title,
         description: newMilestone.description,
         deadline: new Date(newMilestone.deadline).toISOString(),
-      }, token);
+      };
 
-      toast.success('Đã khởi tạo mốc nộp bài mới thành công!');
+      if (editingMilestone) {
+        await api.patch(`/projects/${selectedProjectId}/milestones/${editingMilestone._id}`, payload, token);
+        toast.success('Đã cập nhật mốc nộp bài thành công!');
+      } else {
+        await api.post(`/projects/${selectedProjectId}/milestones`, payload, token);
+        toast.success('Đã khởi tạo mốc nộp bài mới thành công!');
+      }
+
       setShowCreateMilestoneModal(false);
+      setEditingMilestone(null);
       loadMilestones(selectedProjectId);
     } catch (err) {
       toast.error(err.message || 'Không thể tạo mốc nộp bài');
@@ -220,14 +236,43 @@ export default function SubmissionsPage() {
     }
   };
 
-  // Lock milestone
-  const handleLockMilestone = async (id) => {
+  const openEditMilestone = (milestone) => {
+    setEditingMilestone(milestone);
+    setNewMilestone({
+      title: milestone.title || '',
+      description: milestone.description || '',
+      deadline: milestone.deadline ? new Date(new Date(milestone.deadline).getTime() - new Date(milestone.deadline).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '',
+    });
+    setShowCreateMilestoneModal(true);
+  };
+
+  const handleDeleteMilestone = async (milestone) => {
+    setDeletingMilestone(true);
     try {
-      await api.post(`/projects/${selectedProjectId}/milestones/${id}/lock`, {}, token);
-      toast.success('Đã cập nhật trạng thái khóa mốc nộp bài thành công!');
+      await api.delete(`/projects/${selectedProjectId}/milestones/${milestone._id}`, token);
+      toast.success('Đã xóa mốc nộp bài thành công.');
+      setMilestoneToDelete(null);
       loadMilestones(selectedProjectId);
     } catch (err) {
-      toast.error(err.message || 'Không thể khóa mốc nộp bài');
+      toast.error(err.message || 'Không thể xóa mốc nộp bài');
+    } finally {
+      setDeletingMilestone(false);
+    }
+  };
+
+  // Lock/Unlock milestone
+  const handleToggleLockMilestone = async (id, currentStatus) => {
+    try {
+      if (currentStatus === 'locked') {
+        await api.post(`/projects/${selectedProjectId}/milestones/${id}/unlock`, {}, token);
+        toast.success('Đã mở khóa mốc nộp bài thành công!');
+      } else {
+        await api.post(`/projects/${selectedProjectId}/milestones/${id}/lock`, {}, token);
+        toast.success('Đã khóa mốc nộp bài thành công!');
+      }
+      loadMilestones(selectedProjectId);
+    } catch (err) {
+      toast.error(err.message || 'Không thể thay đổi trạng thái mốc nộp bài');
     }
   };
 
@@ -264,6 +309,8 @@ export default function SubmissionsPage() {
         return <Badge variant="success">Đạt yêu cầu</Badge>;
       case 'needs_revision':
         return <Badge variant="warning">Cần chỉnh sửa</Badge>;
+      case 'rejected':
+        return <Badge variant="error">Từ chối</Badge>;
       case 'late':
         return <Badge variant="error">Nộp trễ</Badge>;
       case 'locked':
@@ -297,7 +344,7 @@ export default function SubmissionsPage() {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {isSupervisor && (
-            <Button variant="primary" size="sm" onClick={() => setShowCreateMilestoneModal(true)}>
+            <Button variant="primary" size="sm" onClick={() => { setEditingMilestone(null); setShowCreateMilestoneModal(true); }}>
               <Plus size={16} />
               Tạo mốc nộp mới
             </Button>
@@ -386,12 +433,28 @@ export default function SubmissionsPage() {
                     {/* Lecturer / Staff Actions */}
                     {(isLecturer || isStaff) && (
                       <>
+                        {isSupervisor && (
+                          <>
+                            <Button variant="secondary" size="sm" onClick={() => openEditMilestone(m)}>
+                              <PencilSimple size={14} /> Sửa
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              disabled={hasSubmissions}
+                              title={hasSubmissions ? 'Mốc đã có bài nộp nên không thể xóa' : 'Xóa mốc nộp bài'}
+                              onClick={() => setMilestoneToDelete(m)}
+                            >
+                              <Trash size={14} /> Xóa
+                            </Button>
+                          </>
+                        )}
                         {hasSubmissions && m.status !== 'locked' && (
                           <Button variant="primary" size="sm" onClick={() => setShowFeedbackModal(m._id)}>
                             <Shield size={14} /> Đánh giá bản nộp
                           </Button>
                         )}
-                        <Button variant="secondary" size="sm" onClick={() => handleLockMilestone(m._id)}>
+                        <Button variant="secondary" size="sm" onClick={() => handleToggleLockMilestone(m._id, m.status)}>
                           <Clock size={14} /> {m.status === 'locked' ? 'Mở khóa' : 'Khóa mốc'}
                         </Button>
                       </>
@@ -429,7 +492,7 @@ export default function SubmissionsPage() {
                         >
                           <div>
                             <p style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                              Ghi chú sinh viên: "{sub.note || 'Không có ghi chú.'}"
+                              Ghi chú sinh viên: &quot;{sub.note || 'Không có ghi chú.'}&quot;
                             </p>
                             <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
                               Người nộp: {sub.submittedBy?.fullName || 'Sinh viên'} | Thời gian: {formatDate(sub.submittedAt)}
@@ -474,7 +537,7 @@ export default function SubmissionsPage() {
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{formatDate(feed.createdAt)}</span>
                           </div>
                           <p style={{ marginTop: '4px', color: 'var(--text-primary)', lineHeight: 1.5 }}>
-                            Lời phê: "{feed.comment}"
+                            Lời phê: &quot;{feed.comment}&quot;
                           </p>
                         </div>
                       ))}
@@ -661,7 +724,6 @@ export default function SubmissionsPage() {
                   onChange={(e) => setFeedbackComment(e.target.value)}
                   placeholder="Nhập lời phê bình hoặc hướng dẫn chỉnh sửa chi tiết cho sinh viên..."
                   rows={4}
-                  required
                   style={{
                     padding: '12px',
                     fontSize: '14px',
@@ -714,10 +776,10 @@ export default function SubmissionsPage() {
           >
             <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Tạo mốc nộp báo cáo mới
+                {editingMilestone ? 'Chỉnh sửa mốc nộp báo cáo' : 'Tạo mốc nộp báo cáo mới'}
               </h3>
               <button
-                onClick={() => setShowCreateMilestoneModal(false)}
+                onClick={() => { setShowCreateMilestoneModal(false); setEditingMilestone(null); }}
                 style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '18px' }}
               >
                 &times;
@@ -760,15 +822,25 @@ export default function SubmissionsPage() {
               />
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '10px' }}>
-                <Button variant="secondary" onClick={() => setShowCreateMilestoneModal(false)}>Hủy</Button>
+                <Button variant="secondary" onClick={() => { setShowCreateMilestoneModal(false); setEditingMilestone(null); }}>Hủy</Button>
                 <Button variant="primary" type="submit" loading={creatingMilestone}>
-                  <PlusSquare size={16} /> Tạo mốc
+                  <PlusSquare size={16} /> {editingMilestone ? 'Cập nhật mốc' : 'Tạo mốc'}
                 </Button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(milestoneToDelete)}
+        title="Xóa mốc nộp bài"
+        message={milestoneToDelete ? `Bạn có chắc chắn muốn xóa mốc nộp bài "${milestoneToDelete.title}"?` : ''}
+        confirmLabel="Xóa"
+        loading={deletingMilestone}
+        onCancel={() => setMilestoneToDelete(null)}
+        onConfirm={() => handleDeleteMilestone(milestoneToDelete)}
+      />
     </div>
   );
 }

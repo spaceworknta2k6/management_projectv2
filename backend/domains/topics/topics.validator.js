@@ -8,6 +8,7 @@ const validateTopicPropose = async (req, res, next) => {
     if (!req.body.groupId && req.user.studentId) {
       const group = await ProjectGroup.findOne({
         periodId: req.body.periodId,
+        isDeleted: { $ne: true },
         status: { $ne: 'cancelled' },
         'members.studentId': req.user.studentId
       });

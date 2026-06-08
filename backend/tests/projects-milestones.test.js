@@ -1,5 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const { assertSafeTestDatabase } = require('./test-db-guard');
+assertSafeTestDatabase();
 
 const { app } = require('../app');
 const mongoose = require('mongoose');
@@ -157,8 +159,19 @@ const runIntegrationTests = async () => {
 
       const tokenStudent = await loginActor('hoanganh@hust.edu.vn', 'password123');
       const tokenSupervisor = await loginActor('haikt@hust.edu.vn', 'password123');
+      const tokenReviewer = await loginActor('hongnt@hust.edu.vn', 'password123');
       const tokenStaff = await loginActor('huonglt@hust.edu.vn', 'password123');
       console.log('✅ Access tokens acquired successfully.');
+
+      console.log('\n--- Test 1b: GET /api/v1/projects/:id rejects unassigned lecturer ---');
+      const unauthorizedProjectRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}`, {
+        headers: { 'Authorization': `Bearer ${tokenReviewer}` }
+      });
+      console.log('HTTP Status:', unauthorizedProjectRes.status);
+      if (unauthorizedProjectRes.status !== 403) {
+        throw new Error(`❌ Test 1b Failed: Unassigned lecturer should not access project detail. Status: ${unauthorizedProjectRes.status}`);
+      }
+      console.log('✅ Test 1b Passed: Unassigned lecturer cannot access project detail.');
 
       // 3. Mark Project in progress
       console.log('\n--- Test 2: POST /api/v1/projects/:id/mark-in-progress ---');
@@ -201,6 +214,16 @@ const runIntegrationTests = async () => {
       }
       const milestoneId = createMilestoneResult.data._id;
       console.log(`✅ Test 3 Passed: Milestone "${milestonePayload.title}" created successfully with ID: ${milestoneId} and status open.`);
+
+      console.log('\n--- Test 3b: GET /api/v1/projects/:projectId/milestones rejects unassigned lecturer ---');
+      const unauthorizedMilestonesRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}/milestones`, {
+        headers: { 'Authorization': `Bearer ${tokenReviewer}` }
+      });
+      console.log('HTTP Status:', unauthorizedMilestonesRes.status);
+      if (unauthorizedMilestonesRes.status !== 403) {
+        throw new Error(`❌ Test 3b Failed: Unassigned lecturer should not access milestone list. Status: ${unauthorizedMilestonesRes.status}`);
+      }
+      console.log('✅ Test 3b Passed: Unassigned lecturer cannot access milestone list.');
 
       // 5. Submit Milestone homework (Student only)
       console.log('\n--- Test 4: POST /api/v1/projects/:projectId/milestones/:id/submit (Student submits work) ---');
@@ -248,8 +271,60 @@ const runIntegrationTests = async () => {
       }
       console.log('✅ Test 5 Passed: Supervisor evaluated and approved the milestone (status: accepted).');
 
-      // 7. Assign Reviewer (Staff only)
-      console.log('\n--- Test 6: POST /api/v1/projects/:id/assign-reviewer (Faculty Staff assigns reviewer) ---');
+      // 6. Supervisor locks and unlocks milestone
+      console.log('\n--- Test 6: POST /api/v1/projects/:projectId/milestones/:id/lock and /unlock ---');
+      const lockRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}/milestones/${milestoneId}/lock`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokenSupervisor}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const lockResult = await lockRes.json();
+      console.log('Lock HTTP Status:', lockRes.status);
+      if (!lockResult.success || lockResult.data.status !== 'locked') {
+        throw new Error(`❌ Test 6 Failed: Milestone lock failed. Msg: ${lockResult.message}`);
+      }
+
+      const unlockRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}/milestones/${milestoneId}/unlock`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokenSupervisor}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const unlockResult = await unlockRes.json();
+      console.log('Unlock HTTP Status:', unlockRes.status);
+      if (!unlockResult.success || unlockResult.data.status !== 'accepted') {
+        throw new Error(`❌ Test 6 Failed: Milestone unlock did not restore accepted status. Msg: ${unlockResult.message}`);
+      }
+      console.log('✅ Test 6 Passed: Supervisor locked milestone and unlocked it back to accepted status.');
+
+      // 7. Supervisor can reject a milestone without schema enum errors
+      console.log('\n--- Test 7: POST /api/v1/projects/:projectId/milestones/:id/feedback (Supervisor rejects) ---');
+      const rejectRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}/milestones/${milestoneId}/feedback`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokenSupervisor}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          comment: 'Cần làm lại báo cáo theo yêu cầu.',
+          status: 'rejected'
+        })
+      });
+
+      const rejectResult = await rejectRes.json();
+      console.log('HTTP Status:', rejectRes.status);
+      if (!rejectResult.success || rejectResult.data.status !== 'rejected') {
+        throw new Error(`❌ Test 7 Failed: Milestone rejection failed. Msg: ${rejectResult.message}`);
+      }
+      console.log('✅ Test 7 Passed: Supervisor rejected milestone and status was saved as rejected.');
+
+      // 8. Assign Reviewer (Staff only)
+      console.log('\n--- Test 8: POST /api/v1/projects/:id/assign-reviewer (Faculty Staff assigns reviewer) ---');
       const reviewerPayload = {
         reviewerId: reviewerLecturer._id.toString()
       };
@@ -266,12 +341,12 @@ const runIntegrationTests = async () => {
       const assignReviewerResult = await assignReviewerRes.json();
       console.log('HTTP Status:', assignReviewerRes.status);
       if (!assignReviewerResult.success) {
-        throw new Error(`❌ Test 6 Failed: Reviewer assignment failed. Msg: ${assignReviewerResult.message}`);
+        throw new Error(`❌ Test 8 Failed: Reviewer assignment failed. Msg: ${assignReviewerResult.message}`);
       }
-      console.log('✅ Test 6 Passed: Faculty Staff successfully assigned Lecturer Nguyễn Thị Hồng as Reviewer.');
+      console.log('✅ Test 8 Passed: Faculty Staff successfully assigned Lecturer Nguyễn Thị Hồng as Reviewer.');
 
-      // 8. Mark Defense Eligible (Staff only)
-      console.log('\n--- Test 7: POST /api/v1/projects/:id/mark-defense-eligible ---');
+      // 9. Mark Defense Eligible (Staff only)
+      console.log('\n--- Test 9: POST /api/v1/projects/:id/mark-defense-eligible ---');
       const eligibleRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}/mark-defense-eligible`, {
         method: 'POST',
         headers: {
@@ -283,12 +358,12 @@ const runIntegrationTests = async () => {
       const eligibleResult = await eligibleRes.json();
       console.log('HTTP Status:', eligibleRes.status);
       if (!eligibleResult.success || eligibleResult.data.status !== 'defense_eligible') {
-        throw new Error(`❌ Test 7 Failed: Marking defense eligible failed. Msg: ${eligibleResult.message}`);
+        throw new Error(`❌ Test 9 Failed: Marking defense eligible failed. Msg: ${eligibleResult.message}`);
       }
-      console.log('✅ Test 7 Passed: Project workspace successfully marked as defense_eligible.');
+      console.log('✅ Test 9 Passed: Project workspace successfully marked as defense_eligible.');
 
-      // 9. Finalize Project (Staff only)
-      console.log('\n--- Test 8: POST /api/v1/projects/:id/finalize ---');
+      // 10. Finalize Project (Staff only)
+      console.log('\n--- Test 10: POST /api/v1/projects/:id/finalize ---');
       const finalizeRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}/finalize`, {
         method: 'POST',
         headers: {
@@ -300,9 +375,9 @@ const runIntegrationTests = async () => {
       const finalizeResult = await finalizeRes.json();
       console.log('HTTP Status:', finalizeRes.status);
       if (!finalizeResult.success || finalizeResult.data.status !== 'finalized') {
-        throw new Error(`❌ Test 8 Failed: Project finalization failed. Msg: ${finalizeResult.message}`);
+        throw new Error(`❌ Test 10 Failed: Project finalization failed. Msg: ${finalizeResult.message}`);
       }
-      console.log('✅ Test 8 Passed: Project successfully finalized and archived.');
+      console.log('✅ Test 10 Passed: Project successfully finalized and archived.');
 
       console.log('\n🎉 ALL PHASE 5 WORKSPACE & PROGRESS MILESTONES INTEGRATION TESTS PASSED SUCCESSFULLY! 🎉');
     } catch (error) {

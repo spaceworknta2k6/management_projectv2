@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -9,8 +9,9 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { formatDate } from '@/lib/utils';
-import { Gavel, Plus, ArrowsClockwise, Users, Trash, CheckCircle, PlayCircle } from '@phosphor-icons/react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { formatDate, hasAnyRole } from '@/lib/utils';
+import { Gavel, Plus, ArrowsClockwise, Users, Trash, CheckCircle, PlayCircle, PencilSimple } from '@phosphor-icons/react';
 
 export default function CommitteesPage() {
   const { user, token } = useAuthStore();
@@ -22,6 +23,8 @@ export default function CommitteesPage() {
   
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingCommittee, setEditingCommittee] = useState(null);
+  const [committeeToDelete, setCommitteeToDelete] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
 
@@ -33,7 +36,7 @@ export default function CommitteesPage() {
     members: [], // array of { lecturerId, role }
   });
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [committeesRes, periodsRes, lecturersRes] = await Promise.all([
@@ -54,11 +57,11 @@ export default function CommitteesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [form.periodId, toast, token]);
 
   useEffect(() => {
     if (token) fetchData();
-  }, [token]);
+  }, [fetchData, token]);
 
   const handleAddMember = () => {
     setForm({
@@ -96,9 +99,19 @@ export default function CommitteesPage() {
 
     try {
       setSubmitting(true);
-      await api.post('/committees', form, token);
-      toast.success('Đã tạo Hội đồng thành công');
+      if (editingCommittee) {
+        await api.patch(`/committees/${editingCommittee._id}`, {
+          name: form.name,
+          evaluationMode: form.evaluationMode,
+          members: form.members,
+        }, token);
+        toast.success('Đã cập nhật hội đồng');
+      } else {
+        await api.post('/committees', form, token);
+        toast.success('Đã tạo Hội đồng thành công');
+      }
       setShowModal(false);
+      setEditingCommittee(null);
       setForm({
         ...form,
         name: '',
@@ -109,6 +122,44 @@ export default function CommitteesPage() {
       toast.error(err.message || 'Lỗi khi tạo hội đồng');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openCreateModal = () => {
+    setEditingCommittee(null);
+    setForm({
+      ...form,
+      name: '',
+      members: [],
+    });
+    setShowModal(true);
+  };
+
+  const openEditModal = (committee) => {
+    setEditingCommittee(committee);
+    setForm({
+      periodId: committee.periodId?._id || committee.periodId || '',
+      name: committee.name || '',
+      evaluationMode: committee.evaluationMode || 'defense',
+      members: (committee.members || []).map((m) => ({
+        lecturerId: m.lecturerId?._id || m.lecturerId,
+        role: m.role,
+      })),
+    });
+    setShowModal(true);
+  };
+
+  const handleDeleteCommittee = async (committee) => {
+    try {
+      setActionLoading(`delete:${committee._id}`);
+      await api.delete(`/committees/${committee._id}`, token);
+      toast.success('Đã xóa hội đồng thành công.');
+      setCommitteeToDelete(null);
+      fetchData();
+    } catch (err) {
+      toast.error(err.message || 'Không thể xóa hội đồng');
+    } finally {
+      setActionLoading('');
     }
   };
 
@@ -169,8 +220,7 @@ export default function CommitteesPage() {
     );
   }
 
-  const userRole = user?.role || user?.roles?.[0];
-  const isStaff = userRole === 'FACULTY_STAFF' || userRole === 'DEPARTMENT_STAFF';
+  const isStaff = hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF']);
 
   return (
     <div>
@@ -188,7 +238,7 @@ export default function CommitteesPage() {
         <div style={{ display: 'flex', gap: '8px' }}>
           <Button variant="outline" onClick={fetchData} icon={<ArrowsClockwise />} title="Làm mới" />
           {isStaff && (
-            <Button variant="primary" icon={<Plus />} onClick={() => setShowModal(true)}>
+            <Button variant="primary" icon={<Plus />} onClick={openCreateModal}>
               Tạo hội đồng
             </Button>
           )}
@@ -250,6 +300,25 @@ export default function CommitteesPage() {
                   <Button
                     variant="secondary"
                     size="sm"
+                    icon={<PencilSimple size={14} />}
+                    onClick={() => openEditModal(committee)}
+                  >
+                    Sửa
+                  </Button>
+                )}
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<Trash size={14} />}
+                  loading={actionLoading === `delete:${committee._id}`}
+                  onClick={() => setCommitteeToDelete(committee)}
+                >
+                  Xóa
+                </Button>
+                {committee.status === 'draft' && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     icon={<CheckCircle size={14} />}
                     loading={actionLoading === `approve:${committee._id}`}
                     onClick={() => handleApproveCommittee(committee._id)}
@@ -293,7 +362,7 @@ export default function CommitteesPage() {
             maxHeight: '90vh', display: 'flex', flexDirection: 'column'
           }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 600 }}>Tạo Hội đồng Đánh giá mới</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: 600 }}>{editingCommittee ? 'Chỉnh sửa Hội đồng' : 'Tạo Hội đồng Đánh giá mới'}</h2>
             </div>
             
             <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
@@ -383,12 +452,21 @@ export default function CommitteesPage() {
             </div>
             
             <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: 'var(--surface-sunken)', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
-              <Button variant="ghost" onClick={() => setShowModal(false)} type="button">Hủy</Button>
-              <Button variant="primary" type="submit" form="committee-form" isLoading={submitting}>Tạo Hội đồng</Button>
+              <Button variant="ghost" onClick={() => { setShowModal(false); setEditingCommittee(null); }} type="button">Hủy</Button>
+              <Button variant="primary" type="submit" form="committee-form" isLoading={submitting}>{editingCommittee ? 'Cập nhật Hội đồng' : 'Tạo Hội đồng'}</Button>
             </div>
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={Boolean(committeeToDelete)}
+        title="Xóa hội đồng"
+        message={committeeToDelete ? `Bạn có chắc chắn muốn xóa hội đồng "${committeeToDelete.name}"?` : ''}
+        confirmLabel="Xóa"
+        loading={actionLoading === `delete:${committeeToDelete?._id}`}
+        onCancel={() => setCommitteeToDelete(null)}
+        onConfirm={() => handleDeleteCommittee(committeeToDelete)}
+      />
     </div>
   );
 }

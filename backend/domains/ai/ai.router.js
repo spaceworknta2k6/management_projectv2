@@ -5,8 +5,13 @@ const aiController = require('./ai.controller');
 const aiValidator = require('./ai.validator');
 const { protect, requireRole } = require('../../middlewares/auth.middleware');
 
+const hasAnyRole = (user, allowedRoles) => {
+  const roles = user.roles || (user.role ? [user.role] : []);
+  return roles.some((role) => allowedRoles.includes(role));
+};
+
 const checkCommitteeOrStaff = async (req, res, next) => {
-  if (['FACULTY_STAFF', 'DEPARTMENT_STAFF'].includes(req.user.role)) {
+  if (hasAnyRole(req.user, ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF'])) {
     return next();
   }
   try {
@@ -14,12 +19,12 @@ const checkCommitteeOrStaff = async (req, res, next) => {
     const DefenseSession = require('../../models/DefenseSession');
     const Committee = require('../../models/Committee');
 
-    const session = await DefenseSession.findOne({ projectId: id });
+    const session = await DefenseSession.findOne({ projectId: id, isDeleted: { $ne: true } });
     if (!session) {
       return res.status(404).json({ success: false, message: 'Dự án chưa được xếp lịch bảo vệ.' });
     }
 
-    const committee = await Committee.findById(session.committeeId);
+    const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
     if (!committee) {
       return res.status(404).json({ success: false, message: 'Hội đồng chấm không tồn tại.' });
     }

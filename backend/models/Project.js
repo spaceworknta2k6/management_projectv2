@@ -57,6 +57,17 @@ const ProjectSchema = new mongoose.Schema({
     type: Number,
     default: 1,
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
 }, {
   timestamps: true,
 });
@@ -66,8 +77,14 @@ ProjectSchema.index(
   { periodId: 1, groupId: 1 },
   { 
     unique: true, 
-    partialFilterExpression: { status: { $ne: 'cancelled' } } 
+    partialFilterExpression: { status: { $ne: 'cancelled' }, isDeleted: false } 
   }
 );
+
+ProjectSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
 
 module.exports = mongoose.model('Project', ProjectSchema);

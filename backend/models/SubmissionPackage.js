@@ -88,11 +88,25 @@ const SubmissionPackageSchema = new mongoose.Schema({
   lockedAt: {
     type: Date,
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
 }, {
   timestamps: true,
 });
 
 // A specific project/defense context can have only one package per phase
-SubmissionPackageSchema.index({ ownerType: 1, ownerId: 1, phase: 1 }, { unique: true });
+SubmissionPackageSchema.index(
+  { ownerType: 1, ownerId: 1, phase: 1 },
+  { unique: true, partialFilterExpression: { isDeleted: false } }
+);
 
 module.exports = mongoose.model('SubmissionPackage', SubmissionPackageSchema);

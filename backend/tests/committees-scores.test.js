@@ -1,5 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const { assertSafeTestDatabase } = require('./test-db-guard');
+assertSafeTestDatabase();
 
 const { app } = require('../app');
 const mongoose = require('mongoose');
@@ -58,8 +60,17 @@ const runIntegrationTests = async () => {
           email: 'khanhtv@hust.edu.vn',
           passwordHash: supervisorUser.passwordHash,
           roles: ['LECTURER'],
-          status: 'active'
+          status: 'active',
+          isDeleted: false
         });
+      } else {
+        khanUser.passwordHash = supervisorUser.passwordHash;
+        khanUser.status = 'active';
+        khanUser.isDeleted = false;
+        if (!khanUser.roles.includes('LECTURER')) {
+          khanUser.roles.push('LECTURER');
+        }
+        await khanUser.save();
       }
       let khanLecturer = await Lecturer.findOne({ userId: khanUser._id });
       if (!khanLecturer) {
@@ -72,8 +83,12 @@ const runIntegrationTests = async () => {
           expertise: ['Algorithms', 'Software Engineering'],
           maxProjects: 3,
           isExternal: false,
-          organization: 'HUST'
+          organization: 'HUST',
+          isDeleted: false
         });
+      } else {
+        khanLecturer.isDeleted = false;
+        await khanLecturer.save();
       }
 
       // Find or create Project Period

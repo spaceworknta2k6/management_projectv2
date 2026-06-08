@@ -1,10 +1,11 @@
 const Committee = require('../../models/Committee');
 const ProjectPeriod = require('../../models/ProjectPeriod');
+const DefenseSession = require('../../models/DefenseSession');
 
 const createCommittee = async (data, user) => {
   const { periodId, name, evaluationMode, members } = data;
 
-  const period = await ProjectPeriod.findById(periodId);
+  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -22,7 +23,7 @@ const createCommittee = async (data, user) => {
 };
 
 const getCommittees = async (query = {}) => {
-  return await Committee.find(query)
+  return await Committee.find({ ...query, isDeleted: { $ne: true } })
     .populate('periodId')
     .populate({
       path: 'members.lecturerId',
@@ -34,7 +35,7 @@ const getCommittees = async (query = {}) => {
 };
 
 const getCommitteeById = async (id) => {
-  const committee = await Committee.findById(id)
+  const committee = await Committee.findOne({ _id: id, isDeleted: { $ne: true } })
     .populate('periodId')
     .populate({
       path: 'members.lecturerId',
@@ -50,7 +51,7 @@ const getCommitteeById = async (id) => {
 };
 
 const updateCommittee = async (id, data) => {
-  const committee = await Committee.findById(id);
+  const committee = await Committee.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!committee) {
     throw { status: 404, message: 'Hội đồng chấm không tồn tại.' };
   }
@@ -67,7 +68,7 @@ const updateCommittee = async (id, data) => {
 };
 
 const approveCommittee = async (id, userId) => {
-  const committee = await Committee.findById(id);
+  const committee = await Committee.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!committee) {
     throw { status: 404, message: 'Hội đồng chấm không tồn tại.' };
   }
@@ -84,7 +85,7 @@ const approveCommittee = async (id, userId) => {
 };
 
 const activateCommittee = async (id) => {
-  const committee = await Committee.findById(id);
+  const committee = await Committee.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!committee) {
     throw { status: 404, message: 'Hội đồng chấm không tồn tại.' };
   }
@@ -98,7 +99,7 @@ const activateCommittee = async (id) => {
 };
 
 const finishCommittee = async (id) => {
-  const committee = await Committee.findById(id);
+  const committee = await Committee.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!committee) {
     throw { status: 404, message: 'Hội đồng chấm không tồn tại.' };
   }
@@ -111,17 +112,27 @@ const finishCommittee = async (id) => {
   return await committee.save();
 };
 
-const deleteCommittee = async (id) => {
-  const committee = await Committee.findById(id);
+const deleteCommittee = async (id, userId) => {
+  const committee = await Committee.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!committee) {
     throw { status: 404, message: 'Hội đồng chấm không tồn tại.' };
   }
 
-  if (committee.status !== 'draft') {
-    throw { status: 400, message: 'Chỉ cho phép xóa hội đồng khi đang ở trạng thái Nháp (draft).' };
+  const scheduledSession = await DefenseSession.findOne({
+    committeeId: committee._id,
+    isDeleted: { $ne: true },
+    status: { $nin: ['cancelled', 'no_show'] },
+  });
+  if (scheduledSession) {
+    throw { status: 400, message: 'Hội đồng đã được gán lịch bảo vệ nên không thể xóa. Hãy cập nhật hoặc hủy lịch bảo vệ trước.' };
   }
 
-  await Committee.findByIdAndDelete(id);
+  committee.status = 'cancelled';
+  committee.isDeleted = true;
+  committee.deletedAt = new Date();
+  committee.deletedBy = userId;
+  await committee.save();
+
   return { success: true, message: 'Hội đồng chấm đã được xóa thành công.' };
 };
 

@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const User = require('../../models/User');
 const Student = require('../../models/Student');
 const Lecturer = require('../../models/Lecturer');
+const { getJwtSecret } = require('../../config/jwt');
 
 const buildAuthResult = async (user) => {
   let studentId = undefined;
@@ -27,7 +28,7 @@ const buildAuthResult = async (user) => {
 
   const accessToken = jwt.sign(
     tokenPayload,
-    process.env.JWT_SECRET || 'your_jwt_secret_key_should_be_at_least_32_characters',
+    getJwtSecret(),
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
 

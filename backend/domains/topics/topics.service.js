@@ -30,12 +30,12 @@ const logWorkflowEvent = async ({
 const proposeTopic = async (topicData, studentId) => {
   const { periodId, groupId } = topicData;
 
-  const period = await ProjectPeriod.findById(periodId);
+  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
 
-  const group = await ProjectGroup.findById(groupId);
+  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
   if (!group) {
     throw { status: 404, message: 'Nhóm đồ án không tồn tại.' };
   }
@@ -155,7 +155,7 @@ const assignSupervisor = async (topicId, supervisorId, actorUserId) => {
   await topic.save();
 
   // 2. Lock the ProjectGroup
-  const group = await ProjectGroup.findById(topic.groupId);
+  const group = await ProjectGroup.findOne({ _id: topic.groupId, isDeleted: { $ne: true } });
   if (group) {
     group.status = 'locked';
     await group.save();

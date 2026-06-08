@@ -38,6 +38,18 @@ export function getRoleLabel(role) {
   return ROLE_LABELS[role] || role;
 }
 
+export function getUserRoles(user) {
+  return user?.roles || (user?.role ? [user.role] : []);
+}
+
+export function getPrimaryRole(user) {
+  return user?.role || user?.roles?.[0] || '';
+}
+
+export function hasAnyRole(user, allowedRoles = []) {
+  return getUserRoles(user).some((role) => allowedRoles.includes(role));
+}
+
 /**
  * Map backend status strings to Vietnamese labels and badge variants.
  */

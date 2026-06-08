@@ -69,8 +69,36 @@ const validateItemReview = (req, res, next) => {
   next();
 };
 
+const validatePackageUpdate = (req, res, next) => {
+  const { deadline, status, items } = req.body;
+  const errors = [];
+
+  if (deadline !== undefined && isNaN(new Date(deadline).getTime())) {
+    errors.push({ field: 'deadline', code: 'DEADLINE_INVALID', message: 'Hạn nộp không hợp lệ.' });
+  }
+
+  if (status !== undefined && !['draft', 'submitted', 'needs_revision', 'accepted', 'late', 'locked'].includes(status)) {
+    errors.push({ field: 'status', code: 'PACKAGE_STATUS_INVALID', message: 'Trạng thái gói nộp không hợp lệ.' });
+  }
+
+  if (items !== undefined && !Array.isArray(items)) {
+    errors.push({ field: 'items', code: 'PACKAGE_ITEMS_INVALID', message: 'Danh sách tài liệu nộp không hợp lệ.' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(422).json({
+      success: false,
+      message: 'Dữ liệu chỉnh sửa gói nộp không hợp lệ.',
+      errors,
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validatePackageInitialize,
   validateItemUpload,
   validateItemReview,
+  validatePackageUpdate,
 };

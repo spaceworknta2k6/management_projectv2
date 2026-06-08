@@ -63,7 +63,7 @@ const MilestoneSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['open', 'submitted', 'accepted', 'needs_revision', 'late', 'locked'],
+    enum: ['open', 'submitted', 'accepted', 'needs_revision', 'rejected', 'late', 'locked'],
     default: 'open',
   },
   submissions: {
@@ -73,6 +73,17 @@ const MilestoneSchema = new mongoose.Schema({
   feedback: {
     type: [FeedbackSchema],
     default: [],
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
   },
 }, {
   timestamps: true,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
+import { hasAnyRole } from '@/lib/utils';
 import { FolderSimple, UserCheck, ShieldCheck, CheckSquare, ArrowsClockwise } from '@phosphor-icons/react';
 
 export default function ProjectsPage() {
@@ -24,10 +25,10 @@ export default function ProjectsPage() {
   const [showAssignModal, setShowAssignModal] = useState(null); // projectId
   const [selectedReviewerId, setSelectedReviewerId] = useState('');
 
-  const isStaff = ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(user?.role || user?.roles?.[0]);
-  const isLecturer = (user?.role || user?.roles?.[0]) === 'LECTURER';
+  const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
+  const isLecturer = hasAnyRole(user, ['LECTURER']);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       // 1. Fetch all projects
@@ -61,13 +62,13 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isLecturer, isStaff, toast, token, user?.id, user?.lecturerId, user?.studentId]);
 
   useEffect(() => {
     if (token) {
       loadData();
     }
-  }, [token]);
+  }, [loadData, token]);
 
   const handleStartProject = async (id) => {
     try {

@@ -23,6 +23,33 @@ const validateMilestoneCreate = (req, res, next) => {
   next();
 };
 
+const validateMilestoneUpdate = (req, res, next) => {
+  const { title, deadline, status } = req.body;
+  const errors = [];
+
+  if (title !== undefined && (typeof title !== 'string' || title.trim() === '')) {
+    errors.push({ field: 'title', code: 'TITLE_INVALID', message: 'Tiêu đề mốc tiến độ không hợp lệ.' });
+  }
+
+  if (deadline !== undefined && isNaN(new Date(deadline).getTime())) {
+    errors.push({ field: 'deadline', code: 'DEADLINE_INVALID', message: 'Hạn chót mốc tiến độ không hợp lệ.' });
+  }
+
+  if (status !== undefined && !['open', 'submitted', 'accepted', 'needs_revision', 'rejected', 'late', 'locked'].includes(status)) {
+    errors.push({ field: 'status', code: 'STATUS_INVALID', message: 'Trạng thái mốc tiến độ không hợp lệ.' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(422).json({
+      success: false,
+      message: 'Dữ liệu chỉnh sửa mốc tiến độ không hợp lệ.',
+      errors,
+    });
+  }
+
+  next();
+};
+
 const validateMilestoneSubmit = (req, res, next) => {
   const { note, fileIds } = req.body;
   const errors = [];
@@ -73,6 +100,7 @@ const validateMilestoneFeedback = (req, res, next) => {
 
 module.exports = {
   validateMilestoneCreate,
+  validateMilestoneUpdate,
   validateMilestoneSubmit,
   validateMilestoneFeedback,
 };

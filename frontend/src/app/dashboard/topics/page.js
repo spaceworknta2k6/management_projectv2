@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -9,7 +9,7 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { formatDate, getStatus } from '@/lib/utils';
+import { formatDate, getStatus, hasAnyRole } from '@/lib/utils';
 import { BookOpen, Plus, Check, X, Shield, Cpu, Sparkle, Pencil, Lightbulb, Star } from '@phosphor-icons/react';
 
 export default function TopicsPage() {
@@ -47,10 +47,10 @@ export default function TopicsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState(null);
 
-  const isStaff = ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(user?.role || user?.roles?.[0]);
-  const isStudent = (user?.role || user?.roles?.[0]) === 'STUDENT';
+  const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
+  const isStudent = hasAnyRole(user, ['STUDENT']);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [resPeriods, resTopics] = await Promise.all([
@@ -69,13 +69,13 @@ export default function TopicsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast, token]);
 
   useEffect(() => {
     if (token) {
       loadData();
     }
-  }, [token]);
+  }, [loadData, token]);
 
   const handleSubmitTopic = async (e) => {
     e.preventDefault();

@@ -56,7 +56,7 @@ const facultyDecide = async (req, res, next) => {
 
 const getRequests = async (req, res, next) => {
   try {
-    const result = await extensionsService.getRequests(req.query);
+    const result = await extensionsService.getRequests(req.query, req.user);
     return res.status(200).json({
       success: true,
       message: 'Lấy danh sách yêu cầu gia hạn thành công!',
@@ -69,7 +69,7 @@ const getRequests = async (req, res, next) => {
 
 const getRequestById = async (req, res, next) => {
   try {
-    const result = await extensionsService.getRequestById(req.params.id);
+    const result = await extensionsService.getRequestById(req.params.id, req.user);
     return res.status(200).json({
       success: true,
       message: 'Lấy chi tiết yêu cầu gia hạn thành công!',

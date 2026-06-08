@@ -11,6 +11,8 @@ router.use(protect);
 router.post('/', groupsValidator.validateGroupCreate, groupsController.createGroup);
 router.get('/', groupsController.getGroups);
 router.get('/:id', groupsController.getGroupById);
+router.patch('/:id', groupsValidator.validateGroupUpdate, groupsController.updateGroup);
+router.delete('/:id', groupsController.deleteGroup);
 
 router.post('/:id/invite', groupsValidator.validateInviteMember, groupsController.inviteMember);
 router.post('/:id/accept', groupsController.acceptInvitation);

@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Student = require('../models/Student');
 const Lecturer = require('../models/Lecturer');
+const { getJwtSecret } = require('../config/jwt');
 
 // Protect route against unauthenticated users
 const protect = async (req, res, next) => {
@@ -21,7 +22,7 @@ const protect = async (req, res, next) => {
 
   try {
     // Verify token payload integrity
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_key_should_be_at_least_32_characters');
+    const decoded = jwt.verify(token, getJwtSecret());
 
     // Retrieve corresponding User and check status constraints
     const user = await User.findById(decoded.id || decoded.userId);

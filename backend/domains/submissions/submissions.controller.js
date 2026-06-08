@@ -76,9 +76,40 @@ const reviewPackageItem = async (req, res, next) => {
   }
 };
 
+const updatePackage = async (req, res, next) => {
+  try {
+    const result = await submissionsService.updatePackage(req.params.id, req.body, req.user);
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật gói hồ sơ nộp thành công!',
+      data: result,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
+const deletePackage = async (req, res, next) => {
+  try {
+    const result = await submissionsService.deletePackage(req.params.id, req.user);
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 const getPackageById = async (req, res, next) => {
   try {
-    const result = await submissionsService.getPackageById(req.params.id);
+    const result = await submissionsService.getPackageById(req.params.id, req.user);
     return res.status(200).json({
       success: true,
       message: 'Lấy chi tiết gói hồ sơ nộp đồ án thành công!',
@@ -97,5 +128,7 @@ module.exports = {
   uploadPackageItem,
   submitPackage,
   reviewPackageItem,
+  updatePackage,
+  deletePackage,
   getPackageById,
 };

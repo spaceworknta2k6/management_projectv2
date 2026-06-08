@@ -3,6 +3,7 @@ const ProjectPeriod = require('../../models/ProjectPeriod');
 const ProjectRoster = require('../../models/ProjectRoster');
 const Student = require('../../models/Student');
 const WorkflowEvent = require('../../models/WorkflowEvent');
+const Project = require('../../models/Project');
 
 const logWorkflowEvent = async ({
   entityId,
@@ -25,7 +26,7 @@ const logWorkflowEvent = async ({
 };
 
 const createGroup = async (periodId, name, studentId) => {
-  const period = await ProjectPeriod.findById(periodId);
+  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -44,6 +45,7 @@ const createGroup = async (periodId, name, studentId) => {
   // Verify student is not already in any active (non-cancelled) group in this period
   const existingGroup = await ProjectGroup.findOne({
     periodId,
+    isDeleted: { $ne: true },
     status: { $ne: 'cancelled' },
     members: {
       $elemMatch: {
@@ -84,7 +86,7 @@ const createGroup = async (periodId, name, studentId) => {
 };
 
 const inviteMember = async (groupId, invitedStudentId, leaderStudentId) => {
-  const group = await ProjectGroup.findById(groupId);
+  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
   if (!group) {
     throw { status: 404, message: 'Nhóm đồ án không tồn tại.' };
   }
@@ -98,7 +100,7 @@ const inviteMember = async (groupId, invitedStudentId, leaderStudentId) => {
   }
 
   // Get period rules
-  const period = await ProjectPeriod.findById(group.periodId);
+  const period = await ProjectPeriod.findOne({ _id: group.periodId, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án liên kết không tồn tại.' };
   }
@@ -112,6 +114,7 @@ const inviteMember = async (groupId, invitedStudentId, leaderStudentId) => {
   // Check if invited student already accepted in another active group
   const existingGroup = await ProjectGroup.findOne({
     periodId: group.periodId,
+    isDeleted: { $ne: true },
     status: { $ne: 'cancelled' },
     members: {
       $elemMatch: {
@@ -168,7 +171,7 @@ const inviteMember = async (groupId, invitedStudentId, leaderStudentId) => {
 };
 
 const acceptInvitation = async (groupId, studentId) => {
-  const group = await ProjectGroup.findById(groupId);
+  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
   if (!group) {
     throw { status: 404, message: 'Nhóm đồ án không tồn tại.' };
   }
@@ -185,6 +188,7 @@ const acceptInvitation = async (groupId, studentId) => {
   // Check if student accepted in another active group
   const existingGroup = await ProjectGroup.findOne({
     periodId: group.periodId,
+    isDeleted: { $ne: true },
     status: { $ne: 'cancelled' },
     members: {
       $elemMatch: {
@@ -213,7 +217,7 @@ const acceptInvitation = async (groupId, studentId) => {
 };
 
 const confirmGroup = async (groupId, leaderStudentId) => {
-  const group = await ProjectGroup.findById(groupId);
+  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
   if (!group) {
     throw { status: 404, message: 'Nhóm đồ án không tồn tại.' };
   }
@@ -227,7 +231,7 @@ const confirmGroup = async (groupId, leaderStudentId) => {
   }
 
   // Get period rules
-  const period = await ProjectPeriod.findById(group.periodId);
+  const period = await ProjectPeriod.findOne({ _id: group.periodId, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -253,8 +257,86 @@ const confirmGroup = async (groupId, leaderStudentId) => {
   return group;
 };
 
+const canManageGroup = (group, user) => {
+  const isStaff = user.roles && user.roles.some(role => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(role));
+  const isLeader = user.studentId && group.leaderStudentId.toString() === user.studentId.toString();
+  return { isStaff, isLeader };
+};
+
+const updateGroup = async (groupId, data, user) => {
+  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
+  if (!group) {
+    throw { status: 404, message: 'Nhóm đồ án không tồn tại.' };
+  }
+
+  const { isStaff, isLeader } = canManageGroup(group, user);
+  if (!isStaff && !isLeader) {
+    throw { status: 403, message: 'Chỉ trưởng nhóm hoặc giáo vụ mới có quyền chỉnh sửa nhóm.' };
+  }
+
+  if (!isStaff && group.status !== 'draft') {
+    throw { status: 400, message: 'Trưởng nhóm chỉ được chỉnh sửa nhóm khi nhóm còn ở trạng thái nháp.' };
+  }
+
+  if (group.status === 'locked') {
+    throw { status: 400, message: 'Không thể chỉnh sửa nhóm đã khóa sau khi phân công đề tài.' };
+  }
+
+  if (data.name !== undefined) group.name = data.name.trim();
+  await group.save();
+
+  await logWorkflowEvent({
+    entityId: group._id,
+    fromStatus: group.status,
+    toStatus: group.status,
+    actorId: user._id,
+    action: 'UPDATE_GROUP',
+    reason: 'Cập nhật thông tin nhóm đồ án',
+  });
+
+  return group;
+};
+
+const deleteGroup = async (groupId, user) => {
+  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
+  if (!group) {
+    throw { status: 404, message: 'Nhóm đồ án không tồn tại hoặc đã bị xóa.' };
+  }
+
+  const { isStaff, isLeader } = canManageGroup(group, user);
+  if (!isStaff && !isLeader) {
+    throw { status: 403, message: 'Chỉ trưởng nhóm hoặc giáo vụ mới có quyền xóa nhóm.' };
+  }
+
+  if (!isStaff && group.status !== 'draft') {
+    throw { status: 400, message: 'Trưởng nhóm chỉ được xóa nhóm khi nhóm còn ở trạng thái nháp.' };
+  }
+
+  const linkedProject = await Project.findOne({ groupId: group._id });
+  if (linkedProject || group.status === 'locked') {
+    throw { status: 400, message: 'Nhóm đã có đề tài/dự án liên kết nên không thể xóa. Hãy hủy hoặc xử lý trạng thái nghiệp vụ thay vì xóa.' };
+  }
+
+  group.status = 'cancelled';
+  group.isDeleted = true;
+  group.deletedAt = new Date();
+  group.deletedBy = user._id;
+  await group.save();
+
+  await logWorkflowEvent({
+    entityId: group._id,
+    fromStatus: group.status,
+    toStatus: 'cancelled',
+    actorId: user._id,
+    action: 'SOFT_DELETE_GROUP',
+    reason: 'Xóa mềm nhóm đồ án',
+  });
+
+  return { success: true, message: 'Nhóm đồ án đã được xóa thành công.' };
+};
+
 const getGroupsByPeriod = async (periodId) => {
-  return await ProjectGroup.find({ periodId })
+  return await ProjectGroup.find({ periodId, isDeleted: { $ne: true } })
     .populate({
       path: 'leaderStudentId',
       populate: { path: 'userId', select: 'fullName email status' },
@@ -267,7 +349,7 @@ const getGroupsByPeriod = async (periodId) => {
 };
 
 const getGroupById = async (id) => {
-  const group = await ProjectGroup.findById(id)
+  const group = await ProjectGroup.findOne({ _id: id, isDeleted: { $ne: true } })
     .populate({
       path: 'leaderStudentId',
       populate: { path: 'userId', select: 'fullName email status' },
@@ -288,6 +370,8 @@ module.exports = {
   inviteMember,
   acceptInvitation,
   confirmGroup,
+  updateGroup,
+  deleteGroup,
   getGroupsByPeriod,
   getGroupById,
 };

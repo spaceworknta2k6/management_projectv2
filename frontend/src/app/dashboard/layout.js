@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   GraduationCap,
@@ -10,6 +10,7 @@ import {
   BookOpen,
   FolderSimple,
   FileText,
+  Clock,
   Gavel,
   Sword,
   ChartBar,
@@ -27,7 +28,7 @@ import useThemeStore from '@/store/theme.store';
 import { authService } from '@/services/auth.service';
 import Spinner from '@/components/ui/Spinner';
 import Button from '@/components/ui/Button';
-import { getRoleLabel } from '@/lib/utils';
+import { getPrimaryRole, getRoleLabel, hasAnyRole } from '@/lib/utils';
 import { ToastProvider } from '@/components/ui/Toast';
 
 /* ─── Navigation Items ──────────────────────────────────────────────── */
@@ -37,7 +38,8 @@ const NAV_ITEMS = [
   { href: '/dashboard/groups',     label: 'Nhóm',          icon: Users,            roles: ['STUDENT', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/topics',     label: 'Đề tài',        icon: BookOpen,         roles: null },
   { href: '/dashboard/projects',   label: 'Dự án',         icon: FolderSimple,     roles: null },
-  { href: '/dashboard/submissions',label: 'Nộp bài',       icon: FileText,         roles: null },
+  { href: '/dashboard/submissions',label: 'Nộp bài',       icon: FileText,         roles: ['STUDENT', 'LECTURER', 'SYSTEM_ADMIN'] },
+  { href: '/dashboard/extensions', label: 'Gia hạn',       icon: Clock,            roles: ['STUDENT', 'LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/committees', label: 'Hội đồng',      icon: Gavel,            roles: ['LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/defenses',   label: 'Bảo vệ',        icon: Sword,            roles: null },
   { href: '/dashboard/scores',     label: 'Điểm số',       icon: ChartBar,         roles: ['LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
@@ -47,16 +49,18 @@ const NAV_ITEMS = [
 ];
 
 /* ─── Sidebar ──────────────────────────────────────────────────────── */
-function Sidebar({ collapsed, onToggle, userRole }) {
+function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate, user }) {
   const pathname = usePathname();
   const router = useRouter();
 
   const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.roles || item.roles.includes(userRole)
+    (item) => !item.roles || hasAnyRole(user, item.roles)
   );
 
   return (
     <aside
+      className="dashboard-sidebar"
+      data-mobile-open={mobileOpen ? 'true' : 'false'}
       style={{
         width: collapsed ? '64px' : 'var(--sidebar-width)',
         height: '100dvh',
@@ -133,7 +137,10 @@ function Sidebar({ collapsed, onToggle, userRole }) {
           return (
             <button
               key={item.href}
-              onClick={() => router.push(item.href)}
+              onClick={() => {
+                router.push(item.href);
+                onNavigate?.();
+              }}
               title={collapsed ? item.label : undefined}
               style={{
                 display: 'flex',
@@ -214,7 +221,7 @@ function Sidebar({ collapsed, onToggle, userRole }) {
 }
 
 /* ─── Header ──────────────────────────────────────────────────────── */
-function Header({ user, sidebarCollapsed, onMobileMenuToggle }) {
+function Header({ user, onMobileMenuToggle }) {
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
   const { theme, toggleTheme } = useThemeStore();
@@ -238,6 +245,7 @@ function Header({ user, sidebarCollapsed, onMobileMenuToggle }) {
         top: 0,
         zIndex: 30,
       }}
+      className="dashboard-header"
     >
       {/* Mobile menu toggle */}
       <button
@@ -258,7 +266,7 @@ function Header({ user, sidebarCollapsed, onMobileMenuToggle }) {
       <div /> {/* Spacer */}
 
       {/* User area */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div className="dashboard-user-area" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
@@ -289,12 +297,12 @@ function Header({ user, sidebarCollapsed, onMobileMenuToggle }) {
         </button>
 
         {user && (
-          <div style={{ textAlign: 'right' }}>
+          <div className="dashboard-user-meta" style={{ textAlign: 'right' }}>
             <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>
               {user.fullName || user.name || user.email}
             </p>
             <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              {getRoleLabel(user.role || user.roles?.[0])}
+              {getRoleLabel(getPrimaryRole(user))}
             </p>
           </div>
         )}
@@ -336,6 +344,7 @@ export default function DashboardLayout({ children }) {
   const { token, user, isLoading, hydrate, setUser, logout } = useAuthStore();
   const { applyTheme } = useThemeStore();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [networkError, setNetworkError] = useState(false);
 
@@ -349,14 +358,30 @@ export default function DashboardLayout({ children }) {
     hydrate();
   }, [hydrate]);
 
-  const loadProfile = () => {
+  const userRole = getPrimaryRole(user);
+  const normalizedPath = pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
+  const currentNavItem = NAV_ITEMS.find(item => {
+    if (item.href === '/dashboard') {
+      return normalizedPath === '/dashboard';
+    }
+    return normalizedPath === item.href || normalizedPath.startsWith(item.href + '/');
+  });
+  const isAuthorized = !currentNavItem || !currentNavItem.roles || hasAnyRole(user, currentNavItem.roles);
+
+  useEffect(() => {
+    if (ready && !isAuthorized) {
+      router.replace('/dashboard');
+    }
+  }, [ready, isAuthorized, router]);
+
+  const loadProfile = useCallback(() => {
     setNetworkError(false);
     authService.me(token).then((res) => {
       setUser(res.data);
       setReady(true);
     }).catch((err) => {
-      // Chỉ logout khi token thực sự hết hạn hoặc không hợp lệ (401 Unauthorized)
-      if (err.status === 401) {
+      // Chỉ logout khi token thực sự hết hạn hoặc không hợp lệ (401 Unauthorized hoặc 403 Forbidden)
+      if (err.status === 401 || err.status === 403) {
         logout();
         router.replace('/auth/login');
       } else {
@@ -365,7 +390,7 @@ export default function DashboardLayout({ children }) {
         setReady(true); // Vẫn hiển thị trang để render view báo lỗi mạng
       }
     });
-  };
+  }, [logout, router, setUser, token]);
 
   // Fetch user profile once token is available
   useEffect(() => {
@@ -378,12 +403,12 @@ export default function DashboardLayout({ children }) {
 
     // Already have user? Done.
     if (user) {
-      setReady(true);
+      queueMicrotask(() => setReady(true));
       return;
     }
 
-    loadProfile();
-  }, [isLoading, token, user, router, setUser, logout]);
+    queueMicrotask(loadProfile);
+  }, [isLoading, loadProfile, token, user, router]);
 
   // Loading state
   if (!ready) {
@@ -468,15 +493,6 @@ export default function DashboardLayout({ children }) {
     );
   }
 
-  const userRole = user?.role || user?.roles?.[0];
-  const normalizedPath = pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
-  const currentNavItem = NAV_ITEMS.find(item => {
-    if (item.href === '/dashboard') {
-      return normalizedPath === '/dashboard';
-    }
-    return normalizedPath === item.href || normalizedPath.startsWith(item.href + '/');
-  });
-  const isAuthorized = !currentNavItem || !currentNavItem.roles || currentNavItem.roles.includes(userRole);
 
   const accessDeniedView = (
     <div
@@ -535,9 +551,19 @@ export default function DashboardLayout({ children }) {
     <ToastProvider>
       <Sidebar
         collapsed={collapsed}
+        mobileOpen={mobileMenuOpen}
         onToggle={() => setCollapsed((p) => !p)}
-        userRole={user?.role || user?.roles?.[0]}
+        onNavigate={() => setMobileMenuOpen(false)}
+        user={user}
       />
+      {mobileMenuOpen && (
+        <button
+          type="button"
+          aria-label="Đóng menu"
+          className="dashboard-sidebar-backdrop"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
 
       <div
         style={{
@@ -547,11 +573,11 @@ export default function DashboardLayout({ children }) {
           display: 'flex',
           flexDirection: 'column',
         }}
+        className="dashboard-shell"
       >
         <Header
           user={user}
-          sidebarCollapsed={collapsed}
-          onMobileMenuToggle={() => setCollapsed((p) => !p)}
+          onMobileMenuToggle={() => setMobileMenuOpen((p) => !p)}
         />
 
         <main
@@ -561,6 +587,7 @@ export default function DashboardLayout({ children }) {
             maxWidth: '1400px',
             width: '100%',
           }}
+          className="dashboard-main"
         >
           {isAuthorized ? children : accessDeniedView}
         </main>

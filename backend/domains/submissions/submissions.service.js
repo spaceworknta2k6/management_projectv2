@@ -1,6 +1,7 @@
 const SubmissionPackage = require('../../models/SubmissionPackage');
 const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
+const { assertProjectAccess } = require('../../utils/access-control');
 
 const initializePackage = async (projectId, phase, actorUserId, actorStudentId) => {
   const project = await Project.findById(projectId);
@@ -9,13 +10,13 @@ const initializePackage = async (projectId, phase, actorUserId, actorStudentId) 
   }
 
   // Verify group membership
-  const group = await ProjectGroup.findById(project.groupId);
+  const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
   if (!group || !group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted')) {
     throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
   }
 
   // Check if package already exists
-  let pkg = await SubmissionPackage.findOne({ ownerType: 'project', ownerId: projectId, phase });
+  let pkg = await SubmissionPackage.findOne({ ownerType: 'project', ownerId: projectId, phase, isDeleted: { $ne: true } });
   if (pkg) {
     throw { status: 400, message: `Hồ sơ nộp cho giai đoạn [${phase}] đã được khởi tạo trước đó.` };
   }
@@ -62,13 +63,13 @@ const initializePackage = async (projectId, phase, actorUserId, actorStudentId) 
 };
 
 const uploadPackageItem = async (packageId, type, fileId, actorUserId, actorStudentId) => {
-  const pkg = await SubmissionPackage.findById(packageId);
+  const pkg = await SubmissionPackage.findOne({ _id: packageId, isDeleted: { $ne: true } });
   if (!pkg) {
     throw { status: 404, message: 'Gói hồ sơ nộp không tồn tại.' };
   }
 
   // Verify group membership
-  const group = await ProjectGroup.findById(pkg.groupId);
+  const group = await ProjectGroup.findOne({ _id: pkg.groupId, isDeleted: { $ne: true } });
   if (!group || !group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted')) {
     throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
   }
@@ -96,13 +97,13 @@ const uploadPackageItem = async (packageId, type, fileId, actorUserId, actorStud
 };
 
 const submitPackage = async (packageId, actorUserId, actorStudentId) => {
-  const pkg = await SubmissionPackage.findById(packageId);
+  const pkg = await SubmissionPackage.findOne({ _id: packageId, isDeleted: { $ne: true } });
   if (!pkg) {
     throw { status: 404, message: 'Gói hồ sơ nộp không tồn tại.' };
   }
 
   // Verify group membership
-  const group = await ProjectGroup.findById(pkg.groupId);
+  const group = await ProjectGroup.findOne({ _id: pkg.groupId, isDeleted: { $ne: true } });
   if (!group || !group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted')) {
     throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
   }
@@ -135,7 +136,7 @@ const submitPackage = async (packageId, actorUserId, actorStudentId) => {
 };
 
 const reviewPackageItem = async (packageId, type, status, actorUserId, actorLecturerId) => {
-  const pkg = await SubmissionPackage.findById(packageId);
+  const pkg = await SubmissionPackage.findOne({ _id: packageId, isDeleted: { $ne: true } });
   if (!pkg) {
     throw { status: 404, message: 'Gói hồ sơ nộp không tồn tại.' };
   }
@@ -185,11 +186,97 @@ const reviewPackageItem = async (packageId, type, status, actorUserId, actorLect
   return pkg;
 };
 
-const getPackageById = async (id) => {
-  const pkg = await SubmissionPackage.findById(id);
+const canManagePackage = (pkg, user) => {
+  const isStaff = user.roles && user.roles.some(role => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(role));
+  return {
+    isStaff,
+    isStudent: Boolean(user.studentId),
+  };
+};
+
+const ensureStudentInPackageGroup = async (pkg, studentId) => {
+  const group = await ProjectGroup.findOne({ _id: pkg.groupId, isDeleted: { $ne: true } });
+  if (!group || !group.members.some(m => m.studentId.toString() === studentId.toString() && m.status === 'accepted')) {
+    throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
+  }
+};
+
+const updatePackage = async (packageId, data, user) => {
+  const pkg = await SubmissionPackage.findOne({ _id: packageId, isDeleted: { $ne: true } });
   if (!pkg) {
     throw { status: 404, message: 'Gói hồ sơ nộp không tồn tại.' };
   }
+
+  const { isStaff, isStudent } = canManagePackage(pkg, user);
+  if (!isStaff) {
+    if (!isStudent) {
+      throw { status: 403, message: 'Bạn không có quyền chỉnh sửa gói hồ sơ nộp này.' };
+    }
+    await ensureStudentInPackageGroup(pkg, user.studentId);
+    if (!['draft', 'needs_revision'].includes(pkg.status)) {
+      throw { status: 400, message: 'Sinh viên chỉ được chỉnh sửa gói hồ sơ khi còn nháp hoặc cần chỉnh sửa.' };
+    }
+  }
+
+  if (data.deadline !== undefined) {
+    if (!isStaff) {
+      throw { status: 403, message: 'Chỉ giáo vụ hoặc quản trị viên mới có quyền chỉnh hạn nộp.' };
+    }
+    pkg.deadline = data.deadline;
+  }
+  if (data.status !== undefined) {
+    if (!isStaff) {
+      throw { status: 403, message: 'Chỉ giáo vụ hoặc quản trị viên mới có quyền chỉnh trạng thái gói nộp.' };
+    }
+    pkg.status = data.status;
+  }
+  if (data.items !== undefined) {
+    pkg.items = data.items;
+  }
+
+  return await pkg.save();
+};
+
+const deletePackage = async (packageId, user) => {
+  const pkg = await SubmissionPackage.findOne({ _id: packageId, isDeleted: { $ne: true } });
+  if (!pkg) {
+    throw { status: 404, message: 'Gói hồ sơ nộp không tồn tại hoặc đã bị xóa.' };
+  }
+
+  const { isStaff, isStudent } = canManagePackage(pkg, user);
+  if (!isStaff) {
+    if (!isStudent) {
+      throw { status: 403, message: 'Bạn không có quyền xóa gói hồ sơ nộp này.' };
+    }
+    await ensureStudentInPackageGroup(pkg, user.studentId);
+    if (!['draft', 'needs_revision'].includes(pkg.status)) {
+      throw { status: 400, message: 'Sinh viên chỉ được xóa gói hồ sơ khi còn nháp hoặc cần chỉnh sửa.' };
+    }
+  }
+
+  if (pkg.status === 'accepted' && !isStaff) {
+    throw { status: 400, message: 'Gói hồ sơ đã được duyệt nên không thể xóa.' };
+  }
+
+  pkg.isDeleted = true;
+  pkg.deletedAt = new Date();
+  pkg.deletedBy = user._id;
+  await pkg.save();
+
+  return { success: true, message: 'Gói hồ sơ nộp đã được xóa thành công.' };
+};
+
+const getPackageById = async (id, user = {}) => {
+  const pkg = await SubmissionPackage.findOne({ _id: id, isDeleted: { $ne: true } });
+  if (!pkg) {
+    throw { status: 404, message: 'Gói hồ sơ nộp không tồn tại.' };
+  }
+  const project = await Project.findById(pkg.ownerId);
+  if (!project) {
+    throw { status: 404, message: 'Dự án đồ án liên kết không tồn tại.' };
+  }
+  await assertProjectAccess(project, user);
+
   return pkg;
 };
 
@@ -198,5 +285,7 @@ module.exports = {
   uploadPackageItem,
   submitPackage,
   reviewPackageItem,
+  updatePackage,
+  deletePackage,
   getPackageById,
 };

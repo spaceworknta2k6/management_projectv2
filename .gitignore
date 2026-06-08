@@ -30,6 +30,7 @@ Thumbs.db
 tmp_pdf_images/
 coverage/
 backend/uploads/
+backend/public/uploads/
 backend/tmp/
 
 

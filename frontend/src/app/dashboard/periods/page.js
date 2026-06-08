@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -9,8 +9,9 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { formatDate, getStatus } from '@/lib/utils';
-import { CalendarBlank, Plus, ArrowsClockwise, FilePlus } from '@phosphor-icons/react';
+import { CalendarBlank, Plus, ArrowsClockwise, FilePlus, PencilSimple, Trash } from '@phosphor-icons/react';
 
 export default function PeriodsPage() {
   const token = useAuthStore((s) => s.token);
@@ -18,7 +19,10 @@ export default function PeriodsPage() {
   const [periods, setPeriods] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingPeriod, setEditingPeriod] = useState(null);
+  const [periodToDelete, setPeriodToDelete] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Form Fields State
   const [form, setForm] = useState({
@@ -47,7 +51,46 @@ export default function PeriodsPage() {
 
   const [formErrors, setFormErrors] = useState({});
 
-  const fetchPeriods = async () => {
+  const toDateTimeLocal = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    const offset = date.getTimezoneOffset();
+    return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
+  };
+
+  const openCreateModal = () => {
+    setEditingPeriod(null);
+    setShowModal(true);
+  };
+
+  const openEditModal = (period) => {
+    setEditingPeriod(period);
+    setForm({
+      name: period.name || '',
+      schoolYear: period.schoolYear || '',
+      semester: period.semester || '',
+      type: period.type || 'foundation_project',
+      minGroupSize: String(period.minGroupSize || 1),
+      maxGroupSize: String(period.maxGroupSize || 3),
+      rubricVersion: period.rubricVersion || '',
+      supervisorWeight: String(period.scoringFormula?.supervisor ?? 0.3),
+      reviewerWeight: String(period.scoringFormula?.reviewer ?? 0.2),
+      committeeWeight: String(period.scoringFormula?.committee ?? 0.5),
+      registrationStart: toDateTimeLocal(period.registrationStart),
+      registrationEnd: toDateTimeLocal(period.registrationEnd),
+      topicChangeDeadline: toDateTimeLocal(period.topicChangeDeadline),
+      projectStart: toDateTimeLocal(period.projectStart),
+      projectEnd: toDateTimeLocal(period.projectEnd),
+      preDefenseSubmissionDeadline: toDateTimeLocal(period.preDefenseSubmissionDeadline),
+      defenseStart: toDateTimeLocal(period.defenseStart),
+      defenseEnd: toDateTimeLocal(period.defenseEnd),
+      postDefenseRevisionDeadline: toDateTimeLocal(period.postDefenseRevisionDeadline),
+      archiveDeadline: toDateTimeLocal(period.archiveDeadline),
+    });
+    setShowModal(true);
+  };
+
+  const fetchPeriods = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get('/periods', token);
@@ -57,13 +100,13 @@ export default function PeriodsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast, token]);
 
   useEffect(() => {
     if (token) {
       fetchPeriods();
     }
-  }, [token]);
+  }, [fetchPeriods, token]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -114,9 +157,15 @@ export default function PeriodsPage() {
     };
 
     try {
-      await api.post('/periods', payload, token);
-      toast.success('Đã khởi tạo đợt đồ án mới thành công!');
+      if (editingPeriod) {
+        await api.patch(`/periods/${editingPeriod._id}`, payload, token);
+        toast.success('Đã cập nhật đợt đồ án thành công!');
+      } else {
+        await api.post('/periods', payload, token);
+        toast.success('Đã khởi tạo đợt đồ án mới thành công!');
+      }
       setShowModal(false);
+      setEditingPeriod(null);
       fetchPeriods();
     } catch (err) {
       if (err.errors) {
@@ -150,6 +199,20 @@ export default function PeriodsPage() {
     }
   };
 
+  const handleDeletePeriod = async (period) => {
+    setDeleting(true);
+    try {
+      await api.delete(`/periods/${period._id}`, token);
+      toast.success('Đã xóa đợt đồ án thành công.');
+      setPeriodToDelete(null);
+      fetchPeriods();
+    } catch (err) {
+      toast.error(err.message || 'Không thể xóa đợt đồ án');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div>
       {/* Header section */}
@@ -175,7 +238,7 @@ export default function PeriodsPage() {
             <ArrowsClockwise size={16} />
             Làm mới
           </Button>
-          <Button variant="primary" size="sm" onClick={() => setShowModal(true)}>
+          <Button variant="primary" size="sm" onClick={openCreateModal}>
             <Plus size={16} />
             Khởi tạo đợt mới
           </Button>
@@ -190,7 +253,7 @@ export default function PeriodsPage() {
       ) : periods.length === 0 ? (
         <Card>
           <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
-            Chưa có đợt đồ án nào được định cấu hình trên hệ thống. Hãy nhấp "Khởi tạo đợt mới" để bắt đầu.
+            Chưa có đợt đồ án nào được định cấu hình trên hệ thống. Hãy nhấp &quot;Khởi tạo đợt mới&quot; để bắt đầu.
           </div>
         </Card>
       ) : (
@@ -202,6 +265,14 @@ export default function PeriodsPage() {
                 actions={
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                    <Button variant="secondary" size="sm" onClick={() => openEditModal(p)}>
+                      <PencilSimple size={14} />
+                      Sửa
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={() => setPeriodToDelete(p)}>
+                      <Trash size={14} />
+                      Xóa
+                    </Button>
                     
                     {p.status === 'draft' && (
                       <Button variant="primary" size="sm" onClick={() => handleTransition(p._id, 'open-registration')}>
@@ -309,10 +380,10 @@ export default function PeriodsPage() {
               }}
             >
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                Khởi tạo đợt đồ án mới
+                {editingPeriod ? 'Chỉnh sửa đợt đồ án' : 'Khởi tạo đợt đồ án mới'}
               </h3>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => { setShowModal(false); setEditingPeriod(null); }}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -563,18 +634,28 @@ export default function PeriodsPage() {
                   paddingTop: '16px',
                 }}
               >
-                <Button variant="secondary" onClick={() => setShowModal(false)}>
+                <Button variant="secondary" onClick={() => { setShowModal(false); setEditingPeriod(null); }}>
                   Hủy
                 </Button>
                 <Button variant="primary" type="submit" loading={submitting}>
                   <FilePlus size={18} />
-                  Khởi tạo
+                  {editingPeriod ? 'Cập nhật' : 'Khởi tạo'}
                 </Button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(periodToDelete)}
+        title="Xóa đợt đồ án"
+        message={periodToDelete ? `Bạn có chắc chắn muốn xóa đợt đồ án "${periodToDelete.name}"?` : ''}
+        confirmLabel="Xóa"
+        loading={deleting}
+        onCancel={() => setPeriodToDelete(null)}
+        onConfirm={() => handleDeletePeriod(periodToDelete)}
+      />
     </div>
   );
 }

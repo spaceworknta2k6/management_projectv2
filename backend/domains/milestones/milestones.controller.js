@@ -19,6 +19,43 @@ const createMilestone = async (req, res, next) => {
   }
 };
 
+const updateMilestone = async (req, res, next) => {
+  try {
+    if (!req.user.lecturerId) {
+      return res.status(403).json({ success: false, message: 'Chỉ tài khoản giảng viên hướng dẫn mới được phép chỉnh sửa mốc tiến độ.' });
+    }
+    const result = await milestonesService.updateMilestone(req.params.id, req.body, req.user._id, req.user.lecturerId);
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật mốc tiến độ đồ án thành công!',
+      data: result,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
+const deleteMilestone = async (req, res, next) => {
+  try {
+    if (!req.user.lecturerId) {
+      return res.status(403).json({ success: false, message: 'Chỉ tài khoản giảng viên hướng dẫn mới được phép xóa mốc tiến độ.' });
+    }
+    const result = await milestonesService.deleteMilestone(req.params.id, req.user._id, req.user.lecturerId);
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 const submitMilestoneWork = async (req, res, next) => {
   try {
     if (!req.user.studentId) {
@@ -76,9 +113,28 @@ const lockMilestone = async (req, res, next) => {
   }
 };
 
+const unlockMilestone = async (req, res, next) => {
+  try {
+    if (!req.user.lecturerId) {
+      return res.status(403).json({ success: false, message: 'Chỉ tài khoản giảng viên hướng dẫn mới được phép mở khóa mốc tiến độ.' });
+    }
+    const result = await milestonesService.unlockMilestone(req.params.id, req.user._id, req.user.lecturerId);
+    return res.status(200).json({
+      success: true,
+      message: 'Đã mở khóa mốc tiến độ thành công!',
+      data: result,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 const getMilestones = async (req, res, next) => {
   try {
-    const result = await milestonesService.getMilestonesByProject(req.params.projectId);
+    const result = await milestonesService.getMilestonesByProject(req.params.projectId, req.user);
     return res.status(200).json({
       success: true,
       message: 'Lấy danh sách mốc tiến độ của dự án thành công!',
@@ -91,8 +147,11 @@ const getMilestones = async (req, res, next) => {
 
 module.exports = {
   createMilestone,
+  updateMilestone,
+  deleteMilestone,
   submitMilestoneWork,
   submitFeedback,
   lockMilestone,
+  unlockMilestone,
   getMilestones,
 };

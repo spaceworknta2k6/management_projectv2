@@ -4,6 +4,38 @@ const Project = require('../../models/Project');
 const ProjectPeriod = require('../../models/ProjectPeriod');
 const DefenseSession = require('../../models/DefenseSession');
 const Committee = require('../../models/Committee');
+const { assertProjectAccess, canAccessProject, isStaff } = require('../../utils/access-control');
+
+const assertScoreSheetPermission = async (project, rubricRole, user) => {
+  if (!project || !user?.lecturerId) {
+    throw { status: 403, message: 'Bạn không có quyền chấm điểm dự án này.' };
+  }
+
+  const lecturerId = user.lecturerId.toString();
+  const supervisorId = project.supervisorId?.toString();
+  const reviewerId = project.reviewerId?.toString();
+
+  if (rubricRole === 'SUPERVISOR' && supervisorId === lecturerId) return;
+  if (rubricRole === 'REVIEWER' && reviewerId === lecturerId) return;
+
+  if (rubricRole === 'COMMITTEE_MEMBER') {
+    const session = await DefenseSession.findOne({ projectId: project._id, isDeleted: { $ne: true } });
+    if (session) {
+      const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
+      if (committee?.members.some((member) => member.lecturerId.toString() === lecturerId)) {
+        return;
+      }
+    }
+  }
+
+  throw { status: 403, message: 'Bạn không được phân công chấm điểm dự án này.' };
+};
+
+const assertSheetOwner = (sheet, user) => {
+  if (!user?.lecturerId || sheet.graderId.toString() !== user.lecturerId.toString()) {
+    throw { status: 403, message: 'Bạn không có quyền chỉnh sửa phiếu điểm này.' };
+  }
+};
 
 const submitScoreSheet = async (data, user) => {
   const { projectId, groupId, periodId, rubricRole, targetType, targetId, criteriaScores, comment } = data;
@@ -12,6 +44,15 @@ const submitScoreSheet = async (data, user) => {
     throw { status: 403, message: 'Người dùng không được liên kết với hồ sơ Giảng viên.' };
   }
   const graderId = user.lecturerId;
+
+  const project = await Project.findById(projectId);
+  if (!project) {
+    throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
+  }
+  if (project.groupId.toString() !== groupId.toString() || project.periodId.toString() !== periodId.toString()) {
+    throw { status: 400, message: 'Thông tin projectId, groupId và periodId không khớp.' };
+  }
+  await assertScoreSheetPermission(project, rubricRole, user);
 
   // Calculate raw total and rounded total
   const rawTotal = criteriaScores.reduce((acc, c) => acc + (c.score * (c.weight !== undefined ? c.weight : 1.0)), 0);
@@ -55,9 +96,9 @@ const submitScoreSheet = async (data, user) => {
         graderRole = 'REVIEWER';
       } else if (rubricRole === 'COMMITTEE_MEMBER') {
         // Trace committee role
-        const session = await DefenseSession.findOne({ projectId });
+        const session = await DefenseSession.findOne({ projectId, isDeleted: { $ne: true } });
         if (session) {
-          const committee = await Committee.findById(session.committeeId);
+          const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
           if (committee) {
             const member = committee.members.find(m => m.lecturerId.toString() === graderId.toString());
             if (member) {
@@ -98,15 +139,28 @@ const submitScoreSheet = async (data, user) => {
   }
 };
 
-const getScoreSheets = async (query = {}) => {
-  return await ScoreSheet.find(query).populate('graderId').populate('projectId');
+const getScoreSheets = async (query = {}, user = {}) => {
+  const sheets = await ScoreSheet.find(query).populate('graderId').populate('projectId');
+  if (isStaff(user)) {
+    return sheets;
+  }
+
+  const visibleSheets = [];
+  for (const sheet of sheets) {
+    if (await canAccessProject(sheet.projectId, user)) {
+      visibleSheets.push(sheet);
+    }
+  }
+
+  return visibleSheets;
 };
 
-const getScoreSheetById = async (id) => {
+const getScoreSheetById = async (id, user = {}) => {
   const sheet = await ScoreSheet.findById(id).populate('graderId').populate('projectId');
   if (!sheet) {
     throw { status: 404, message: 'Phiếu điểm không tồn tại.' };
   }
+  await assertProjectAccess(sheet.projectId, user);
   return sheet;
 };
 
@@ -115,6 +169,8 @@ const updateScoreSheet = async (id, data, user) => {
   if (!sheet) {
     throw { status: 404, message: 'Phiếu điểm không tồn tại.' };
   }
+
+  assertSheetOwner(sheet, user);
 
   if (sheet.lockedAt) {
     throw { status: 400, message: 'Phiếu điểm này đã được khóa và không thể chỉnh sửa.' };
@@ -145,11 +201,13 @@ const updateScoreSheet = async (id, data, user) => {
   return await sheet.save();
 };
 
-const lockScoreSheet = async (id) => {
+const lockScoreSheet = async (id, user = {}) => {
   const sheet = await ScoreSheet.findById(id);
   if (!sheet) {
     throw { status: 404, message: 'Phiếu điểm không tồn tại.' };
   }
+
+  assertSheetOwner(sheet, user);
 
   sheet.lockedAt = new Date();
   return await sheet.save();
@@ -171,8 +229,9 @@ const aggregateFinalGrade = async (projectId, user) => {
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
+  await assertProjectAccess(project, user);
 
-  const period = await ProjectPeriod.findById(project.periodId);
+  const period = await ProjectPeriod.findOne({ _id: project.periodId, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -288,19 +347,21 @@ const aggregateFinalGrade = async (projectId, user) => {
   return grade;
 };
 
-const getFinalGrade = async (id) => {
+const getFinalGrade = async (id, user = {}) => {
   const grade = await FinalGrade.findById(id).populate('projectId');
   if (!grade) {
     throw { status: 404, message: 'Điểm tổng kết không tồn tại.' };
   }
+  await assertProjectAccess(grade.projectId, user);
   return grade;
 };
 
-const getFinalGradeByProjectId = async (projectId) => {
+const getFinalGradeByProjectId = async (projectId, user = {}) => {
   const grade = await FinalGrade.findOne({ projectId }).populate('projectId');
   if (!grade) {
     throw { status: 404, message: 'Điểm tổng kết không tồn tại.' };
   }
+  await assertProjectAccess(grade.projectId, user);
   return grade;
 };
 

@@ -42,7 +42,27 @@ const validateInviteMember = (req, res, next) => {
   next();
 };
 
+const validateGroupUpdate = (req, res, next) => {
+  const { name } = req.body;
+  const errors = [];
+
+  if (name !== undefined && (typeof name !== 'string' || name.trim() === '')) {
+    errors.push({ field: 'name', code: 'GROUP_NAME_INVALID', message: 'Tên nhóm đồ án không hợp lệ.' });
+  }
+
+  if (errors.length > 0) {
+    return res.status(422).json({
+      success: false,
+      message: 'Dữ liệu chỉnh sửa nhóm đồ án không hợp lệ.',
+      errors,
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validateGroupCreate,
   validateInviteMember,
+  validateGroupUpdate,
 };

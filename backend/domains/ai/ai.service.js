@@ -434,11 +434,18 @@ const suggestTopics = async (studentId, user, force = false) => {
 
   if (force) {
     // Invalidate previous cached job so AI re-runs with current topic list
-    await AiJob.deleteMany({
-      feature: 'topic_suggestion',
-      targetType: 'Student',
-      targetId: studentId,
-    });
+    await AiJob.updateMany(
+      {
+        feature: 'topic_suggestion',
+        targetType: 'Student',
+        targetId: studentId,
+        status: { $ne: 'cancelled' },
+      },
+      {
+        status: 'cancelled',
+        error: 'Invalidated by forced topic suggestion refresh.',
+      }
+    );
   } else {
     const cachedJob = await AiJob.findOne({
       feature: 'topic_suggestion',
@@ -497,13 +504,13 @@ Trả về kết quả duy nhất ở định dạng JSON theo schema:
 };
 
 const analyzeReportFeedback = async (submissionId, user) => {
-  const package = await SubmissionPackage.findById(submissionId);
+  const package = await SubmissionPackage.findOne({ _id: submissionId, isDeleted: { $ne: true } });
   if (!package) throw { status: 404, message: 'Gói hồ sơ nộp không tồn tại.' };
 
   let projectId = package.ownerType === 'project' ? package.ownerId : null;
   if (package.ownerType === 'defense') {
     const DefenseSession = require('../../models/DefenseSession');
-    const defense = await DefenseSession.findById(package.ownerId);
+    const defense = await DefenseSession.findOne({ _id: package.ownerId, isDeleted: { $ne: true } });
     if (defense) projectId = defense.projectId;
   }
 

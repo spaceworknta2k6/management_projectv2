@@ -9,7 +9,7 @@ const timeToMinutes = (timeStr) => {
 };
 
 const checkScheduleOverlap = async (defenseDate, startTime, endTime, committeeId, excludeSessionId = null) => {
-  const targetCommittee = await Committee.findById(committeeId);
+  const targetCommittee = await Committee.findOne({ _id: committeeId, isDeleted: { $ne: true } });
   if (!targetCommittee) {
     throw { status: 404, message: 'Hội đồng chấm không tồn tại.' };
   }
@@ -21,6 +21,7 @@ const checkScheduleOverlap = async (defenseDate, startTime, endTime, committeeId
 
   const existingSessions = await DefenseSession.find({
     defenseDate: { $gte: startOfDay, $lte: endOfDay },
+    isDeleted: { $ne: true },
     status: { $nin: ['cancelled', 'no_show'] },
     _id: excludeSessionId ? { $ne: excludeSessionId } : { $exists: true }
   }).populate('committeeId');
@@ -62,7 +63,7 @@ const scheduleSession = async (data, user) => {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
 
-  const committee = await Committee.findById(committeeId);
+  const committee = await Committee.findOne({ _id: committeeId, isDeleted: { $ne: true } });
   if (!committee) {
     throw { status: 404, message: 'Hội đồng chấm không tồn tại.' };
   }
@@ -108,11 +109,11 @@ const scheduleSession = async (data, user) => {
 };
 
 const getSessions = async (query = {}) => {
-  return await DefenseSession.find(query).populate('projectId').populate('committeeId');
+  return await DefenseSession.find({ ...query, isDeleted: { $ne: true } }).populate('projectId').populate('committeeId');
 };
 
 const getSessionById = async (id) => {
-  const session = await DefenseSession.findById(id).populate('projectId').populate('committeeId');
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } }).populate('projectId').populate('committeeId');
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }
@@ -120,7 +121,7 @@ const getSessionById = async (id) => {
 };
 
 const updateSession = async (id, data) => {
-  const session = await DefenseSession.findById(id);
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }
@@ -145,8 +146,26 @@ const updateSession = async (id, data) => {
   return await session.save();
 };
 
+const deleteSession = async (id, userId) => {
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
+  if (!session) {
+    throw { status: 404, message: 'Phiên bảo vệ không tồn tại hoặc đã bị xóa.' };
+  }
+
+  if (['in_progress', 'completed'].includes(session.status)) {
+    throw { status: 400, message: 'Không thể xóa phiên bảo vệ đang diễn ra hoặc đã hoàn thành.' };
+  }
+
+  session.status = 'cancelled';
+  session.isDeleted = true;
+  session.deletedAt = new Date();
+  session.deletedBy = userId;
+
+  return await session.save();
+};
+
 const checkIdentity = async (id, userId) => {
-  const session = await DefenseSession.findById(id);
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }
@@ -158,7 +177,7 @@ const checkIdentity = async (id, userId) => {
 };
 
 const startSession = async (id) => {
-  const session = await DefenseSession.findById(id);
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }
@@ -172,7 +191,7 @@ const startSession = async (id) => {
 };
 
 const reportIncident = async (id, incidentData, userId) => {
-  const session = await DefenseSession.findById(id);
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }
@@ -189,7 +208,7 @@ const reportIncident = async (id, incidentData, userId) => {
 };
 
 const uploadRecording = async (id, recordingUrl) => {
-  const session = await DefenseSession.findById(id);
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }
@@ -199,7 +218,7 @@ const uploadRecording = async (id, recordingUrl) => {
 };
 
 const completeSession = async (id) => {
-  const session = await DefenseSession.findById(id);
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }
@@ -213,7 +232,7 @@ const completeSession = async (id) => {
 };
 
 const rescheduleSession = async (id, data) => {
-  const session = await DefenseSession.findById(id);
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }
@@ -229,7 +248,7 @@ const rescheduleSession = async (id, data) => {
 };
 
 const markNoShow = async (id) => {
-  const session = await DefenseSession.findById(id);
+  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }
@@ -243,6 +262,7 @@ module.exports = {
   getSessions,
   getSessionById,
   updateSession,
+  deleteSession,
   checkIdentity,
   startSession,
   reportIncident,

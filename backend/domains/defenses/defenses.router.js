@@ -16,10 +16,10 @@ const checkSecretaryOrStaff = async (req, res, next) => {
     const DefenseSession = require('../../models/DefenseSession');
     const Committee = require('../../models/Committee');
     
-    const session = await DefenseSession.findById(id);
+    const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!session) return res.status(404).json({ success: false, message: 'Phiên bảo vệ không tồn tại.' });
     
-    const committee = await Committee.findById(session.committeeId);
+    const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
     if (!committee) return res.status(404).json({ success: false, message: 'Hội đồng chấm không tồn tại.' });
     
     if (!req.user.lecturerId) {
@@ -43,6 +43,7 @@ router.get('/', defensesController.getSessions);
 router.post('/', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesValidator.validateScheduleSession, defensesController.scheduleSession);
 router.get('/:id', defensesController.getSessionById);
 router.patch('/:id', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesController.updateSession);
+router.delete('/:id', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesController.deleteSession);
 
 router.post('/:id/check-identity', checkSecretaryOrStaff, defensesController.checkIdentity);
 router.post('/:id/start', checkSecretaryOrStaff, defensesController.startSession);

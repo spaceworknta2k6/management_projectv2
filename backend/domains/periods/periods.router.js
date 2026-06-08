@@ -17,6 +17,7 @@ router.use(requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']));
 
 router.post('/', periodsValidator.validatePeriodCreate, periodsController.createPeriod);
 router.patch('/:id', periodsValidator.validatePeriodUpdate, periodsController.updatePeriod);
+router.delete('/:id', periodsController.deletePeriod);
 
 // Lifecycle Transition Hooks
 router.post('/:id/open-registration', periodsController.openRegistration);

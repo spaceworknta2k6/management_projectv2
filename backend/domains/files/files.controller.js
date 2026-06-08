@@ -22,7 +22,7 @@ const uploadFile = async (req, res, next) => {
 
 const getFileById = async (req, res, next) => {
   try {
-    const asset = await filesService.getFileById(req.params.id);
+    const asset = await filesService.checkFileAccess(req.params.id, req.user);
     res.status(200).json({
       success: true,
       data: asset,

@@ -6,7 +6,7 @@ import useAuthStore from '@/store/auth.store';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
-import { formatDate } from '@/lib/utils';
+import { formatDate, getPrimaryRole, hasAnyRole } from '@/lib/utils';
 import api from '@/services/api';
 import {
   Users,
@@ -25,10 +25,6 @@ function getId(value) {
   if (!value) return '';
   if (typeof value === 'string') return value;
   return value._id || value.id || '';
-}
-
-function getUserRole(user) {
-  return user?.role || user?.roles?.[0] || '';
 }
 
 function isStudentInProject(project, studentId) {
@@ -236,10 +232,10 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(true);
 
-  const role = getUserRole(user);
-  const isStaff = ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(role);
-  const isLecturer = role === 'LECTURER';
-  const isStudent = role === 'STUDENT';
+  const role = getPrimaryRole(user);
+  const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
+  const isLecturer = hasAnyRole(user, ['LECTURER']);
+  const isStudent = hasAnyRole(user, ['STUDENT']);
 
   useEffect(() => {
     if (!token || !user) return;
@@ -497,7 +493,7 @@ export default function DashboardPage() {
         <StatCard icon={BookOpen} label={isStaff ? 'Đề tài chờ duyệt' : 'Đề tài'} value={isStaff ? stats.pendingTopics : stats.topics} tone={isStaff && stats.pendingTopics > 0 ? 'warning' : 'info'} />
         <StatCard icon={FolderSimple} label="Dự án" value={stats.projects} />
         <StatCard icon={Bell} label="Thông báo chưa đọc" value={stats.unreadNotifications} tone={stats.unreadNotifications > 0 ? 'warning' : 'success'} />
-        {(isLecturer || isStaff) && <StatCard icon={FileText} label="Báo cáo cần xem" value={stats.submittedMilestones} tone={stats.submittedMilestones > 0 ? 'warning' : 'success'} />}
+        {(isLecturer || hasAnyRole(user, ['SYSTEM_ADMIN'])) && <StatCard icon={FileText} label="Báo cáo cần xem" value={stats.submittedMilestones} tone={stats.submittedMilestones > 0 ? 'warning' : 'success'} />}
       </div>
 
       <div
@@ -551,7 +547,7 @@ export default function DashboardPage() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
           <QuickAction icon={BookOpen} label="Xem đề tài" href="/dashboard/topics" />
           <QuickAction icon={Users} label="Quản lý nhóm" href="/dashboard/groups" />
-          <QuickAction icon={FileText} label="Nộp bài" href="/dashboard/submissions" />
+          {(isStudent || isLecturer || hasAnyRole(user, ['SYSTEM_ADMIN'])) && <QuickAction icon={FileText} label="Nộp bài" href="/dashboard/submissions" />}
           <QuickAction icon={FolderSimple} label="Dự án" href="/dashboard/projects" />
           {isStaff && <QuickAction icon={Lightning} label="Tạo đợt đồ án" href="/dashboard/periods" />}
         </div>

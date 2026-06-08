@@ -76,6 +76,37 @@ const confirmGroup = async (req, res, next) => {
   }
 };
 
+const updateGroup = async (req, res, next) => {
+  try {
+    const result = await groupsService.updateGroup(req.params.id, req.body, req.user);
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật nhóm đồ án thành công!',
+      data: result,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
+const deleteGroup = async (req, res, next) => {
+  try {
+    const result = await groupsService.deleteGroup(req.params.id, req.user);
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 const getGroups = async (req, res, next) => {
   try {
     const result = await groupsService.getGroupsByPeriod(req.query.periodId);
@@ -110,6 +141,8 @@ module.exports = {
   inviteMember,
   acceptInvitation,
   confirmGroup,
+  updateGroup,
+  deleteGroup,
   getGroups,
   getGroupById,
 };

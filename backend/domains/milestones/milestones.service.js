@@ -1,6 +1,7 @@
 const Milestone = require('../../models/Milestone');
 const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
+const { assertProjectAccess } = require('../../utils/access-control');
 
 const createMilestone = async (projectId, milestoneData, actorUserId, actorLecturerId) => {
   const project = await Project.findById(projectId);
@@ -25,8 +26,63 @@ const createMilestone = async (projectId, milestoneData, actorUserId, actorLectu
   return milestone;
 };
 
+const updateMilestone = async (milestoneId, milestoneData, actorUserId, actorLecturerId) => {
+  const milestone = await Milestone.findOne({ _id: milestoneId, isDeleted: { $ne: true } });
+  if (!milestone) {
+    throw { status: 404, message: 'Mốc tiến độ không tồn tại.' };
+  }
+
+  const project = await Project.findById(milestone.projectId);
+  if (!project) {
+    throw { status: 404, message: 'Dự án đồ án liên kết không tồn tại.' };
+  }
+
+  if (!actorLecturerId || project.supervisorId.toString() !== actorLecturerId.toString()) {
+    throw { status: 403, message: 'Chỉ giảng viên hướng dẫn của dự án mới được phép chỉnh sửa mốc tiến độ.' };
+  }
+
+  if (milestone.status === 'locked') {
+    throw { status: 400, message: 'Không thể chỉnh sửa mốc tiến độ đang bị khóa.' };
+  }
+
+  if (milestoneData.title !== undefined) milestone.title = milestoneData.title.trim();
+  if (milestoneData.description !== undefined) milestone.description = milestoneData.description.trim();
+  if (milestoneData.deadline !== undefined) milestone.deadline = new Date(milestoneData.deadline);
+  if (milestoneData.status !== undefined) milestone.status = milestoneData.status;
+
+  await milestone.save();
+  return milestone;
+};
+
+const deleteMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
+  const milestone = await Milestone.findOne({ _id: milestoneId, isDeleted: { $ne: true } });
+  if (!milestone) {
+    throw { status: 404, message: 'Mốc tiến độ không tồn tại hoặc đã bị xóa.' };
+  }
+
+  const project = await Project.findById(milestone.projectId);
+  if (!project) {
+    throw { status: 404, message: 'Dự án đồ án liên kết không tồn tại.' };
+  }
+
+  if (!actorLecturerId || project.supervisorId.toString() !== actorLecturerId.toString()) {
+    throw { status: 403, message: 'Chỉ giảng viên hướng dẫn của dự án mới được phép xóa mốc tiến độ.' };
+  }
+
+  if (milestone.submissions && milestone.submissions.length > 0) {
+    throw { status: 400, message: 'Mốc tiến độ đã có bài nộp nên không thể xóa. Hãy khóa mốc hoặc chỉnh trạng thái thay vì xóa.' };
+  }
+
+  milestone.isDeleted = true;
+  milestone.deletedAt = new Date();
+  milestone.deletedBy = actorUserId;
+  await milestone.save();
+
+  return { success: true, message: 'Mốc tiến độ đã được xóa thành công.' };
+};
+
 const submitMilestoneWork = async (milestoneId, submissionData, actorUserId, actorStudentId) => {
-  const milestone = await Milestone.findById(milestoneId);
+  const milestone = await Milestone.findOne({ _id: milestoneId, isDeleted: { $ne: true } });
   if (!milestone) {
     throw { status: 404, message: 'Mốc tiến độ không tồn tại.' };
   }
@@ -37,7 +93,7 @@ const submitMilestoneWork = async (milestoneId, submissionData, actorUserId, act
   }
 
   // Security check: actor student must be in project group
-  const group = await ProjectGroup.findById(project.groupId);
+  const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
   if (!group) {
     throw { status: 404, message: 'Nhóm đồ án không tồn tại.' };
   }
@@ -66,7 +122,7 @@ const submitMilestoneWork = async (milestoneId, submissionData, actorUserId, act
 };
 
 const submitFeedback = async (milestoneId, feedbackData, actorUserId, actorLecturerId) => {
-  const milestone = await Milestone.findById(milestoneId);
+  const milestone = await Milestone.findOne({ _id: milestoneId, isDeleted: { $ne: true } });
   if (!milestone) {
     throw { status: 404, message: 'Mốc tiến độ không tồn tại.' };
   }
@@ -96,7 +152,7 @@ const submitFeedback = async (milestoneId, feedbackData, actorUserId, actorLectu
 };
 
 const lockMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
-  const milestone = await Milestone.findById(milestoneId);
+  const milestone = await Milestone.findOne({ _id: milestoneId, isDeleted: { $ne: true } });
   if (!milestone) {
     throw { status: 404, message: 'Mốc tiến độ không tồn tại.' };
   }
@@ -116,14 +172,61 @@ const lockMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
   return milestone;
 };
 
-const getMilestonesByProject = async (projectId) => {
-  return await Milestone.find({ projectId }).sort({ deadline: 1 });
+const unlockMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
+  const milestone = await Milestone.findOne({ _id: milestoneId, isDeleted: { $ne: true } });
+  if (!milestone) {
+    throw { status: 404, message: 'Mốc tiến độ không tồn tại.' };
+  }
+
+  const project = await Project.findById(milestone.projectId);
+  if (!project) {
+    throw { status: 404, message: 'Dự án đồ án liên kết không tồn tại.' };
+  }
+
+  if (!actorLecturerId || project.supervisorId.toString() !== actorLecturerId.toString()) {
+    throw { status: 403, message: 'Chỉ giảng viên hướng dẫn mới có quyền mở khóa mốc tiến độ.' };
+  }
+
+  if (milestone.status !== 'locked') {
+    throw { status: 400, message: 'Mốc tiến độ hiện tại không ở trạng thái khóa.' };
+  }
+
+  // Determine status when unlocking
+  if (milestone.feedback && milestone.feedback.length > 0) {
+    const lastFeedback = milestone.feedback[milestone.feedback.length - 1];
+    milestone.status = lastFeedback.status;
+  } else if (milestone.submissions && milestone.submissions.length > 0) {
+    milestone.status = 'submitted';
+  } else {
+    const now = new Date();
+    if (milestone.deadline && now > new Date(milestone.deadline)) {
+      milestone.status = 'late';
+    } else {
+      milestone.status = 'open';
+    }
+  }
+
+  await milestone.save();
+  return milestone;
+};
+
+const getMilestonesByProject = async (projectId, user = {}) => {
+  const project = await Project.findById(projectId);
+  if (!project) {
+    throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
+  }
+
+  await assertProjectAccess(project, user);
+  return await Milestone.find({ projectId, isDeleted: { $ne: true } }).sort({ deadline: 1 });
 };
 
 module.exports = {
   createMilestone,
+  updateMilestone,
+  deleteMilestone,
   submitMilestoneWork,
   submitFeedback,
   lockMilestone,
+  unlockMilestone,
   getMilestonesByProject,
 };

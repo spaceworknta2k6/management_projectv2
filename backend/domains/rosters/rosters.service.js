@@ -58,7 +58,7 @@ const getOrCreateStudent = async (studentData, passwordHash, facultyId) => {
 };
 
 const importRoster = async (periodId, rosterList, actorId) => {
-  const period = await ProjectPeriod.findById(periodId);
+  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -162,7 +162,7 @@ const importRoster = async (periodId, rosterList, actorId) => {
 };
 
 const addSingleStudent = async (periodId, studentData, actorId) => {
-  const period = await ProjectPeriod.findById(periodId);
+  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }

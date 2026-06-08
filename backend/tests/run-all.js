@@ -9,6 +9,10 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const { assertSafeTestDatabase } = require('./test-db-guard');
+
+assertSafeTestDatabase();
 
 // Danh sách các bộ kiểm thử theo thứ tự vòng đời hệ thống
 const SUITES = [

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -52,7 +52,7 @@ export default function ScoresPage() {
     ]
   });
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get('/defense-sessions', token);
@@ -62,11 +62,11 @@ export default function ScoresPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast, token]);
 
   useEffect(() => {
     if (token) fetchData();
-  }, [token]);
+  }, [fetchData, token]);
 
   const handleOpenScoreModal = (session) => {
     setSelectedSession(session);

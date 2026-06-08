@@ -2,6 +2,7 @@ const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
 const Lecturer = require('../../models/Lecturer');
 const WorkflowEvent = require('../../models/WorkflowEvent');
+const { canAccessProject, assertProjectAccess, isStaff } = require('../../utils/access-control');
 
 const logWorkflowEvent = async ({
   entityId,
@@ -23,8 +24,8 @@ const logWorkflowEvent = async ({
   });
 };
 
-const getProjects = async (query = {}) => {
-  return await Project.find(query)
+const getProjects = async (query = {}, user = {}) => {
+  const projects = await Project.find(query)
     .populate({
       path: 'groupId',
       select: 'name members status',
@@ -42,9 +43,22 @@ const getProjects = async (query = {}) => {
       populate: { path: 'userId', select: 'fullName email' },
     })
     .sort({ createdAt: -1 });
+
+  if (isStaff(user)) {
+    return projects;
+  }
+
+  const visibleProjects = [];
+  for (const project of projects) {
+    if (await canAccessProject(project, user)) {
+      visibleProjects.push(project);
+    }
+  }
+
+  return visibleProjects;
 };
 
-const getProjectById = async (id) => {
+const getProjectById = async (id, user = {}) => {
   const project = await Project.findById(id)
     .populate({
       path: 'groupId',
@@ -66,6 +80,7 @@ const getProjectById = async (id) => {
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
+  await assertProjectAccess(project, user);
   return project;
 };
 
@@ -82,7 +97,7 @@ const markInProgress = async (projectId, actorUserId, actorStudentId) => {
   // Verify actor is part of the project group or the supervisor
   let isAuthorized = false;
   if (actorStudentId) {
-    const group = await ProjectGroup.findById(project.groupId);
+    const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
     if (group) {
       isAuthorized = group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted');
     }

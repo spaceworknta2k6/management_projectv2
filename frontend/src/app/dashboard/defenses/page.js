@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -9,8 +9,9 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { formatDate } from '@/lib/utils';
-import { Sword, Plus, ArrowsClockwise, VideoCamera, MapPin, Clock } from '@phosphor-icons/react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { formatDate, hasAnyRole } from '@/lib/utils';
+import { Sword, Plus, ArrowsClockwise, VideoCamera, MapPin, Clock, PencilSimple, Trash } from '@phosphor-icons/react';
 
 export default function DefensesPage() {
   const { user, token } = useAuthStore();
@@ -22,7 +23,10 @@ export default function DefensesPage() {
   
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [editingSession, setEditingSession] = useState(null);
+  const [sessionToDelete, setSessionToDelete] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingSession, setDeletingSession] = useState(false);
 
   // Form
   const [form, setForm] = useState({
@@ -37,7 +41,7 @@ export default function DefensesPage() {
     orderNumber: 1,
   });
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [sessionsRes, projectsRes, committeesRes] = await Promise.all([
@@ -55,11 +59,11 @@ export default function DefensesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast, token]);
 
   useEffect(() => {
     if (token) fetchData();
-  }, [token]);
+  }, [fetchData, token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -71,9 +75,15 @@ export default function DefensesPage() {
       if (payload.mode === 'offline') delete payload.meetingUrl;
       if (payload.mode === 'online') delete payload.room;
       
-      await api.post('/defense-sessions', payload, token);
-      toast.success('Đã xếp lịch bảo vệ thành công');
+      if (editingSession) {
+        await api.patch(`/defense-sessions/${editingSession._id}`, payload, token);
+        toast.success('Đã cập nhật lịch bảo vệ thành công');
+      } else {
+        await api.post('/defense-sessions', payload, token);
+        toast.success('Đã xếp lịch bảo vệ thành công');
+      }
       setShowModal(false);
+      setEditingSession(null);
       setForm({
         ...form,
         projectId: '',
@@ -86,6 +96,41 @@ export default function DefensesPage() {
       toast.error(err.message || 'Lỗi khi xếp lịch bảo vệ');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openCreateModal = () => {
+    setEditingSession(null);
+    setShowModal(true);
+  };
+
+  const openEditModal = (session) => {
+    setEditingSession(session);
+    setForm({
+      projectId: session.projectId?._id || session.projectId || '',
+      committeeId: session.committeeId?._id || session.committeeId || '',
+      mode: session.mode || 'offline',
+      room: session.room || '',
+      meetingUrl: session.meetingUrl || '',
+      defenseDate: session.defenseDate ? new Date(session.defenseDate).toISOString().slice(0, 10) : '',
+      startTime: session.startTime || '',
+      endTime: session.endTime || '',
+      orderNumber: session.orderNumber || 1,
+    });
+    setShowModal(true);
+  };
+
+  const handleDeleteSession = async (session) => {
+    setDeletingSession(true);
+    try {
+      await api.delete(`/defense-sessions/${session._id}`, token);
+      toast.success('Đã xóa phiên bảo vệ thành công.');
+      setSessionToDelete(null);
+      fetchData();
+    } catch (err) {
+      toast.error(err.message || 'Không thể xóa phiên bảo vệ');
+    } finally {
+      setDeletingSession(false);
     }
   };
 
@@ -117,8 +162,7 @@ export default function DefensesPage() {
     );
   }
 
-  const userRole = user?.role || user?.roles?.[0];
-  const isStaff = userRole === 'FACULTY_STAFF' || userRole === 'DEPARTMENT_STAFF';
+  const isStaff = hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF']);
 
   return (
     <div>
@@ -136,7 +180,7 @@ export default function DefensesPage() {
         <div style={{ display: 'flex', gap: '8px' }}>
           <Button variant="outline" onClick={fetchData} icon={<ArrowsClockwise />} title="Làm mới" />
           {isStaff && (
-            <Button variant="primary" icon={<Plus />} onClick={() => setShowModal(true)}>
+            <Button variant="primary" icon={<Plus />} onClick={openCreateModal}>
               Xếp lịch bảo vệ
             </Button>
           )}
@@ -187,10 +231,24 @@ export default function DefensesPage() {
             
             <div style={{ borderTop: '1px solid var(--border)', marginTop: '16px', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               {getStatusBadge(session.status)}
-              {session.status === 'scheduled' && isStaff && (
-                <Button size="sm" variant="outline">
-                  Bắt đầu phiên
-                </Button>
+              {isStaff && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {['scheduled', 'rescheduled'].includes(session.status) && (
+                    <>
+                      <Button size="sm" variant="secondary" onClick={() => openEditModal(session)}>
+                        <PencilSimple size={14} /> Sửa
+                      </Button>
+                      <Button size="sm" variant="danger" onClick={() => setSessionToDelete(session)}>
+                        <Trash size={14} /> Xóa
+                      </Button>
+                    </>
+                  )}
+                  {session.status === 'scheduled' && (
+                    <Button size="sm" variant="outline">
+                      Bắt đầu phiên
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           </Card>
@@ -216,7 +274,7 @@ export default function DefensesPage() {
             maxHeight: '90vh', display: 'flex', flexDirection: 'column'
           }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 600 }}>Xếp lịch bảo vệ Đồ án</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: 600 }}>{editingSession ? 'Chỉnh sửa lịch bảo vệ' : 'Xếp lịch bảo vệ Đồ án'}</h2>
             </div>
             
             <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
@@ -329,12 +387,21 @@ export default function DefensesPage() {
             </div>
             
             <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: 'var(--surface-sunken)', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
-              <Button variant="ghost" onClick={() => setShowModal(false)} type="button">Hủy</Button>
-              <Button variant="primary" type="submit" form="defense-form" isLoading={submitting}>Xếp lịch</Button>
+              <Button variant="ghost" onClick={() => { setShowModal(false); setEditingSession(null); }} type="button">Hủy</Button>
+              <Button variant="primary" type="submit" form="defense-form" isLoading={submitting}>{editingSession ? 'Cập nhật lịch' : 'Xếp lịch'}</Button>
             </div>
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={Boolean(sessionToDelete)}
+        title="Xóa phiên bảo vệ"
+        message={sessionToDelete ? `Bạn có chắc chắn muốn xóa phiên bảo vệ ca số ${sessionToDelete.orderNumber}?` : ''}
+        confirmLabel="Xóa"
+        loading={deletingSession}
+        onCancel={() => setSessionToDelete(null)}
+        onConfirm={() => handleDeleteSession(sessionToDelete)}
+      />
     </div>
   );
 }

@@ -7,6 +7,12 @@ const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
 const DefenseSession = require('../../models/DefenseSession');
 const Committee = require('../../models/Committee');
+const { getJwtSecret } = require('../../config/jwt');
+
+const hasAnyRole = (user, allowedRoles) => {
+  const roles = user.roles || (user.role ? [user.role] : []);
+  return roles.some((role) => allowedRoles.includes(role));
+};
 
 const detectMimeFromMagicBytes = (buffer) => {
   if (!buffer || buffer.length < 4) return null;
@@ -85,7 +91,7 @@ const uploadFile = async (multerFile, ownerType, ownerId, user) => {
 };
 
 const getFileById = async (id) => {
-  const asset = await FileAsset.findById(id);
+  const asset = await FileAsset.findOne({ _id: id });
   if (!asset) {
     throw { status: 404, message: 'Tệp tin không tồn tại.' };
   }
@@ -93,13 +99,13 @@ const getFileById = async (id) => {
 };
 
 const checkFileAccess = async (id, user) => {
-  const asset = await FileAsset.findById(id);
+  const asset = await FileAsset.findOne({ _id: id });
   if (!asset) {
     throw { status: 404, message: 'Tệp tin không tồn tại.' };
   }
 
   // Case 1: Global Admin or Faculty Staff bypass
-  if (['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF'].includes(user.role || (user.roles && user.roles[0]))) {
+  if (hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF'])) {
     return asset;
   }
 
@@ -121,6 +127,7 @@ const checkFileAccess = async (id, user) => {
     if (student) {
       const group = await ProjectGroup.findOne({
         'members.studentId': student._id,
+        isDeleted: { $ne: true },
         status: { $ne: 'cancelled' }
       });
       if (group) {
@@ -132,7 +139,7 @@ const checkFileAccess = async (id, user) => {
   if (project) {
     // If student is part of the project group
     if (user.roles && user.roles.includes('STUDENT') && user.studentId) {
-      const group = await ProjectGroup.findById(project.groupId);
+      const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
       if (group) {
         const isMember = group.members.some(m => m.studentId.toString() === user.studentId.toString());
         if (isMember) return asset;
@@ -151,9 +158,9 @@ const checkFileAccess = async (id, user) => {
 
     // If user is a Committee member
     if (user.lecturerId) {
-      const session = await DefenseSession.findOne({ projectId: project._id });
+      const session = await DefenseSession.findOne({ projectId: project._id, isDeleted: { $ne: true } });
       if (session) {
-        const committee = await Committee.findById(session.committeeId);
+        const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
         if (committee) {
           const isCommitteeMember = committee.members.some(m => m.lecturerId.toString() === user.lecturerId.toString());
           if (isCommitteeMember) return asset;
@@ -170,7 +177,7 @@ const generateSignedUrl = async (id, user) => {
   await checkFileAccess(id, user);
 
   const expires = Date.now() + 15 * 60 * 1000; // 15 minutes validity
-  const secret = process.env.JWT_SECRET || 'your_jwt_secret_key_should_be_at_least_32_characters';
+  const secret = getJwtSecret();
   
   const token = crypto
     .createHmac('sha256', secret)
@@ -190,7 +197,7 @@ const verifySignedUrl = async (id, token, expires) => {
     throw { status: 403, message: 'Quyền truy cập bị từ chối: Liên kết tải xuống đã hết hạn.' };
   }
 
-  const secret = process.env.JWT_SECRET || 'your_jwt_secret_key_should_be_at_least_32_characters';
+  const secret = getJwtSecret();
   const expectedToken = crypto
     .createHmac('sha256', secret)
     .update(`${id}-${expires}`)
@@ -204,7 +211,7 @@ const verifySignedUrl = async (id, token, expires) => {
 };
 
 const updateScanStatus = async (id, status) => {
-  const asset = await FileAsset.findById(id);
+  const asset = await FileAsset.findOne({ _id: id });
   if (!asset) {
     throw { status: 404, message: 'Tệp tin không tồn tại.' };
   }
@@ -214,25 +221,23 @@ const updateScanStatus = async (id, status) => {
 };
 
 const deleteFile = async (id, user) => {
-  const asset = await FileAsset.findById(id);
+  const asset = await FileAsset.findOne({ _id: id });
   if (!asset) {
     throw { status: 404, message: 'Tệp tin không tồn tại.' };
   }
 
-  const isStaff = ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF'].includes(user.role || (user.roles && user.roles[0]));
+  const isStaff = hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF']);
   const isOwner = asset.uploadedBy.toString() === user._id.toString();
 
   if (!isStaff && !isOwner) {
     throw { status: 403, message: 'Quyền truy cập bị từ chối: Bạn không có quyền xóa tệp tin này.' };
   }
 
-  // Remove physical file safely
-  const absolutePath = path.join(__dirname, '../../', asset.storageKey);
-  if (fs.existsSync(absolutePath)) {
-    fs.unlinkSync(absolutePath);
-  }
+  asset.isDeleted = true;
+  asset.deletedAt = new Date();
+  asset.deletedBy = user._id;
+  await asset.save();
 
-  await FileAsset.findByIdAndDelete(id);
   return { success: true, message: 'Tệp tin đã được xóa thành công.' };
 };
 

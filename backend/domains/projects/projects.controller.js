@@ -2,7 +2,7 @@ const projectsService = require('./projects.service');
 
 const getProjects = async (req, res, next) => {
   try {
-    const result = await projectsService.getProjects(req.query);
+    const result = await projectsService.getProjects(req.query, req.user);
     return res.status(200).json({
       success: true,
       message: 'Lấy danh sách dự án thành công!',
@@ -15,7 +15,7 @@ const getProjects = async (req, res, next) => {
 
 const getProjectById = async (req, res, next) => {
   try {
-    const result = await projectsService.getProjectById(req.params.id);
+    const result = await projectsService.getProjectById(req.params.id, req.user);
     return res.status(200).json({
       success: true,
       message: 'Lấy thông tin dự án chi tiết thành công!',

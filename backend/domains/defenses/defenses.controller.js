@@ -54,6 +54,18 @@ const updateSession = async (req, res, next) => {
   }
 };
 
+const deleteSession = async (req, res, next) => {
+  try {
+    await defensesService.deleteSession(req.params.id, req.user._id);
+    res.status(200).json({
+      success: true,
+      message: 'Phiên bảo vệ đã được xóa thành công.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const checkIdentity = async (req, res, next) => {
   try {
     const session = await defensesService.checkIdentity(req.params.id, req.user._id);
@@ -158,6 +170,7 @@ module.exports = {
   getSessions,
   getSessionById,
   updateSession,
+  deleteSession,
   checkIdentity,
   startSession,
   reportIncident,

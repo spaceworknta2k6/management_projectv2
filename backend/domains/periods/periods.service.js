@@ -62,11 +62,11 @@ const createPeriod = async (periodData, actorId) => {
 };
 
 const getAllPeriods = async (query = {}) => {
-  return await ProjectPeriod.find(query).sort({ createdAt: -1 });
+  return await ProjectPeriod.find({ ...query, isDeleted: { $ne: true } }).sort({ createdAt: -1 });
 };
 
 const getPeriodById = async (id) => {
-  const period = await ProjectPeriod.findById(id);
+  const period = await ProjectPeriod.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -74,7 +74,7 @@ const getPeriodById = async (id) => {
 };
 
 const updatePeriod = async (id, updateData, actorId) => {
-  const period = await ProjectPeriod.findById(id);
+  const period = await ProjectPeriod.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -105,9 +105,38 @@ const updatePeriod = async (id, updateData, actorId) => {
   return period;
 };
 
+const deletePeriod = async (id, actorId) => {
+  const period = await ProjectPeriod.findOne({ _id: id, isDeleted: { $ne: true } });
+  if (!period) {
+    throw { status: 404, message: 'Đợt đồ án không tồn tại hoặc đã bị xóa.' };
+  }
+
+  if (['result_locked', 'archived'].includes(period.status)) {
+    throw { status: 400, message: 'Không thể xóa đợt đồ án đã khóa kết quả hoặc lưu trữ.' };
+  }
+
+  period.isDeleted = true;
+  period.deletedAt = new Date();
+  period.deletedBy = actorId;
+  period.updatedBy = actorId;
+  await period.save();
+
+  await logWorkflowEvent({
+    entityId: period._id,
+    fromStatus: period.status,
+    toStatus: period.status,
+    actorId,
+    actorRoles: ['FACULTY_STAFF'],
+    action: 'SOFT_DELETE_PERIOD',
+    reason: 'Xóa mềm đợt đồ án',
+  });
+
+  return { success: true, message: 'Đợt đồ án đã được xóa thành công.' };
+};
+
 // Transition status machine states
 const transitionStatus = async (id, toStatus, action, actorId, actorRoles = ['FACULTY_STAFF'], reason = '') => {
-  const period = await ProjectPeriod.findById(id);
+  const period = await ProjectPeriod.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -160,5 +189,6 @@ module.exports = {
   getAllPeriods,
   getPeriodById,
   updatePeriod,
+  deletePeriod,
   transitionStatus,
 };

@@ -197,6 +197,112 @@ body {
   .mobile-menu-btn {
     display: flex !important;
   }
+
+  .dashboard-sidebar {
+    width: min(82vw, 300px) !important;
+    transform: translateX(-105%);
+    transition: transform 0.22s ease !important;
+    box-shadow: 24px 0 60px rgba(0, 0, 0, 0.32);
+  }
+
+  .dashboard-sidebar[data-mobile-open="true"] {
+    transform: translateX(0);
+  }
+
+  .dashboard-sidebar > div:last-child {
+    display: none !important;
+  }
+
+  .dashboard-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    border: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+    cursor: pointer;
+  }
+
+  .dashboard-shell {
+    margin-left: 0 !important;
+  }
+
+  .dashboard-header {
+    padding: 0 14px !important;
+  }
+
+  .dashboard-user-area {
+    gap: 8px !important;
+  }
+
+  .dashboard-user-meta {
+    display: none !important;
+  }
+
+  .dashboard-main {
+    max-width: none !important;
+    padding: 16px !important;
+    overflow-x: hidden;
+  }
+
+  .dashboard-main .text-display {
+    font-size: 23px;
+    line-height: 1.22;
+    text-wrap: balance;
+  }
+
+  .dashboard-main [style*="grid-template-columns"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-main form[style*="display: flex"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .dashboard-main form [style*="width: 180px"],
+  .dashboard-main form [style*="min-width: 240px"],
+  .dashboard-main form [style*="max-width: 420px"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .dashboard-main [style*="justify-content: space-between"][style*="align-items: flex-start"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .dashboard-main [style*="justify-content: flex-end"][style*="gap"] {
+    flex-wrap: wrap !important;
+  }
+
+  .dashboard-main table {
+    min-width: 720px;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 13px;
+  }
+
+  .dashboard-main {
+    padding: 12px !important;
+  }
+
+  .dashboard-main [style*="padding: 24px"],
+  .dashboard-main [style*="padding: 20px"] {
+    padding: 16px !important;
+  }
+
+  .dashboard-main [style*="grid-template-columns: 36px"] {
+    grid-template-columns: 32px minmax(0, 1fr) !important;
+  }
+
+  .dashboard-main [style*="grid-template-columns: 36px"] > span {
+    grid-column: 2;
+  }
 }
 
 /* Force-hide Next.js Dev tools overlays on all pages including error pages */

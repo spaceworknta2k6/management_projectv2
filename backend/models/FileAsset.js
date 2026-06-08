@@ -53,8 +53,25 @@ const FileAssetSchema = new mongoose.Schema({
     of: mongoose.Schema.Types.Mixed,
     default: {},
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
 }, {
-  timestamps: { createdAt: true, updatedAt: false }, // Only log upload timestamps
+  timestamps: true,
+});
+
+FileAssetSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
 });
 
 module.exports = mongoose.model('FileAsset', FileAssetSchema);

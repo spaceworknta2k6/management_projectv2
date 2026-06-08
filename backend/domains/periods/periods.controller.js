@@ -58,6 +58,21 @@ const updatePeriod = async (req, res, next) => {
   }
 };
 
+const deletePeriod = async (req, res, next) => {
+  try {
+    const result = await periodsService.deletePeriod(req.params.id, req.user._id);
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 const openRegistration = async (req, res, next) => {
   try {
     const period = await periodsService.transitionStatus(
@@ -155,6 +170,7 @@ module.exports = {
   getPeriods,
   getPeriodById,
   updatePeriod,
+  deletePeriod,
   openRegistration,
   startPeriod,
   lockResults,

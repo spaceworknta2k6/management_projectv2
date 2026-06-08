@@ -52,11 +52,23 @@ const ProjectGroupSchema = new mongoose.Schema({
     enum: ['draft', 'confirmed', 'locked', 'cancelled'],
     default: 'draft',
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
 }, {
   timestamps: true,
 });
 
 // Index to quickly search active groups inside a cohort period
 ProjectGroupSchema.index({ periodId: 1, status: 1 });
+ProjectGroupSchema.index({ periodId: 1, isDeleted: 1 });
 
 module.exports = mongoose.model('ProjectGroup', ProjectGroupSchema);
