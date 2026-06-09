@@ -1,0 +1,76 @@
+'use client';
+
+import Input from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import Spinner from '@/components/ui/Spinner';
+import { Check, Upload } from '@phosphor-icons/react';
+import css from '../page.module.css';
+
+export default function SubmitReportModal({
+  onClose,
+  handleSubmissionSubmit,
+  handleFileUpload,
+  uploadingFile,
+  uploadedFileId,
+  fileName,
+  submissionNote,
+  setSubmissionNote,
+  submittingWork,
+}) {
+  return (
+    <div className={css.s27}>
+      <div className={css.s28}>
+        <div className={css.s29}>
+          <h3 className={css.s30}>Nộp tài liệu báo cáo đồ án</h3>
+          <button onClick={onClose} className={css.s66}>
+            &times;
+          </button>
+        </div>
+        <form onSubmit={handleSubmissionSubmit} className={css.s31}>
+          {/* File upload selector */}
+          <div className={css.s32}>
+            <label className={css.s33}>
+              Chọn báo cáo (PDF, ZIP, DOCX, giới hạn 10MB) <span className={css.s34}>*</span>
+            </label>
+            <div className={css.s35}>
+              <input type="file" onChange={handleFileUpload} className={css.s36} />
+              {uploadingFile ? (
+                <div className={css.s37}>
+                  <Spinner />
+                  <span>Đang tải tệp tin và quét virus an toàn...</span>
+                </div>
+              ) : fileName ? (
+                <div className={css.s38}>
+                  <Check size={28} className={css.s39} />
+                  <span className={css.s40}>{fileName}</span>
+                  <span className={css.s41}>Nhấp để chọn tệp tin khác</span>
+                </div>
+              ) : (
+                <div className={css.s42}>
+                  <Upload size={28} className={css.s43} />
+                  <span className={css.s44}>Kéo thả hoặc nhấp để chọn tệp tin tải lên</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <Input
+            label="Ghi chú đính kèm"
+            value={submissionNote}
+            onChange={(e) => setSubmissionNote(e.target.value)}
+            placeholder="Nhập lời chào hoặc thông điệp gửi GVHD..."
+          />
+
+          <div className={css.s45}>
+            <Button variant="secondary" onClick={onClose}>
+              Hủy
+            </Button>
+            <Button variant="primary" type="submit" loading={submittingWork} disabled={!uploadedFileId}>
+              Nộp bài ngay
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

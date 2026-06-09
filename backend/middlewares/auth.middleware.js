@@ -8,15 +8,26 @@ const { getJwtSecret } = require('../config/jwt');
 const protect = async (req, res, next) => {
   let token;
 
-  // Retrieve token from Authorization header (Bearer <token>)
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  // 1. Retrieve token from Cookies first (HttpOnly)
+  const cookies = req.headers.cookie || '';
+  const tokenPair = cookies
+    .split(';')
+    .map((item) => item.trim())
+    .find((item) => item.startsWith('episteme_token='));
+  
+  if (tokenPair) {
+    token = decodeURIComponent(tokenPair.slice('episteme_token='.length));
+  }
+
+  // 2. Fallback: Retrieve token from Authorization header (Bearer <token>)
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
   }
 
   if (!token) {
     return res.status(401).json({
       success: false,
-      message: 'Not authorized! No token provided in headers.',
+      message: 'Not authorized! No token provided in cookies or headers.',
     });
   }
 

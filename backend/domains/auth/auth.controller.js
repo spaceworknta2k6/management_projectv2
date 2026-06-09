@@ -37,6 +37,13 @@ const login = async (req, res, next) => {
     const { email, password } = req.body;
     const result = await authService.login(email, password);
     
+    // Set httpOnly cookie for session token
+    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+    res.setHeader(
+      'Set-Cookie',
+      `episteme_token=${encodeURIComponent(result.accessToken)}; HttpOnly; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax; Path=/${secure}`
+    );
+    
     return res.status(200).json({
       success: true,
       message: 'Đăng nhập thành công!',
@@ -172,6 +179,14 @@ const consumeGoogleSession = async (req, res) => {
   }
 
   googleSessions.delete(code);
+
+  // Set httpOnly cookie for session token
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  res.setHeader(
+    'Set-Cookie',
+    `episteme_token=${encodeURIComponent(session.data.accessToken)}; HttpOnly; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax; Path=/${secure}`
+  );
+
   return res.status(200).json({
     success: true,
     data: session.data,
@@ -243,9 +258,14 @@ const updateAvatar = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
+    // Clear httpOnly session cookie
+    res.setHeader(
+      'Set-Cookie',
+      'episteme_token=; HttpOnly; Max-Age=0; SameSite=Lax; Path=/'
+    );
     return res.status(200).json({
       success: true,
-      message: 'Đăng xuất thành công! Hãy xóa token ở phía client.',
+      message: 'Đăng xuất thành công!',
     });
   } catch (error) {
     next(error);

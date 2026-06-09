@@ -136,7 +136,7 @@ export default function GroupsPage() {
 
     setCreating(true);
     // Use the first registration_open period
-    const activePeriod = periods.find((p) => p.status === 'enrollment' || p.status === 'draft') || periods[0];
+    const activePeriod = periods.find((p) => p.status === 'enrollment' || p.status === 'registration_open' || p.status === 'draft') || periods[0];
 
     try {
       await api.post('/groups', {

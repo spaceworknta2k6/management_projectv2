@@ -57,6 +57,7 @@ const STATUS_MAP = {
   // Period statuses
   draft: { label: 'Bản nháp', variant: 'neutral' },
   enrollment: { label: 'Đăng ký', variant: 'info' },
+  registration_open: { label: 'Đăng ký', variant: 'info' },
   in_progress: { label: 'Đang diễn ra', variant: 'success' },
   defense: { label: 'Bảo vệ', variant: 'warning' },
   completed: { label: 'Hoàn thành', variant: 'success' },
