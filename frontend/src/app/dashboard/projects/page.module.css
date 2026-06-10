@@ -80,6 +80,13 @@
   font-style: italic;
 }
 
+.lecturerLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .s15 {
   grid-column: span 2;
 }

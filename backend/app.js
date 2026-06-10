@@ -3,6 +3,7 @@ const path = require('path');
 require('./config/env').loadEnv();
 
 const express = require('express');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const connectDB = require('./config/db');
 
@@ -35,6 +36,7 @@ const committeesRouter = require('./domains/committees/committees.router');
 const defensesRouter = require('./domains/defenses/defenses.router');
 const scoresRouter = require('./domains/scores/scores.router');
 const notificationsRouter = require('./domains/notifications/notifications.router');
+const chatRouter = require('./domains/chat/chat.router');
 const auditRouter = require('./domains/audit/audit.router');
 const filesRouter = require('./domains/files/files.router');
 const aiRouter = require('./domains/ai/ai.router');
@@ -51,6 +53,7 @@ app.use('/api/v1/committees', committeesRouter);
 app.use('/api/v1/defense-sessions', defensesRouter);
 app.use('/api/v1/scores', scoresRouter);
 app.use('/api/v1/notifications', notificationsRouter);
+app.use('/api/v1/chat', chatRouter);
 app.use('/api/v1/audit', auditRouter);
 app.use('/api/v1/files', filesRouter);
 app.use('/api/v1/ai', aiRouter);
@@ -85,4 +88,12 @@ const server = app.listen(PORT, () => {
   console.log(`Episteme API Server listening on: http://localhost:${PORT}`);
 });
 
-module.exports = { app, server };
+const io = new Server(server, {
+  cors: {
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+  },
+});
+require('./domains/chat/chat.socket')(io);
+
+module.exports = { app, server, io };

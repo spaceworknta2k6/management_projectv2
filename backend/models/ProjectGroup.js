@@ -33,6 +33,11 @@ const ProjectGroupSchema = new mongoose.Schema({
     required: true,
     trim: true, // e.g. "DA-042"
   },
+  avatarUrl: {
+    type: String,
+    trim: true,
+    default: '',
+  },
   leaderStudentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Student',

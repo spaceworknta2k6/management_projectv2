@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -9,10 +10,11 @@ import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { getTechnicalLabel, hasAnyRole } from '@/lib/utils';
-import { FolderSimple, UserCheck, ShieldCheck, CheckSquare, ArrowsClockwise } from '@phosphor-icons/react';
+import { FolderSimple, UserCheck, ShieldCheck, CheckSquare, ArrowsClockwise, ChatsCircle } from '@phosphor-icons/react';
 import css from './page.module.css';
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
   const toast = useToast();
@@ -28,6 +30,7 @@ export default function ProjectsPage() {
 
   const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
   const isLecturer = hasAnyRole(user, ['LECTURER']);
+  const isStudent = hasAnyRole(user, ['STUDENT']);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -108,6 +111,25 @@ export default function ProjectsPage() {
       loadData();
     } catch (err) {
       toast.error(err.message || 'Lỗi khi duyệt điều kiện bảo vệ');
+    }
+  };
+
+  const handleRequestDirectChat = async (lecturerUserId) => {
+    if (!lecturerUserId) {
+      toast.error('Chưa có thông tin tài khoản giảng viên để nhắn tin.');
+      return;
+    }
+
+    try {
+      const res = await api.post('/chat/direct-rooms', { lecturerUserId }, token);
+      toast.success(
+        res.data?.status === 'accepted'
+          ? 'Đã mở cuộc trò chuyện.'
+          : 'Đã gửi lời mời chat. Vui lòng chờ thầy cô chấp nhận.'
+      );
+      router.push(`/dashboard/chat?room=${res.data?._id || ''}`);
+    } catch (err) {
+      toast.error(err.message || 'Không thể tạo lời mời chat.');
     }
   };
 
@@ -228,19 +250,43 @@ export default function ProjectsPage() {
                 <div className={css.s9}>
                   <div>
                     <p className={css.s10}>Giảng viên hướng dẫn:</p>
-                    <p className={css.s11}>
-                      {p.supervisorId?.userId?.fullName || 'Chưa phân công'} ({p.supervisorId?.userId?.email || '—'})
-                    </p>
+                    <div className={css.lecturerLine}>
+                      <p className={css.s11}>
+                        {p.supervisorId?.userId?.fullName || 'Chưa phân công'} ({p.supervisorId?.userId?.email || '—'})
+                      </p>
+                      {isStudent && p.supervisorId?.userId?._id && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleRequestDirectChat(p.supervisorId.userId._id)}
+                          icon={<ChatsCircle size={14} />}
+                        >
+                          Nhắn tin
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <p className={css.s12}>Giảng viên phản biện:</p>
-                    <p className={css.s13}>
-                      {p.reviewerId?.userId?.fullName ? (
-                        <span>{p.reviewerId.userId.fullName} ({p.reviewerId.userId.email})</span>
-                      ) : (
-                        <span className={css.s14}>Chưa phân công phản biện</span>
+                    <div className={css.lecturerLine}>
+                      <p className={css.s13}>
+                        {p.reviewerId?.userId?.fullName ? (
+                          <span>{p.reviewerId.userId.fullName} ({p.reviewerId.userId.email})</span>
+                        ) : (
+                          <span className={css.s14}>Chưa phân công phản biện</span>
+                        )}
+                      </p>
+                      {isStudent && p.reviewerId?.userId?._id && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleRequestDirectChat(p.reviewerId.userId._id)}
+                          icon={<ChatsCircle size={14} />}
+                        >
+                          Nhắn tin
+                        </Button>
                       )}
-                    </p>
+                    </div>
                   </div>
                   <div className={css.s15}>
                     <p className={css.s16}>Tóm tắt đề tài:</p>
