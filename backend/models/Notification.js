@@ -38,11 +38,22 @@ const NotificationSchema = new mongoose.Schema({
   readAt: {
     type: Date, // Timestamp when user opens/reads the alert
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
 }, {
   timestamps: { createdAt: true, updatedAt: false },
 });
 
 // Index to quickly fetch unread notifications for a user in chronological order
-NotificationSchema.index({ recipientId: 1, readAt: 1, createdAt: -1 });
+NotificationSchema.index({ recipientId: 1, isDeleted: 1, readAt: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Notification', NotificationSchema);

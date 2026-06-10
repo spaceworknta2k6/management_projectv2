@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   GraduationCap,
@@ -22,20 +23,19 @@ import {
   Sun,
   Moon,
   Warning,
-  UserCircle,
 } from '@phosphor-icons/react';
 import useAuthStore from '@/store/auth.store';
 import useThemeStore from '@/store/theme.store';
 import { authService } from '@/services/auth.service';
 import Spinner from '@/components/ui/Spinner';
 import Button from '@/components/ui/Button';
+import { getAvatarUrl } from '@/lib/avatar';
 import { getPrimaryRole, getRoleLabel, hasAnyRole } from '@/lib/utils';
 import { ToastProvider } from '@/components/ui/Toast';
 import css from './layout.module.css';
 
 /* ─── Navigation Items ──────────────────────────────────────────────── */
 const NAV_ITEMS = [
-  { href: '/dashboard/profile',    label: 'Th\u00f4ng tin c\u00e1 nh\u00e2n', icon: UserCircle, roles: null },
   { href: '/dashboard',            label: 'Tổng quan',     icon: House,            roles: null },
   { href: '/dashboard/periods',    label: 'Đợt đồ án',    icon: CalendarBlank,    roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/groups',     label: 'Nhóm',          icon: Users,            roles: ['STUDENT', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
@@ -133,6 +133,7 @@ function Header({ user, onMobileMenuToggle }) {
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
   const { theme, toggleTheme } = useThemeStore();
+  const avatarUrl = getAvatarUrl(user?.avatarUrl);
 
   const handleLogout = () => {
     logout();
@@ -163,14 +164,25 @@ function Header({ user, onMobileMenuToggle }) {
         </button>
 
         {user && (
-          <div className={`dashboard-user-meta ${css.s11}`}>
-            <p className={css.s12}>
-              {user.fullName || user.name || user.email}
-            </p>
-            <p className={css.s13}>
-              {getRoleLabel(getPrimaryRole(user))}
-            </p>
-          </div>
+          <>
+            <div className={`dashboard-user-meta ${css.s11}`}>
+              <p className={css.s12}>
+                {user.fullName || user.name || user.email}
+              </p>
+              <p className={css.s13}>
+                {getRoleLabel(getPrimaryRole(user))}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard/profile')}
+              title="Th\u00f4ng tin c\u00e1 nh\u00e2n"
+              aria-label="M\u1edf th\u00f4ng tin c\u00e1 nh\u00e2n"
+              className={css.avatarButton}
+            >
+              <Image src={avatarUrl} alt="" width={38} height={38} className={css.headerAvatar} />
+            </button>
+          </>
         )}
         <button
           onClick={handleLogout}

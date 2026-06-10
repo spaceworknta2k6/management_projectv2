@@ -220,6 +220,33 @@
   color: var(--text-muted);
 }
 
+.avatarButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background-color: var(--bg-raised);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.avatarButton:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.headerAvatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .s14 {
   display: flex;
   align-items: center;

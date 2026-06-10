@@ -11,10 +11,9 @@ import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { authService } from '@/services/auth.service';
 import useAuthStore from '@/store/auth.store';
+import { getAvatarUrl } from '@/lib/avatar';
 import { formatDate, getRoleLabel } from '@/lib/utils';
 import css from './page.module.css';
-
-const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1').replace('/api/v1', '');
 
 const text = {
   title: 'Thông tin cá nhân',
@@ -42,12 +41,6 @@ const statusInfo = {
   inactive: { label: 'Không hoạt động', variant: 'warning' },
   locked: { label: 'Đã khóa', variant: 'error' },
 };
-
-function getAssetUrl(url) {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
-  return `${API_ORIGIN}${url}`;
-}
 
 function validateProfile(form) {
   const errors = {};
@@ -98,7 +91,7 @@ export default function ProfilePage() {
 
   const roles = useMemo(() => user?.roles || (user?.role ? [user.role] : []), [user]);
   const status = statusInfo[user?.status] || { label: user?.status || statusInfo.active.label, variant: 'neutral' };
-  const avatarUrl = getAssetUrl(user?.avatarUrl);
+  const avatarUrl = getAvatarUrl(user?.avatarUrl);
   const isStudent = roles.includes('STUDENT');
   const hasLecturerProfile = roles.includes('LECTURER') || roles.includes('DEPARTMENT_STAFF');
 
@@ -191,11 +184,7 @@ export default function ProfilePage() {
         <Card>
           <div className={css.s10}>
             <div className={css.avatar}>
-              {avatarUrl ? (
-                <Image src={avatarUrl} alt="" width={72} height={72} className={css.avatarImage} />
-              ) : (
-                <UserCircle size={40} weight="duotone" />
-              )}
+              <Image src={avatarUrl} alt="" width={72} height={72} className={css.avatarImage} />
             </div>
             <div className={css.s11}>
               <h2 className={css.s12}>

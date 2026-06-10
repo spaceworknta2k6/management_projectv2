@@ -8,6 +8,8 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Tabs from '@/components/ui/Tabs';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateTime, getNotificationTypeLabel } from '@/lib/utils';
 import {
@@ -16,6 +18,7 @@ import {
   Check,
   CheckCircle,
   EnvelopeOpen,
+  Trash,
   Warning,
 } from '@phosphor-icons/react';
 import css from './page.module.css';
@@ -52,7 +55,7 @@ function getNotificationActionUrl(notification) {
   return rawUrl;
 }
 
-function NotificationRow({ notification, markingId, onMarkRead }) {
+function NotificationRow({ notification, markingId, deletingId, onMarkRead, onRequestDelete }) {
   const isRead = Boolean(notification.readAt);
   const tone = getNotificationTone(notification);
   const actionUrl = getNotificationActionUrl(notification);
@@ -105,6 +108,14 @@ function NotificationRow({ notification, markingId, onMarkRead }) {
             icon={<Check size={16} />}
           />
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          title="Xóa thông báo"
+          loading={deletingId === notification._id}
+          onClick={() => onRequestDelete(notification)}
+          icon={<Trash size={16} />}
+        />
       </div>
     </div>
   );
@@ -117,11 +128,29 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState('');
   const [markingAll, setMarkingAll] = useState(false);
+  const [deletingId, setDeletingId] = useState('');
+  const [notificationToDelete, setNotificationToDelete] = useState(null);
+  const [activeTab, setActiveTab] = useState('all');
 
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.readAt).length,
     [notifications]
   );
+  const readCount = notifications.length - unreadCount;
+  const filteredNotifications = useMemo(() => {
+    if (activeTab === 'unread') {
+      return notifications.filter((notification) => !notification.readAt);
+    }
+    if (activeTab === 'read') {
+      return notifications.filter((notification) => notification.readAt);
+    }
+    return notifications;
+  }, [activeTab, notifications]);
+  const tabs = [
+    { id: 'all', label: `Tất cả (${notifications.length})` },
+    { id: 'unread', label: `Chưa đọc (${unreadCount})` },
+    { id: 'read', label: `Đã đọc (${readCount})` },
+  ];
 
   const fetchNotifications = useCallback(async () => {
     if (!token) return;
@@ -173,6 +202,24 @@ export default function NotificationsPage() {
     }
   };
 
+  const handleDeleteNotification = async () => {
+    if (!notificationToDelete) return;
+
+    setDeletingId(notificationToDelete._id);
+    try {
+      await api.delete(`/notifications/${notificationToDelete._id}`, token);
+      setNotifications((prev) =>
+        prev.filter((notification) => notification._id !== notificationToDelete._id)
+      );
+      setNotificationToDelete(null);
+      toast.success('Đã xóa thông báo.');
+    } catch (err) {
+      toast.error(err.message || 'Không thể xóa thông báo.');
+    } finally {
+      setDeletingId('');
+    }
+  };
+
   return (
     <div>
       <div className={css.s10} >
@@ -219,6 +266,10 @@ export default function NotificationsPage() {
             {unreadCount}
           </p>
         </Card>
+        <Card>
+          <p className={css.s18}>Đã đọc</p>
+          <p className={css.s17}>{readCount}</p>
+        </Card>
       </div>
 
       {loading ? (
@@ -243,14 +294,25 @@ export default function NotificationsPage() {
           subtitle={`${unreadCount} thông báo chưa đọc`}
           noPadding
         >
-          {notifications.map((notification) => (
-            <NotificationRow
-              key={notification._id}
-              notification={notification}
-              markingId={markingId}
-              onMarkRead={handleMarkRead}
-            />
-          ))}
+          <div className={css.mailTabs}>
+            <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+          </div>
+          {filteredNotifications.length === 0 ? (
+            <div className={css.emptyFilter}>
+              Không có thông báo trong mục này.
+            </div>
+          ) : (
+            filteredNotifications.map((notification) => (
+              <NotificationRow
+                key={notification._id}
+                notification={notification}
+                markingId={markingId}
+                deletingId={deletingId}
+                onMarkRead={handleMarkRead}
+                onRequestDelete={setNotificationToDelete}
+              />
+            ))
+          )}
         </Card>
       )}
 
@@ -260,6 +322,19 @@ export default function NotificationsPage() {
           Một số thông báo không có liên kết thao tác vì chỉ mang tính ghi nhận.
         </p>
       )}
+
+      <ConfirmDialog
+        open={Boolean(notificationToDelete)}
+        title="Xóa thông báo"
+        message={notificationToDelete ? `Bạn có chắc chắn muốn xóa thông báo "${notificationToDelete.title}"?` : ''}
+        confirmLabel="Xóa"
+        cancelLabel="Hủy"
+        loading={Boolean(deletingId)}
+        onConfirm={handleDeleteNotification}
+        onCancel={() => {
+          if (!deletingId) setNotificationToDelete(null);
+        }}
+      />
     </div>
   );
 }

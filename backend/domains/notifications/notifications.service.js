@@ -18,11 +18,11 @@ const createNotification = async (data) => {
 };
 
 const getNotifications = async (recipientId) => {
-  return await Notification.find({ recipientId }).sort({ createdAt: -1 });
+  return await Notification.find({ recipientId, isDeleted: false }).sort({ createdAt: -1 });
 };
 
 const markAsRead = async (id, recipientId) => {
-  const notification = await Notification.findById(id);
+  const notification = await Notification.findOne({ _id: id, isDeleted: false });
   if (!notification) {
     throw { status: 404, message: 'Thông báo không tồn tại.' };
   }
@@ -37,15 +37,31 @@ const markAsRead = async (id, recipientId) => {
 
 const markAllAsRead = async (recipientId) => {
   await Notification.updateMany(
-    { recipientId, readAt: { $exists: false } },
+    { recipientId, isDeleted: false, readAt: { $exists: false } },
     { $set: { readAt: new Date() } }
   );
   // Also handle null case if any
   await Notification.updateMany(
-    { recipientId, readAt: null },
+    { recipientId, isDeleted: false, readAt: null },
     { $set: { readAt: new Date() } }
   );
   return { success: true, message: 'Đã đánh dấu đọc toàn bộ thông báo.' };
+};
+
+const deleteNotification = async (id, recipientId) => {
+  const notification = await Notification.findOne({ _id: id, isDeleted: false });
+  if (!notification) {
+    throw { status: 404, message: 'Thông báo không tồn tại.' };
+  }
+
+  if (notification.recipientId.toString() !== recipientId.toString()) {
+    throw { status: 403, message: 'Quyền truy cập bị từ chối: Bạn không sở hữu thông báo này.' };
+  }
+
+  notification.isDeleted = true;
+  notification.deletedAt = new Date();
+  notification.deletedBy = recipientId;
+  return await notification.save();
 };
 
 module.exports = {
@@ -53,4 +69,5 @@ module.exports = {
   getNotifications,
   markAsRead,
   markAllAsRead,
+  deleteNotification,
 };

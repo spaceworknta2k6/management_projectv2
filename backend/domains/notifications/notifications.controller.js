@@ -37,8 +37,21 @@ const markAllAsRead = async (req, res, next) => {
   }
 };
 
+const deleteNotification = async (req, res, next) => {
+  try {
+    await notificationsService.deleteNotification(req.params.id, req.user._id);
+    res.status(200).json({
+      success: true,
+      message: 'Đã xóa thông báo.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getNotifications,
   markAsRead,
   markAllAsRead,
+  deleteNotification,
 };
