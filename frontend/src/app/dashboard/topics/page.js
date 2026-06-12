@@ -13,7 +13,8 @@ import Input from '@/components/ui/Input';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import Tabs from '@/components/ui/Tabs';
-import { BookOpen, Plus, Lightbulb, MagnifyingGlass } from '@phosphor-icons/react';
+import { BookOpen, Plus, Lightbulb, MagnifyingGlass, FileText } from '@phosphor-icons/react';
+import { exportToCSV } from '@/lib/export';
 import css from './page.module.css';
 
 const topicTabs = [
@@ -170,6 +171,47 @@ export default function TopicsPage() {
     setCurrentPage(1);
   };
 
+  const handleExportExcel = () => {
+    const headers = [
+      'Mã Đề Tài',
+      'Tên Đề Tài',
+      'Tóm Tắt',
+      'Đợt Đồ Án',
+      'Nhóm Đăng Ký',
+      'Học Kỳ',
+      'Người Đề Xuất',
+      'GVHD Đề Xuất',
+      'Trạng Thái',
+    ];
+
+    const getStatusLabel = (status) => {
+      switch (status) {
+        case 'draft': return 'Bản nháp';
+        case 'submitted': return 'Chờ duyệt';
+        case 'ai_checked': return 'AI đã kiểm tra';
+        case 'pending_review': return 'Đang xem xét';
+        case 'approved': return 'Đã duyệt';
+        case 'rejected': return 'Từ chối';
+        case 'needs_revision': return 'Yêu cầu sửa đổi';
+        default: return status || '';
+      }
+    };
+
+    const data = visibleTopics.map((topic) => [
+      topic._id,
+      topic.title,
+      topic.summary || '',
+      topic.periodId?.name || '',
+      topic.groupId?.name || 'Chưa đăng ký',
+      topic.periodId?.semester ? `Kỳ ${topic.periodId.semester}` : '',
+      topic.proposedByStudentId?.userId?.fullName || 'Giảng viên',
+      topic.proposedSupervisorId?.userId?.fullName || '',
+      getStatusLabel(topic.status),
+    ]);
+
+    exportToCSV(data, headers, `Danh_sach_de_tai_Karl_${new Date().toISOString().slice(0, 10)}`);
+  };
+
   return (
     <div>
       {/* Page Header section */}
@@ -204,6 +246,18 @@ export default function TopicsPage() {
             <Button variant="primary" size="sm" onClick={() => setShowProposeModal(true)}>
               <Plus size={16} />
               Đề xuất đề tài mới
+            </Button>
+          </div>
+        )}
+        {!isStudent && (isStaff || isLecturer) && (
+          <div className={css.s5}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExportExcel}
+            >
+              <FileText size={16} />
+              Xuất Excel
             </Button>
           </div>
         )}

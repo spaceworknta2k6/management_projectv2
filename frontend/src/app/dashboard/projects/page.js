@@ -12,7 +12,8 @@ import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { getTechnicalLabel, hasAnyRole } from '@/lib/utils';
-import { FolderSimple, UserCheck, ShieldCheck, CheckSquare, ArrowsClockwise, ChatsCircle, MagnifyingGlass } from '@phosphor-icons/react';
+import { FolderSimple, UserCheck, ShieldCheck, CheckSquare, ArrowsClockwise, ChatsCircle, MagnifyingGlass, FileText } from '@phosphor-icons/react';
+import { exportToCSV } from '@/lib/export';
 import css from './page.module.css';
 
 const PAGE_SIZE = 10;
@@ -249,6 +250,52 @@ export default function ProjectsPage() {
     }
   };
 
+  const handleExportExcel = () => {
+    const headers = [
+      'Mã Dự Án',
+      'Tên Đề Tài',
+      'Đợt Đồ Án',
+      'Nhóm Thực Hiện',
+      'Thành Viên Nhóm',
+      'Giảng Viên Hướng Dẫn',
+      'Giảng Viên Phản Biện',
+      'Trạng Thái',
+    ];
+
+    const getStatusLabel = (status) => {
+      switch (status) {
+        case 'assigned': return 'Mới phân công';
+        case 'in_progress': return 'Đang thực hiện';
+        case 'pre_defense_submitted': return 'Đã nộp trước bảo vệ';
+        case 'supervisor_reviewed': return 'GVHD đã đánh giá';
+        case 'reviewer_reviewed': return 'GVPB đã đánh giá';
+        case 'defense_eligible': return 'Đủ ĐK bảo vệ';
+        case 'finalized': return 'Đã hoàn thành';
+        case 'cancelled': return 'Đã hủy';
+        default: return status || '';
+      }
+    };
+
+    const data = visibleProjects.map((p) => {
+      const membersText = (p.groupId?.members || [])
+        .map((m) => `${m.studentId?.userId?.fullName || 'Sinh viên'} (${m.studentId?.userId?.email || ''})`)
+        .join('; ');
+
+      return [
+        p._id,
+        p.topicId?.title || 'Chưa cập nhật đề tài',
+        p.periodId?.name || '',
+        p.groupId?.name || '',
+        membersText,
+        p.supervisorId?.userId?.fullName || '',
+        p.reviewerId?.userId?.fullName || 'Chưa phân công phản biện',
+        getStatusLabel(p.status),
+      ];
+    });
+
+    exportToCSV(data, headers, `Danh_sach_du_an_Karl_${new Date().toISOString().slice(0, 10)}`);
+  };
+
   return (
     <div>
       {/* Page Header */}
@@ -262,10 +309,18 @@ export default function ProjectsPage() {
             Xem thông tin tiến độ, phân công phản biện và quản lý vòng đời thực hiện đề tài đồ án tốt nghiệp
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={loadData}>
-          <ArrowsClockwise size={16} />
-          Làm mới
-        </Button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {!isStudent && (isStaff || isLecturer) && (
+            <Button variant="secondary" size="sm" onClick={handleExportExcel}>
+              <FileText size={16} />
+              Xuất Excel
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={loadData}>
+            <ArrowsClockwise size={16} />
+            Làm mới
+          </Button>
+        </div>
       </div>
 
       {/* Projects list */}

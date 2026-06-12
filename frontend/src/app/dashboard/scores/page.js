@@ -12,7 +12,8 @@ import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
-import { ClipboardText, ArrowsClockwise, CheckCircle, Calculator, MagnifyingGlass } from '@phosphor-icons/react';
+import { ClipboardText, ArrowsClockwise, CheckCircle, Calculator, MagnifyingGlass, FileText } from '@phosphor-icons/react';
+import { exportToCSV } from '@/lib/export';
 import css from './page.module.css';
 
 const PAGE_SIZE = 10;
@@ -214,6 +215,28 @@ export default function ScoresPage() {
     setCurrentPage(1);
   };
 
+  const handleExportExcel = () => {
+    const headers = [
+      'Mã Ca Bảo Vệ',
+      'Đề Tài Đồ Án',
+      'Nhóm Thực Hiện',
+      'Ca Số',
+      'Hội Đồng Chấm',
+      'Ngày Bảo Vệ',
+    ];
+
+    const data = visibleSessions.map((session) => [
+      session._id,
+      session.projectId?.topicId?.title || 'Đồ án',
+      session.groupId?.name || 'Nhóm',
+      `Ca ${session.orderNumber}`,
+      session.committeeId?.name || 'Không xác định',
+      formatDate(session.defenseDate).split(' ')[0],
+    ]);
+
+    exportToCSV(data, headers, `Danh_sach_ca_cham_diem_Karl_${new Date().toISOString().slice(0, 10)}`);
+  };
+
   return (
     <div>
       {loading ? (
@@ -231,7 +254,13 @@ export default function ScoresPage() {
           </p>
         </div>
         
-        <Button variant="outline" onClick={fetchData} icon={<ArrowsClockwise />} title="Làm mới" />
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Button variant="secondary" size="sm" onClick={handleExportExcel}>
+            <FileText size={16} />
+            Xuất Excel
+          </Button>
+          <Button variant="outline" onClick={fetchData} icon={<ArrowsClockwise />} title="Làm mới" />
+        </div>
       </div>
 
       <form onSubmit={handleSearchSubmit} className={css.searchRow}>
