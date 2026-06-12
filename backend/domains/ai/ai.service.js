@@ -190,7 +190,7 @@ const chatTopicSuggestion = async (studentId, messages) => {
           .join("\n")
       : "Chưa có đề tài nào được duyệt trong hệ thống.";
 
-  const systemPrompt = `Bạn là trợ lý tư vấn đề tài đồ án thông minh của Hệ thống Episteme (Đại học Bách Khoa).
+  const systemPrompt = `Bạn là trợ lý tư vấn đề tài đồ án thông minh của Hệ thống Karl (Trường Đại học Phenikaa).
 Hãy tư vấn, giải thích và gợi ý đề tài phù hợp nhất. Trả lời bằng tiếng Việt, thân thiện và súc tích.
 
 Hồ sơ sinh viên đang tư vấn:
