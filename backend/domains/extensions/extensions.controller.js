@@ -60,7 +60,13 @@ const getRequests = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: 'Lấy danh sách yêu cầu gia hạn thành công!',
-      data: result,
+      data: result.requests,
+      pagination: {
+        total: result.total,
+        page: result.page,
+        pages: result.pages,
+        limit: result.limit,
+      }
     });
   } catch (error) {
     next(error);

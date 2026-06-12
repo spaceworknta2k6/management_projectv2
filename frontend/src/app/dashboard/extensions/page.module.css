@@ -264,3 +264,53 @@
   gap: 10px;
   padding-top: 6px;
 }
+
+.searchCard {
+  margin-bottom: 20px;
+}
+
+.searchRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+.searchField {
+  flex: 1;
+  min-width: 260px;
+  max-width: 360px;
+}
+
+.filterField {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+
+.filterLabel {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+
+.selectFilter {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  background-color: var(--bg-raised);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.searchActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+}
+

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
@@ -8,6 +9,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import Pagination from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatDateTime, hasAnyRole } from '@/lib/utils';
 import {
@@ -18,6 +20,7 @@ import {
   FileText,
   Plus,
   X,
+  MagnifyingGlass,
 } from '@phosphor-icons/react';
 import css from './page.module.css';
 
@@ -113,10 +116,51 @@ function TextAreaField({ id, label, value, onChange, placeholder, rows = 4 }) {
   );
 }
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const DEFAULT_FILTERS = {
+  search: '',
+  status: '',
+};
+
+function getSafePositiveInt(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return parsed;
+}
+
+function getSafePageSize(value) {
+  const parsed = Number(value);
+  return PAGE_SIZE_OPTIONS.includes(parsed) ? parsed : 10;
+}
+
+function getInitialExtensionsQuery() {
+  if (typeof window === 'undefined') {
+    return {
+      page: 1,
+      limit: 10,
+      filters: DEFAULT_FILTERS,
+    };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  return {
+    page: getSafePositiveInt(params.get('page'), 1),
+    limit: getSafePageSize(params.get('limit')),
+    filters: {
+      search: params.get('search') || '',
+      status: params.get('status') || '',
+    },
+  };
+}
+
+
 export default function ExtensionRequestsPage() {
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
   const toast = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+  const initialQuery = useMemo(() => getInitialExtensionsQuery(), []);
 
   const [projects, setProjects] = useState([]);
   const [milestonesByProject, setMilestonesByProject] = useState({});
@@ -128,6 +172,14 @@ export default function ExtensionRequestsPage() {
   const [reviewNote, setReviewNote] = useState('');
   const [reviewStatus, setReviewStatus] = useState('approved');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+
+  // Pagination & Filters State
+  const [pagination, setPagination] = useState({ total: 0, page: initialQuery.page, pages: 1, limit: initialQuery.limit });
+  const [searchInput, setSearchInput] = useState(initialQuery.filters.search);
+  const [search, setSearch] = useState(initialQuery.filters.search);
+  const [statusFilter, setStatusFilter] = useState(initialQuery.filters.status);
+  const [currentPage, setCurrentPage] = useState(initialQuery.page);
+  const [pageSize, setPageSize] = useState(initialQuery.limit);
 
   const isStudent = hasAnyRole(user, ['STUDENT']);
   const isLecturer = hasAnyRole(user, ['LECTURER']);
@@ -162,14 +214,24 @@ export default function ExtensionRequestsPage() {
 
     setLoading(true);
     try {
+      const queryParams = new URLSearchParams({
+        search,
+        status: statusFilter,
+        page: currentPage.toString(),
+        limit: pageSize.toString(),
+      });
+
       const [projectsRes, requestsRes] = await Promise.all([
         api.get('/projects', token),
-        api.get('/extensions', token),
+        api.get(`/extensions?${queryParams.toString()}`, token),
       ]);
 
       const projectList = projectsRes.data || [];
       setProjects(projectList);
       setRequests(requestsRes.data || []);
+      if (requestsRes.pagination) {
+        setPagination(requestsRes.pagination);
+      }
 
       const scopedProjects = projectList.filter((project) => {
         if (isStudent) {
@@ -209,11 +271,44 @@ export default function ExtensionRequestsPage() {
     } finally {
       setLoading(false);
     }
-  }, [isFaculty, isLecturer, isStudent, toast, token, user?.lecturerId, user?.studentId]);
+  }, [token, search, statusFilter, currentPage, pageSize, isStudent, user?.studentId, isLecturer, isFaculty, user?.lecturerId, toast]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set('page', String(currentPage));
+    params.set('limit', String(pageSize));
+    if (search.trim()) params.set('search', search.trim());
+    if (statusFilter.trim()) params.set('status', statusFilter.trim());
+
+    const nextUrl = `${pathname}?${params.toString()}`;
+    if (typeof window === 'undefined') return;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    if (currentUrl !== nextUrl) {
+      router.replace(nextUrl, { scroll: false });
+    }
+  }, [currentPage, pageSize, pathname, router, search, statusFilter]);
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setCurrentPage(1);
+    setSearch(searchInput);
+  };
+
+  const handleResetFilters = () => {
+    setSearchInput('');
+    setSearch('');
+    setStatusFilter('');
+    setCurrentPage(1);
+  };
+
+  const handlePageSizeChange = (nextPageSize) => {
+    setPageSize(nextPageSize);
+    setCurrentPage(1);
+  };
 
   const handleProjectChange = (projectId) => {
     const firstMilestone = milestonesByProject[projectId]?.[0];
@@ -360,6 +455,50 @@ export default function ExtensionRequestsPage() {
         <Button variant="outline" onClick={loadData} icon={<ArrowsClockwise />} title="Làm mới" />
       </div>
 
+      {/* Search & Filters */}
+      <Card className={css.searchCard}>
+        <form onSubmit={handleSearchSubmit} className={css.searchRow}>
+          <div className={css.searchField}>
+            <Input
+              label="Tìm kiếm yêu cầu"
+              placeholder="Nhập tên nhóm hoặc đề tài..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              icon={<MagnifyingGlass size={16} />}
+            />
+          </div>
+
+          <div className={css.filterField}>
+            <label className={css.filterLabel}>Trạng thái</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className={css.selectFilter}
+            >
+              <option value="">Tất cả trạng thái</option>
+              <option value="pending">Chờ xử lý</option>
+              <option value="approved">Đã duyệt</option>
+              <option value="rejected">Từ chối</option>
+              <option value="expired">Hết hạn</option>
+            </select>
+          </div>
+
+          <div className={css.searchActions}>
+            <Button variant="primary" type="submit" icon={<MagnifyingGlass size={16} />}>
+              Tìm kiếm
+            </Button>
+            {(search || statusFilter) && (
+              <Button variant="ghost" type="button" onClick={handleResetFilters}>
+                Xóa lọc
+              </Button>
+            )}
+          </div>
+        </form>
+      </Card>
+
       <div className={[css.extensionGrid, isStudent ? css.extensionGridStudent : ''].filter(Boolean).join(' ')}>
         {isStudent && (
           <Card title="Gửi yêu cầu gia hạn" subtitle="Áp dụng cho mốc tiến độ của dự án nhóm">
@@ -376,7 +515,7 @@ export default function ExtensionRequestsPage() {
                     </option>
                   ))}
                 </SelectField>
-
+ 
                 <SelectField
                   id="extension-target"
                   label="Mốc cần gia hạn"
@@ -399,7 +538,7 @@ export default function ExtensionRequestsPage() {
                     </option>
                   ))}
                 </SelectField>
-
+ 
                 <Input
                   name="extension-requested-to"
                   label="Thời hạn mới đề xuất"
@@ -407,7 +546,7 @@ export default function ExtensionRequestsPage() {
                   value={form.requestedTo}
                   onChange={(e) => setForm((prev) => ({ ...prev, requestedTo: e.target.value }))}
                 />
-
+ 
                 <TextAreaField
                   id="extension-reason"
                   label="Lý do xin gia hạn"
@@ -415,7 +554,7 @@ export default function ExtensionRequestsPage() {
                   onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
                   placeholder="Mô tả ngắn gọn sự cố, khối lượng còn lại và cam kết hoàn thành..."
                 />
-
+ 
                 <Button type="submit" variant="primary" icon={<Plus />} isLoading={submitting} disabled={selectedMilestones.length === 0}>
                   Gửi yêu cầu
                 </Button>
@@ -423,7 +562,7 @@ export default function ExtensionRequestsPage() {
             )}
           </Card>
         )}
-
+ 
         <Card title="Danh sách yêu cầu" subtitle={isStudent ? 'Theo dõi trạng thái yêu cầu của nhóm' : 'Xử lý các yêu cầu gia hạn đang chờ'}>
           {requests.length === 0 ? (
             <div className={css.s10}>
@@ -446,7 +585,7 @@ export default function ExtensionRequestsPage() {
                     </div>
                     <StatusBadge status={request.status} />
                   </div>
-
+ 
                   <div className={css.s18}>
                     <div>
                       <div className="text-label">Deadline mới</div>
@@ -473,11 +612,11 @@ export default function ExtensionRequestsPage() {
                       </div>
                     </div>
                   </div>
-
+ 
                   <div className={css.s23}>
                     <strong className={css.s24}>Lý do:</strong> {request.reason}
                   </div>
-
+ 
                   {(request.supervisorApproval?.note || request.facultyDecision?.note) && (
                     <div className={css.s25}>
                       {request.supervisorApproval?.note && (
@@ -492,7 +631,7 @@ export default function ExtensionRequestsPage() {
                       )}
                     </div>
                   )}
-
+ 
                   {(canSupervisorReview(request) || canFacultyDecide(request)) && (
                     <div className={css.s30}>
                       {canSupervisorReview(request) && (
@@ -510,6 +649,22 @@ export default function ExtensionRequestsPage() {
                 </div>
               ))}
             </div>
+          )}
+          {requests.length > 0 && (
+            <Pagination
+              compact
+              currentPage={currentPage}
+              totalPages={pagination.pages}
+              totalItems={pagination.total}
+              pageSize={pagination.limit}
+              currentItemCount={requests.length}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageSizeChange={handlePageSizeChange}
+              isLoading={loading}
+              itemLabel={'yêu cầu'}
+              onPageChange={setCurrentPage}
+              className="mt-4"
+            />
           )}
         </Card>
       </div>

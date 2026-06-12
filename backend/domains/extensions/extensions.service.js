@@ -96,8 +96,14 @@ const facultyDecide = async (requestId, status, note, actorUserId) => {
   return request;
 };
 
-const getRequests = async (query = {}, actor = {}) => {
-  const filter = { ...query };
+const getRequests = async (queryParams = {}, actor = {}) => {
+  const { search = '', status = '', page = 1, limit = 10 } = queryParams;
+  const filter = {};
+
+  if (status) {
+    filter.status = status;
+  }
+
   const roles = actor.roles || [];
 
   if (roles.includes('STUDENT') && actor.studentId) {
@@ -118,20 +124,69 @@ const getRequests = async (query = {}, actor = {}) => {
     filter._id = { $exists: false };
   }
 
-  return await ExtensionRequest.find(filter)
-    .populate({
-      path: 'projectId',
-      select: 'status topicId supervisorId',
-      populate: [
-        { path: 'topicId', select: 'title' },
-        { path: 'supervisorId', populate: { path: 'userId', select: 'fullName email' } },
-      ],
-    })
-    .populate({
-      path: 'groupId',
-      select: 'name'
-    })
-    .sort({ createdAt: -1 });
+  if (search) {
+    // Find matching groups by name
+    const groups = await ProjectGroup.find({
+      name: { $regex: search, $options: 'i' },
+      isDeleted: { $ne: true },
+    }).select('_id');
+
+    // Find matching topic titles
+    const ProjectTopic = require('../../models/ProjectTopic');
+    const topics = await ProjectTopic.find({
+      title: { $regex: search, $options: 'i' },
+      isDeleted: { $ne: true },
+    }).select('_id');
+
+    // Find projects referencing those topics
+    const projects = await Project.find({
+      topicId: { $in: topics.map(t => t._id) },
+    }).select('_id');
+
+    const searchFilter = [];
+    if (groups.length > 0) {
+      searchFilter.push({ groupId: { $in: groups.map(g => g._id) } });
+    }
+    if (projects.length > 0) {
+      searchFilter.push({ projectId: { $in: projects.map(p => p._id) } });
+    }
+
+    if (searchFilter.length > 0) {
+      filter.$or = searchFilter;
+    } else {
+      filter._id = { $exists: false };
+    }
+  }
+
+  const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+
+  const [requests, total] = await Promise.all([
+    ExtensionRequest.find(filter)
+      .populate({
+        path: 'projectId',
+        select: 'status topicId supervisorId',
+        populate: [
+          { path: 'topicId', select: 'title' },
+          { path: 'supervisorId', populate: { path: 'userId', select: 'fullName email' } },
+        ],
+      })
+      .populate({
+        path: 'groupId',
+        select: 'name'
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit)),
+    ExtensionRequest.countDocuments(filter),
+  ]);
+
+  return {
+    requests,
+    total,
+    page: Number(page),
+    pages: Math.ceil(total / Number(limit)),
+    limit: Number(limit)
+  };
 };
 
 const getRequestById = async (id, actor = {}) => {
