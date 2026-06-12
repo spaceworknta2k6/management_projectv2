@@ -7,6 +7,7 @@ import api from '@/services/api';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import FilterCard from '@/components/ui/FilterCard';
 import Badge from '@/components/ui/Badge';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
@@ -323,33 +324,40 @@ export default function GroupsPage() {
       ) : isStaff ? (
         /* ─── Staff View ─── */
         <div>
-          {/* Period selector */}
-          <div className={css.s6}>
-            <span className={css.s7}>Chọn Đợt Đồ Án:</span>
-            <select
-              value={selectedPeriodId}
-              onChange={(e) => setSelectedPeriodId(e.target.value)} className={css.s36} >
-              {periods.map((p) => (
-                <option key={p._id} value={p._id}>
-                  {p.name} ({p.schoolYear})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Search form (staff only) */}
-          <form onSubmit={handleSearchSubmit} className={css.searchRow}>
-            <Input
-              placeholder="Tìm theo tên nhóm, trưởng nhóm..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              icon={<MagnifyingGlass size={16} />}
-            />
-            <Button type="submit" variant="secondary" size="sm">Tìm</Button>
-            {search && (
-              <Button type="button" variant="ghost" size="sm" onClick={handleResetSearch}>Xóa</Button>
-            )}
-          </form>
+          <FilterCard
+            searchInput={searchInput}
+            setSearchInput={setSearchInput}
+            onSearch={handleSearchSubmit}
+            onReset={handleResetSearch}
+            placeholder="Tìm theo tên nhóm, trưởng nhóm..."
+            hasFilters={true}
+          >
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>Chọn Đợt Đồ Án</label>
+              <select
+                value={selectedPeriodId}
+                onChange={(e) => {
+                  setSelectedPeriodId(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  backgroundColor: 'var(--bg-surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                }}
+              >
+                {periods.map((p) => (
+                  <option key={p._id} value={p._id}>
+                    {p.name} ({p.schoolYear})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </FilterCard>
 
           {visibleGroups.length === 0 ? (
             <Card>

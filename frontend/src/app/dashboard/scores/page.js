@@ -7,6 +7,7 @@ import api from '@/services/api';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import FilterCard from '@/components/ui/FilterCard';
 import Badge from '@/components/ui/Badge';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
@@ -263,18 +264,13 @@ export default function ScoresPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSearchSubmit} className={css.searchRow}>
-        <Input
-          placeholder="Tìm theo tên đề tài, hội đồng, nhóm..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          icon={<MagnifyingGlass size={16} />}
-        />
-        <Button type="submit" variant="secondary" size="sm">Tìm</Button>
-        {search && (
-          <Button type="button" variant="ghost" size="sm" onClick={handleResetSearch}>Xóa</Button>
-        )}
-      </form>
+      <FilterCard
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
+        onSearch={handleSearchSubmit}
+        onReset={handleResetSearch}
+        placeholder="Tìm theo tên đề tài, hội đồng, nhóm..."
+      />
 
       <div className={css.s6}>
         {pagedSessions.map((session) => (

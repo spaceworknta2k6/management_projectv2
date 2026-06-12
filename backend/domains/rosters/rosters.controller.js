@@ -60,9 +60,31 @@ const removeStudent = async (req, res, next) => {
   }
 };
 
+const updateRosterEntry = async (req, res, next) => {
+  try {
+    const result = await rostersService.updateRosterEntry(
+      req.params.periodId,
+      req.params.studentId,
+      req.body,
+      req.user._id
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật thông tin sinh viên thành công!',
+      data: result,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 module.exports = {
   importRoster,
   addSingleStudent,
   getRoster,
   removeStudent,
+  updateRosterEntry,
 };

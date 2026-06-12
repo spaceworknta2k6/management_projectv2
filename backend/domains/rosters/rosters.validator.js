@@ -78,7 +78,26 @@ const validateRosterSingleAdd = (req, res, next) => {
   next();
 };
 
+const validateRosterUpdate = (req, res, next) => {
+  const { classSection, fullName, studentCode } = req.body;
+  const hasAny = [
+    classSection && typeof classSection === 'string' && classSection.trim(),
+    fullName && typeof fullName === 'string' && fullName.trim(),
+    studentCode && typeof studentCode === 'string' && studentCode.trim(),
+  ].some(Boolean);
+
+  if (!hasAny) {
+    return res.status(422).json({
+      success: false,
+      message: 'Dữ liệu không hợp lệ.',
+      errors: [{ field: 'body', code: 'NO_UPDATE_FIELDS', message: 'Phải có ít nhất một trường để cập nhật (fullName, studentCode, classSection).' }],
+    });
+  }
+  next();
+};
+
 module.exports = {
   validateRosterImport,
   validateRosterSingleAdd,
+  validateRosterUpdate,
 };

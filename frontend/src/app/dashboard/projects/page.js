@@ -8,6 +8,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Input from '@/components/ui/Input';
+import FilterCard from '@/components/ui/FilterCard';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
@@ -324,18 +325,13 @@ export default function ProjectsPage() {
       </div>
 
       {/* Projects list */}
-      <form onSubmit={handleSearchSubmit} className={css.searchRow}>
-        <Input
-          placeholder="Tìm theo tên đề tài, nhóm, GVHD..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          icon={<MagnifyingGlass size={16} />}
-        />
-        <Button type="submit" variant="secondary" size="sm">Tìm</Button>
-        {search && (
-          <Button type="button" variant="ghost" size="sm" onClick={handleResetSearch}>Xóa</Button>
-        )}
-      </form>
+      <FilterCard
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
+        onSearch={handleSearchSubmit}
+        onReset={handleResetSearch}
+        placeholder="Tìm theo tên đề tài, nhóm, GVHD..."
+      />
 
       {loading ? (
         <div className={css.s5}>

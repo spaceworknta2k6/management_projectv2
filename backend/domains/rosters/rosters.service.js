@@ -238,9 +238,59 @@ const removeStudentFromRoster = async (periodId, studentId, actorId) => {
   return rosterEntry;
 };
 
+const updateRosterEntry = async (periodId, studentId, updates, actorId) => {
+  const { classSection, fullName, studentCode } = updates;
+
+  const rosterEntry = await ProjectRoster.findOne({ periodId, studentId, status: 'active' });
+  if (!rosterEntry) {
+    throw { status: 404, message: 'Không tìm thấy sinh viên trong danh sách đợt đồ án.' };
+  }
+
+  const student = await Student.findById(studentId);
+  if (!student) {
+    throw { status: 404, message: 'Không tìm thấy hồ sơ sinh viên.' };
+  }
+
+  const user = await User.findById(student.userId);
+  if (!user) {
+    throw { status: 404, message: 'Không tìm thấy tài khoản sinh viên.' };
+  }
+
+  // Check studentCode uniqueness if changing
+  if (studentCode && studentCode.trim() !== student.studentCode) {
+    const existing = await Student.findOne({ studentCode: studentCode.trim() });
+    if (existing) {
+      throw { status: 409, message: `Mã sinh viên "${studentCode.trim()}" đã tồn tại trong hệ thống.` };
+    }
+    student.studentCode = studentCode.trim();
+  }
+
+  if (fullName && fullName.trim()) {
+    user.fullName = fullName.trim();
+  }
+
+  if (classSection && classSection.trim()) {
+    rosterEntry.classSection = classSection.trim();
+  }
+
+  await Promise.all([student.save(), user.save(), rosterEntry.save()]);
+
+  await logWorkflowEvent({
+    entityId: periodId,
+    fromStatus: '',
+    toStatus: 'updated',
+    actorId,
+    action: 'UPDATE_ROSTER_ENTRY',
+    reason: `Cập nhật thông tin sinh viên ID ${studentId} trong danh sách`,
+  });
+
+  return rosterEntry;
+};
+
 module.exports = {
   importRoster,
   addSingleStudent,
   getRosterByPeriod,
   removeStudentFromRoster,
+  updateRosterEntry,
 };

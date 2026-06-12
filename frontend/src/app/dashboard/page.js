@@ -144,6 +144,164 @@ function QuickAction({ icon: Icon, label, href }) {
   );
 }
 
+function TopicDonutChart({ topics }) {
+  const stats = useMemo(() => {
+    const counts = { approved: 0, pending: 0, rejected: 0, revision: 0 };
+    topics.forEach((t) => {
+      if (t.status === 'approved') counts.approved++;
+      else if (['submitted', 'ai_checked', 'pending_review'].includes(t.status)) counts.pending++;
+      else if (t.status === 'rejected') counts.rejected++;
+      else if (t.status === 'needs_revision') counts.revision++;
+    });
+    return counts;
+  }, [topics]);
+
+  const total = stats.approved + stats.pending + stats.rejected + stats.revision;
+
+  if (total === 0) {
+    return <div className={css.emptyChart}>Không có dữ liệu đề tài</div>;
+  }
+
+  const items = [
+    { label: 'Đã duyệt', count: stats.approved, color: 'var(--success)' },
+    { label: 'Chờ duyệt', count: stats.pending, color: 'var(--warning)' },
+    { label: 'Cần sửa đổi', count: stats.revision, color: 'var(--accent)' },
+    { label: 'Từ chối', count: stats.rejected, color: 'var(--error)' },
+  ].filter((item) => item.count > 0);
+
+  const size = 160;
+  const r = 50;
+  const circ = 2 * Math.PI * r;
+  const strokeWidth = 14;
+  const center = size / 2;
+
+  let currentOffset = 0;
+
+  return (
+    <div className={css.chartWrapper}>
+      <div className={css.svgContainer}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle
+            cx={center}
+            cy={center}
+            r={r}
+            fill="transparent"
+            stroke="var(--bg-raised)"
+            strokeWidth={strokeWidth}
+          />
+          {items.map((item, idx) => {
+            const pct = item.count / total;
+            const strokeLength = pct * circ;
+            const strokeOffset = circ - currentOffset + circ / 4;
+            currentOffset += strokeLength;
+
+            return (
+              <circle
+                key={idx}
+                cx={center}
+                cy={center}
+                r={r}
+                fill="transparent"
+                stroke={item.color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={`${strokeLength} ${circ - strokeLength}`}
+                strokeDashoffset={strokeOffset}
+                strokeLinecap="round"
+                className={css.donutSlice}
+              />
+            );
+          })}
+        </svg>
+        <div className={css.chartCenterLabel}>
+          <span className={css.chartCenterValue}>{total}</span>
+          <span className={css.chartCenterSub}>Đề tài</span>
+        </div>
+      </div>
+      <div className={css.chartLegend}>
+        {items.map((item, idx) => (
+          <div key={idx} className={css.legendItem}>
+            <span className={css.legendBullet} style={{ backgroundColor: item.color }} />
+            <span className={css.legendLabel}>{item.label}:</span>
+            <span className={css.legendValue}>
+              {item.count} ({Math.round((item.count / total) * 100)}%)
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProjectProgressBar({ projects }) {
+  const stats = useMemo(() => {
+    const counts = {
+      assigned: 0,
+      in_progress: 0,
+      pre_defense_submitted: 0,
+      defense_eligible: 0,
+      finalized: 0,
+      cancelled: 0,
+    };
+    projects.forEach((p) => {
+      if (p.status === 'assigned') counts.assigned++;
+      else if (p.status === 'in_progress') counts.in_progress++;
+      else if (['pre_defense_submitted', 'supervisor_reviewed', 'reviewer_reviewed'].includes(p.status)) {
+        counts.pre_defense_submitted++;
+      } else if (p.status === 'defense_eligible') counts.defense_eligible++;
+      else if (p.status === 'finalized') counts.finalized++;
+      else if (p.status === 'cancelled') counts.cancelled++;
+    });
+    return counts;
+  }, [projects]);
+
+  const total = Object.values(stats).reduce((a, b) => a + b, 0);
+
+  if (total === 0) {
+    return <div className={css.emptyChart}>Không có dữ liệu dự án</div>;
+  }
+
+  const items = [
+    { label: 'Mới phân công', count: stats.assigned, color: 'var(--accent)' },
+    { label: 'Đang thực hiện', count: stats.in_progress, color: 'var(--warning)' },
+    { label: 'Nộp báo cáo', count: stats.pre_defense_submitted, color: '#a855f7' },
+    { label: 'Đủ ĐK bảo vệ', count: stats.defense_eligible, color: '#10b981' },
+    { label: 'Đã hoàn thành', count: stats.finalized, color: 'var(--success)' },
+    { label: 'Đã hủy', count: stats.cancelled, color: 'var(--error)' },
+  ].filter((item) => item.count > 0);
+
+  return (
+    <div className={css.barChartWrapper}>
+      <div className={css.barContainer}>
+        {items.map((item, idx) => {
+          const pct = (item.count / total) * 100;
+          return (
+            <div
+              key={idx}
+              className={css.barSegment}
+              style={{
+                width: `${pct}%`,
+                backgroundColor: item.color,
+              }}
+              title={`${item.label}: ${item.count} (${Math.round(pct)}%)`}
+            />
+          );
+        })}
+      </div>
+      <div className={css.barLegendGrid}>
+        {items.map((item, idx) => (
+          <div key={idx} className={css.legendItem}>
+            <span className={css.legendBullet} style={{ backgroundColor: item.color }} />
+            <span className={css.legendLabel}>{item.label}:</span>
+            <span className={css.legendValue}>
+              {item.count} ({Math.round((item.count / total) * 100)}%)
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
@@ -412,6 +570,15 @@ export default function DashboardPage() {
         <StatCard icon={FolderSimple} label="Dự án" value={stats.projects} />
         <StatCard icon={Bell} label="Thông báo chưa đọc" value={stats.unreadNotifications} tone={stats.unreadNotifications > 0 ? 'warning' : 'success'} />
         {(isLecturer || hasAnyRole(user, ['SYSTEM_ADMIN'])) && <StatCard icon={FileText} label="Báo cáo cần xem" value={stats.submittedMilestones} tone={stats.submittedMilestones > 0 ? 'warning' : 'success'} />}
+      </div>
+
+      <div className={css.chartsGrid}>
+        <Card title="Trạng thái đề tài" subtitle="Biểu đồ phân bố trạng thái phê duyệt đề tài">
+          <TopicDonutChart topics={dashboard.topics} />
+        </Card>
+        <Card title="Tiến độ dự án" subtitle="Tỉ lệ hoàn thành và trạng thái dự án đang thực hiện">
+          <ProjectProgressBar projects={dashboard.projects} />
+        </Card>
       </div>
 
       <div className={css.s20} >

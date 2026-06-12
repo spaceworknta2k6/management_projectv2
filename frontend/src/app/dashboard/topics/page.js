@@ -10,6 +10,7 @@ import AiChatPanel from './components/AiChatPanel';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
+import FilterCard from '@/components/ui/FilterCard';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import Tabs from '@/components/ui/Tabs';
@@ -266,18 +267,13 @@ export default function TopicsPage() {
       <Tabs tabs={topicTabs} activeTab={activeTab} onChange={handleTabChange} />
 
       {/* Search form */}
-      <form onSubmit={handleSearchSubmit} className={css.searchRow}>
-        <Input
-          placeholder="Tìm theo tên đề tài, nhóm, GVHD..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          icon={<MagnifyingGlass size={16} />}
-        />
-        <Button type="submit" variant="secondary" size="sm">Tìm</Button>
-        {search && (
-          <Button type="button" variant="ghost" size="sm" onClick={handleResetSearch}>Xóa</Button>
-        )}
-      </form>
+      <FilterCard
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
+        onSearch={handleSearchSubmit}
+        onReset={handleResetSearch}
+        placeholder="Tìm theo tên đề tài, nhóm, GVHD..."
+      />
 
       {/* List items */}
       {loading ? (

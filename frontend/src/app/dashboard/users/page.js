@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import FilterCard from '@/components/ui/FilterCard';
 import Pagination from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, getRoleLabel, getTechnicalLabel } from '@/lib/utils';
@@ -285,60 +286,64 @@ export default function UsersPage() {
       </div>
 
       {/* Search & Filters */}
-      <Card className={css.s5}>
-        <form onSubmit={handleSearchSubmit} className={css.s6}>
-          <div className={css.s7}>
-            <Input
-              label="Tìm kiếm người dùng"
-              placeholder="Nhập tên hoặc email..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              icon={<MagnifyingGlass size={16} />}
-            />
-          </div>
+      <FilterCard
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
+        onSearch={handleSearchSubmit}
+        onReset={handleResetFilters}
+        placeholder="Tìm kiếm theo tên hoặc email..."
+        hasFilters={true}
+      >
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>Vai trò</label>
+          <select
+            value={roleFilter}
+            onChange={(e) => {
+              setRoleFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{
+              width: '100%',
+              padding: '10px 14px',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text-primary)',
+              outline: 'none',
+            }}
+          >
+            <option value="">Tất cả vai trò</option>
+            {ROLE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
 
-          <div className={css.s8}>
-            <label className={css.s9}>Vai trò</label>
-            <select
-              value={roleFilter}
-              onChange={(e) => {
-                setRoleFilter(e.target.value);
-                setCurrentPage(1);
-              }} className={css.s63} >
-              <option value="">Tất cả vai trò</option>
-              {ROLE_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className={css.s10}>
-            <label className={css.s11}>Trạng thái</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setCurrentPage(1);
-              }} className={css.s64} >
-              <option value="">Tất cả trạng thái</option>
-              <option value="active">Kích hoạt</option>
-              <option value="inactive">Không hoạt động</option>
-              <option value="locked">Đã khóa</option>
-            </select>
-          </div>
-
-          <div className={css.s12}>
-            <Button variant="primary" type="submit" icon={<MagnifyingGlass size={16} className={css.s13} />}>
-              Tìm kiếm
-            </Button>
-            {(search || roleFilter || statusFilter) && (
-              <Button variant="ghost" type="button" onClick={handleResetFilters} className={css.s14}>
-                Xóa lọc
-              </Button>
-            )}
-          </div>
-        </form>
-      </Card>
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>Trạng thái</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{
+              width: '100%',
+              padding: '10px 14px',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text-primary)',
+              outline: 'none',
+            }}
+          >
+            <option value="">Tất cả trạng thái</option>
+            <option value="active">Kích hoạt</option>
+            <option value="inactive">Không hoạt động</option>
+            <option value="locked">Đã khóa</option>
+          </select>
+        </div>
+      </FilterCard>
 
       {/* Users Table */}
       {loading ? (
