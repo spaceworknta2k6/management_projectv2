@@ -1,6 +1,7 @@
 const ProjectGroup = require('../models/ProjectGroup');
 const DefenseSession = require('../models/DefenseSession');
 const Committee = require('../models/Committee');
+const { resolveProjectOwner, isStudentOwner } = require('./project-owner');
 
 const STAFF_ROLES = ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF'];
 
@@ -47,12 +48,17 @@ const canAccessProject = async (project, user = {}) => {
   if (isStaff(user)) return true;
 
   if (user.studentId) {
-    const groupId = project.groupId?._id || project.groupId;
-    const group = await ProjectGroup.findOne({
-      _id: groupId,
-      isDeleted: { $ne: true },
-    });
-    if (isAcceptedGroupMember(group, user.studentId)) return true;
+    const owner = resolveProjectOwner(project);
+    if (isStudentOwner(owner, user.studentId)) return true;
+
+    if (owner?.ownerType === 'group') {
+      const groupId = owner.groupId || owner.ownerId;
+      const group = await ProjectGroup.findOne({
+        _id: groupId,
+        isDeleted: { $ne: true },
+      });
+      if (isAcceptedGroupMember(group, user.studentId)) return true;
+    }
   }
 
   if (user.lecturerId) {

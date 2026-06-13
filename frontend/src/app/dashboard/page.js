@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import { formatDate, getPrimaryRole, hasAnyRole } from '@/lib/utils';
+import { getId, isStudentProjectOwner } from '@/lib/projectOwner';
 import api from '@/services/api';
 import {
   Users,
@@ -22,15 +23,8 @@ import {
 } from '@phosphor-icons/react';
 import css from './page.module.css';
 
-function getId(value) {
-  if (!value) return '';
-  if (typeof value === 'string') return value;
-  return value._id || value.id || '';
-}
-
 function isStudentInProject(project, studentId) {
-  if (!studentId) return false;
-  return project.groupId?.members?.some((member) => getId(member.studentId) === studentId);
+  return isStudentProjectOwner(project, studentId);
 }
 
 function isLecturerOnProject(project, user) {
@@ -565,7 +559,7 @@ export default function DashboardPage() {
 
       <div className={css.s19} >
         {isStaff && <StatCard icon={CalendarBlank} label="Đợt đồ án" value={stats.periods} />}
-        <StatCard icon={Users} label="Nhóm" value={stats.groups} />
+        <StatCard icon={Users} label="Cá nhân/Nhóm" value={stats.groups} />
         <StatCard icon={BookOpen} label={isStaff ? 'Đề tài chờ duyệt' : 'Đề tài'} value={isStaff ? stats.pendingTopics : stats.topics} tone={isStaff && stats.pendingTopics > 0 ? 'warning' : 'info'} />
         <StatCard icon={FolderSimple} label="Dự án" value={stats.projects} />
         <StatCard icon={Bell} label="Thông báo chưa đọc" value={stats.unreadNotifications} tone={stats.unreadNotifications > 0 ? 'warning' : 'success'} />

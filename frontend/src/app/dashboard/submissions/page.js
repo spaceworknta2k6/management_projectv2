@@ -12,6 +12,12 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { FileText, Plus } from '@phosphor-icons/react';
 import css from './page.module.css';
 
+const getProjectOwnerLabel = (project) => (
+  project?.ownerType === 'student'
+    ? `Cá nhân: ${project.studentId?.userId?.fullName || project.studentId?.studentCode || 'Sinh viên'}`
+    : `Nhóm: ${project.groupId?.name || 'Chưa rõ'}`
+);
+
 export default function SubmissionsPage() {
   const {
     user,
@@ -103,7 +109,7 @@ export default function SubmissionsPage() {
           >
             {projects.map((p) => (
               <option key={p._id} value={p._id}>
-                {p.topicId?.title || 'Dự án chưa cập nhật đề tài'} (Nhóm: {p.groupId?.name})
+                {p.topicId?.title || 'Dự án chưa cập nhật đề tài'} ({getProjectOwnerLabel(p)})
               </option>
             ))}
           </select>

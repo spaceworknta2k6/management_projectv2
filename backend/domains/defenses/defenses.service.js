@@ -2,6 +2,7 @@ const DefenseSession = require('../../models/DefenseSession');
 const Project = require('../../models/Project');
 const Committee = require('../../models/Committee');
 const Lecturer = require('../../models/Lecturer');
+const { resolveProjectOwner } = require('../../utils/project-owner');
 
 const timeToMinutes = (timeStr) => {
   const [h, m] = timeStr.split(':').map(Number);
@@ -90,9 +91,13 @@ const scheduleSession = async (data, user) => {
   // Overlapping Schedule Check
   await checkScheduleOverlap(defenseDate, startTime, endTime, committeeId);
 
+  const owner = resolveProjectOwner(project);
   const session = new DefenseSession({
     projectId,
-    groupId: project.groupId,
+    ownerType: owner?.ownerType,
+    ownerId: owner?.ownerId,
+    studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
+    groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : undefined,
     committeeId,
     reviewerId: project.reviewerId,
     mode,

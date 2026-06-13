@@ -12,6 +12,7 @@ export function useTopics(initialActiveTab = 'all') {
   const toast = useToast();
 
   const [periods, setPeriods] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showProposeModal, setShowProposeModal] = useState(false);
@@ -34,6 +35,8 @@ export function useTopics(initialActiveTab = 'all') {
 
   // Proposed topic form
   const [form, setForm] = useState({
+    ownerType: 'student',
+    groupId: '',
     title: '',
     summary: '',
     periodId: '',
@@ -41,7 +44,7 @@ export function useTopics(initialActiveTab = 'all') {
   const [submitting, setSubmitting] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState(null);
 
-  const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
+  const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']);
   const isStudent = hasAnyRole(user, ['STUDENT']);
 
   const loadData = useCallback(async () => {
@@ -58,12 +61,18 @@ export function useTopics(initialActiveTab = 'all') {
         setForm((prev) => ({ ...prev, periodId: pList[0]._id }));
       }
       setTopics(resTopics.data || []);
+      if (isStudent) {
+        const resGroups = await api.get('/groups', token).catch(() => ({ data: [] }));
+        setGroups(resGroups.data || []);
+      } else {
+        setGroups([]);
+      }
     } catch (err) {
       toast.error(err.message || 'Không thể tải dữ liệu đề tài');
     } finally {
       setLoading(false);
     }
-  }, [toast, token]);
+  }, [isStudent, toast, token]);
 
   useEffect(() => {
     if (token) {
@@ -73,30 +82,42 @@ export function useTopics(initialActiveTab = 'all') {
 
   const handleSubmitTopic = async (e) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.periodId) return;
+    if (!form.title.trim() || !form.periodId || !form.summary.trim()) {
+      toast.error('Vui lòng nhập đầy đủ đợt đồ án, tên đề tài và tóm tắt nội dung.');
+      return;
+    }
+
+    if (form.ownerType === 'group' && !form.groupId) {
+      toast.error('Vui long chon nhom khi dang ky de tai theo nhom.');
+      return;
+    }
 
     setSubmitting(true);
     try {
+      const payload = {
+        title: form.title.trim(),
+        summary: form.summary.trim(),
+        periodId: form.periodId,
+        ownerType: form.ownerType,
+        ...(form.ownerType === 'group' ? { groupId: form.groupId } : {}),
+      };
+
       if (editingTopicId) {
-        await api.put(`/topics/${editingTopicId}`, {
-          title: form.title.trim(),
-          summary: form.summary.trim(),
-          periodId: form.periodId,
-        }, token);
+        await api.put(`/topics/${editingTopicId}`, payload, token);
         toast.success('Cập nhật đề tài thành công! Chờ Giáo vụ duyệt lại.');
       } else {
-        await api.post('/topics', {
-          title: form.title.trim(),
-          summary: form.summary.trim(),
-          periodId: form.periodId,
-        }, token);
+        await api.post('/topics', payload, token);
         toast.success('Đề xuất đề tài thành công! Chờ Giáo vụ duyệt.');
       }
       setShowProposeModal(false);
       setEditingTopicId(null);
-      setForm((prev) => ({ ...prev, title: '', summary: '' }));
+      setForm((prev) => ({ ...prev, ownerType: 'student', groupId: '', title: '', summary: '' }));
       loadData();
     } catch (err) {
+      if (err.errors?.[0]?.message) {
+        toast.error(err.errors[0].message);
+        return;
+      }
       toast.error(err.message || 'Lỗi khi gửi đề xuất đề tài');
     } finally {
       setSubmitting(false);
@@ -106,6 +127,8 @@ export function useTopics(initialActiveTab = 'all') {
   const handleEditClick = (t) => {
     setEditingTopicId(t._id);
     setForm({
+      ownerType: t.ownerType || (t.groupId ? 'group' : 'student'),
+      groupId: t.groupId?._id || t.groupId || '',
       title: t.title,
       summary: t.summary || '',
       periodId: t.periodId?._id || t.periodId || '',
@@ -140,6 +163,21 @@ export function useTopics(initialActiveTab = 'all') {
       loadData();
     } catch (err) {
       toast.error(err.message || 'Lỗi khi yêu cầu chỉnh sửa');
+    }
+  };
+
+  const handleCancelTopic = async (id) => {
+    try {
+      const res = await api.post(`/topics/${id}/cancel`, {}, token);
+      const counts = res.data?.cancelledProjects
+        ? ` Đã hủy ${res.data.cancelledProjects} dự án liên kết.`
+        : '';
+      toast.success(`${res.message || 'Đã hủy đề tài.'}${counts}`);
+      loadData();
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Không thể hủy đề tài');
+      return false;
     }
   };
 
@@ -190,6 +228,8 @@ export function useTopics(initialActiveTab = 'all') {
   const handleSelectSuggestedTopic = (s) => {
     const originalTopic = topics.find(t => t._id === s.topicId);
     setForm({
+      ownerType: 'student',
+      groupId: '',
       title: s.title,
       summary: originalTopic?.summary || s.reason || '',
       periodId: periods[0]?._id || '',
@@ -244,9 +284,19 @@ export function useTopics(initialActiveTab = 'all') {
     return mappedStatus === activeTab;
   });
 
+  const availableGroups = groups.filter((group) => {
+    if (form.periodId && (group.periodId?._id || group.periodId) !== form.periodId) return false;
+    if (!user?.studentId) return false;
+    return (group.members || []).some((member) => {
+      const memberStudentId = member.studentId?._id || member.studentId;
+      return String(memberStudentId) === String(user.studentId) && member.status === 'accepted';
+    });
+  });
+
   return {
     user,
     periods,
+    groups: availableGroups,
     topics,
     loading,
     showProposeModal,
@@ -281,6 +331,7 @@ export function useTopics(initialActiveTab = 'all') {
     handleApprove,
     handleReject,
     handleRequestRevision,
+    handleCancelTopic,
     handleSuggestTopics,
     handleSendChat,
     handleSelectSuggestedTopic,

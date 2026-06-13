@@ -7,6 +7,16 @@ import api from '@/services/api';
 import { useToast } from '@/components/ui/Toast';
 import { hasAnyRole } from '@/lib/utils';
 
+const getId = (value) => value?._id || value;
+
+const isStudentProjectOwner = (project, studentId) => (
+  project?.ownerType === 'student' && String(getId(project.studentId) || getId(project.ownerId)) === String(studentId)
+);
+
+const isStudentGroupProjectMember = (project, studentId) => (
+  project?.groupId?.members?.some((member) => String(getId(member.studentId)) === String(studentId))
+);
+
 export function useSubmissions() {
   const router = useRouter();
   const pathname = usePathname();
@@ -62,10 +72,7 @@ export function useSubmissions() {
       const res = await api.get('/projects', token);
       let list = res.data || [];
       if (isStudent) {
-        // Find student group project
-        list = list.filter(p => 
-          p.groupId?.members?.some(m => m.studentId?._id === user?.studentId || m.studentId === user?.studentId)
-        );
+        list = list.filter((p) => isStudentProjectOwner(p, user?.studentId) || isStudentGroupProjectMember(p, user?.studentId));
       } else if (isLecturer) {
         list = list.filter(p => 
           p.supervisorId?._id === user?.lecturerId || 
@@ -181,7 +188,7 @@ export function useSubmissions() {
         note: submissionNote,
       }, token);
 
-      toast.success('Báo cáo đồ án của nhóm đã được nộp thành công!');
+      toast.success('Báo cáo đồ án đã được nộp thành công!');
       setShowSubmitModal(null);
       setUploadedFileId('');
       setFileName('');

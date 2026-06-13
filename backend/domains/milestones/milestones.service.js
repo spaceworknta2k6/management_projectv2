@@ -2,6 +2,26 @@ const Milestone = require('../../models/Milestone');
 const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
 const { assertProjectAccess } = require('../../utils/access-control');
+const { resolveProjectOwner, isStudentOwner } = require('../../utils/project-owner');
+
+const isAcceptedGroupMember = (group, studentId) => {
+  if (!group || !studentId) return false;
+  return group.members.some(
+    (member) => member.studentId.toString() === studentId.toString() && member.status === 'accepted'
+  );
+};
+
+const ensureStudentCanSubmitForProject = async (project, actorStudentId) => {
+  const owner = resolveProjectOwner(project);
+  if (isStudentOwner(owner, actorStudentId)) return;
+
+  if (owner?.ownerType === 'group') {
+    const group = await ProjectGroup.findOne({ _id: owner.groupId || owner.ownerId, isDeleted: { $ne: true } });
+    if (isAcceptedGroupMember(group, actorStudentId)) return;
+  }
+
+  throw { status: 403, message: 'Chỉ sinh viên thuộc chủ thể thực hiện dự án này mới có quyền nộp báo cáo mốc tiến độ.' };
+};
 
 const createMilestone = async (projectId, milestoneData, actorUserId, actorLecturerId) => {
   const project = await Project.findById(projectId);
@@ -92,16 +112,7 @@ const submitMilestoneWork = async (milestoneId, submissionData, actorUserId, act
     throw { status: 404, message: 'Dự án đồ án liên kết không tồn tại.' };
   }
 
-  // Security check: actor student must be in project group
-  const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
-  if (!group) {
-    throw { status: 404, message: 'Nhóm đồ án không tồn tại.' };
-  }
-
-  const isGroupMember = group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted');
-  if (!isGroupMember) {
-    throw { status: 403, message: 'Chỉ sinh viên thuộc nhóm đồ án này mới có quyền nộp báo cáo mốc tiến độ.' };
-  }
+  await ensureStudentCanSubmitForProject(project, actorStudentId);
 
   if (['locked', 'accepted'].includes(milestone.status)) {
     throw { status: 400, message: `Mốc tiến độ đã bị [${milestone.status}]. Không thể chỉnh sửa hoặc nộp báo cáo.` };

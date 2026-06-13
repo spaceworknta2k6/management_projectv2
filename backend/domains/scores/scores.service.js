@@ -5,6 +5,7 @@ const ProjectPeriod = require('../../models/ProjectPeriod');
 const DefenseSession = require('../../models/DefenseSession');
 const Committee = require('../../models/Committee');
 const { assertProjectAccess, canAccessProject, isStaff } = require('../../utils/access-control');
+const { resolveProjectOwner } = require('../../utils/project-owner');
 
 const assertScoreSheetPermission = async (project, rubricRole, user) => {
   if (!project || !user?.lecturerId) {
@@ -116,6 +117,7 @@ const submitScoreSheet = async (data, user) => {
       graderRole = user.roles && user.roles.length > 0 ? user.roles[0] : 'LECTURER';
     }
 
+    const owner = resolveProjectOwner(project);
     const sheet = new ScoreSheet({
       rubricId: data.rubricId,
       rubricRole,
@@ -123,7 +125,10 @@ const submitScoreSheet = async (data, user) => {
       targetType,
       targetId,
       projectId,
-      groupId,
+      ownerType: owner?.ownerType,
+      ownerId: owner?.ownerId,
+      studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
+      groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : groupId,
       periodId,
       graderId,
       graderRole,
@@ -329,9 +334,13 @@ const aggregateFinalGrade = async (projectId, user) => {
     existingGrade.formulaVersion = period.rubricVersion || '1.0';
     grade = await existingGrade.save();
   } else {
+    const owner = resolveProjectOwner(project);
     grade = new FinalGrade({
       projectId,
-      groupId: project.groupId,
+      ownerType: owner?.ownerType,
+      ownerId: owner?.ownerId,
+      studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
+      groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : undefined,
       periodId: project.periodId,
       evaluationMode: 'defense',
       componentScores,

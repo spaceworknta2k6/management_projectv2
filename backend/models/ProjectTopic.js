@@ -6,10 +6,20 @@ const ProjectTopicSchema = new mongoose.Schema({
     ref: 'ProjectPeriod',
     required: true,
   },
+  ownerType: {
+    type: String,
+    enum: ['student', 'group'],
+  },
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+  },
+  studentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Student',
+  },
   groupId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ProjectGroup',
-    required: true,
   },
   proposedByStudentId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -92,9 +102,48 @@ const ProjectTopicSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
 }, {
   timestamps: true,
 });
+
+ProjectTopicSchema.pre('validate', function () {
+  if (!this.ownerType && this.groupId) {
+    this.ownerType = 'group';
+  }
+
+  if (!this.ownerId && this.ownerType === 'group' && this.groupId) {
+    this.ownerId = this.groupId;
+  }
+
+  if (!this.ownerId && this.ownerType === 'student' && this.studentId) {
+    this.ownerId = this.studentId;
+  }
+
+  if (!this.studentId && this.ownerType === 'student' && this.ownerId) {
+    this.studentId = this.ownerId;
+  }
+});
+
+// Partial index: only one active topic per owner per period.
+ProjectTopicSchema.index(
+  { periodId: 1, ownerType: 1, ownerId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      ownerType: { $exists: true },
+      ownerId: { $exists: true },
+      isDeleted: false,
+      status: { $in: ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] }
+    }
+  }
+);
 
 // Partial index: only one active topic per group per period. Allows multiple drafts or cancelled ones.
 ProjectTopicSchema.index(
@@ -102,8 +151,9 @@ ProjectTopicSchema.index(
   { 
     unique: true, 
     partialFilterExpression: { 
+      groupId: { $exists: true },
       isDeleted: false, 
-      status: { $in: ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'completed'] } 
+      status: { $in: ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] } 
     } 
   }
 );

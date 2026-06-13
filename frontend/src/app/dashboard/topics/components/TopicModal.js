@@ -9,6 +9,7 @@ export default function TopicModal({
   form,
   setForm,
   periods,
+  groups = [],
   handleSubmitTopic,
   onClose,
   submitting,
@@ -37,13 +38,57 @@ export default function TopicModal({
             </select>
           </div>
 
+          {!editingTopicId && (
+            <>
+              <div className={css.s32}>
+                <label className={css.s33}>Hình thức thực hiện</label>
+                <select
+                  value={form.ownerType}
+                  onChange={(e) => setForm((p) => ({
+                    ...p,
+                    ownerType: e.target.value,
+                    groupId: e.target.value === 'student' ? '' : p.groupId,
+                  }))}
+                  className={css.s70}
+                >
+                  <option value="student">Cá nhân</option>
+                  <option value="group">Nhóm</option>
+                </select>
+              </div>
+
+              {form.ownerType === 'group' && (
+                <div className={css.s32}>
+                  <label className={css.s33}>Chọn nhóm</label>
+                  <select
+                    value={form.groupId}
+                    onChange={(e) => setForm((p) => ({ ...p, groupId: e.target.value }))}
+                    className={css.s70}
+                  >
+                    <option value="">Chọn nhóm đã tham gia</option>
+                    {groups.map((group) => (
+                      <option key={group._id} value={group._id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                  {groups.length === 0 && (
+                    <p className={css.s19}>Bạn chưa có nhóm đã chấp nhận trong đợt này.</p>
+                  )}
+                </div>
+              )}
+
+              {form.ownerType === 'student' && (
+                <p className={css.s19}>Nếu bạn chưa có trong danh sách tham gia đợt này, hệ thống sẽ thông báo khi gửi đề xuất.</p>
+              )}
+            </>
+          )}
+
           <Input
             label="Tên đề tài đồ án"
             name="title"
             value={form.title}
             onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
             placeholder="Nhập tên đề tài bằng tiếng Việt có dấu..."
-            required
           />
 
           <div className={css.s34}>

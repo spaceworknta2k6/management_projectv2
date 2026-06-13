@@ -13,6 +13,7 @@ import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { getTechnicalLabel, hasAnyRole } from '@/lib/utils';
+import { getMemberDisplay, getOwnerDisplay, getOwnerTypeLabel, isStudentProjectOwner } from '@/lib/projectOwner';
 import { FolderSimple, UserCheck, ShieldCheck, CheckSquare, ArrowsClockwise, ChatsCircle, MagnifyingGlass, FileText } from '@phosphor-icons/react';
 import { exportToCSV } from '@/lib/export';
 import css from './page.module.css';
@@ -73,13 +74,10 @@ export default function ProjectsPage() {
       // 1. Fetch all projects
       const resProjects = await api.get('/projects', token);
       
-      // If student, filter projects by group members
+      // If student, filter projects by project owner (personal or group)
       let projectList = resProjects.data || [];
       if (!isStaff && !isLecturer) {
-        // Find projects matching student group
-        projectList = projectList.filter(p => 
-          p.groupId?.members?.some(m => m.studentId?._id === user?.studentId || m.studentId === user?.studentId)
-        );
+        projectList = projectList.filter((p) => isStudentProjectOwner(p, user?.studentId));
       } else if (isLecturer) {
         // If lecturer, show projects they supervise or review
         projectList = projectList.filter(p => 
@@ -115,7 +113,7 @@ export default function ProjectsPage() {
     return projects.filter((p) => {
       const values = [
         p.topicId?.title,
-        p.groupId?.name,
+        getOwnerDisplay(p),
         p.periodId?.name,
         p.supervisorId?.userId?.fullName,
         p.reviewerId?.userId?.fullName,
@@ -256,8 +254,8 @@ export default function ProjectsPage() {
       'Mã Dự Án',
       'Tên Đề Tài',
       'Đợt Đồ Án',
-      'Nhóm Thực Hiện',
-      'Thành Viên Nhóm',
+      'Cá nhân/Nhóm',
+      'Thành viên/Người thực hiện',
       'Giảng Viên Hướng Dẫn',
       'Giảng Viên Phản Biện',
       'Trạng Thái',
@@ -277,22 +275,16 @@ export default function ProjectsPage() {
       }
     };
 
-    const data = visibleProjects.map((p) => {
-      const membersText = (p.groupId?.members || [])
-        .map((m) => `${m.studentId?.userId?.fullName || 'Sinh viên'} (${m.studentId?.userId?.email || ''})`)
-        .join('; ');
-
-      return [
+    const data = visibleProjects.map((p) => [
         p._id,
         p.topicId?.title || 'Chưa cập nhật đề tài',
         p.periodId?.name || '',
-        p.groupId?.name || '',
-        membersText,
+        `${getOwnerTypeLabel(p)}: ${getOwnerDisplay(p)}`,
+        getMemberDisplay(p),
         p.supervisorId?.userId?.fullName || '',
         p.reviewerId?.userId?.fullName || 'Chưa phân công phản biện',
         getStatusLabel(p.status),
-      ];
-    });
+      ]);
 
     exportToCSV(data, headers, `Danh_sach_du_an_Karl_${new Date().toISOString().slice(0, 10)}`);
   };
@@ -330,7 +322,7 @@ export default function ProjectsPage() {
         setSearchInput={setSearchInput}
         onSearch={handleSearchSubmit}
         onReset={handleResetSearch}
-        placeholder="Tìm theo tên đề tài, nhóm, GVHD..."
+        placeholder="Tìm theo tên đề tài, cá nhân/nhóm, GVHD..."
       />
 
       {loading ? (
@@ -352,7 +344,7 @@ export default function ProjectsPage() {
               <Card
                 key={p._id}
                 title={p.topicId?.title || 'Đang chờ cập nhật đề tài'}
-                subtitle={`Nhóm: ${p.groupId?.name || 'Chưa rõ'} | Mã đợt: ${p.periodId?.name || '—'}`}
+                subtitle={`${getOwnerTypeLabel(p)}: ${getOwnerDisplay(p)} | Mã đợt: ${p.periodId?.name || '—'}`}
                 actions={
                   <div className={css.s8}>
                     {getProjectStatusBadge(p.status)}

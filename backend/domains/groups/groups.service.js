@@ -4,22 +4,25 @@ const ProjectRoster = require('../../models/ProjectRoster');
 const Student = require('../../models/Student');
 const WorkflowEvent = require('../../models/WorkflowEvent');
 const Project = require('../../models/Project');
+const ProjectTopic = require('../../models/ProjectTopic');
 
 const logWorkflowEvent = async ({
+  entityType = 'ProjectGroup',
   entityId,
   fromStatus,
   toStatus,
   actorId,
+  actorRoles = ['STUDENT'],
   action,
   reason = '',
 }) => {
   return await WorkflowEvent.create({
-    entityType: 'ProjectGroup',
+    entityType,
     entityId,
     fromStatus,
     toStatus,
     actorId,
-    actorRoles: ['STUDENT'],
+    actorRoles,
     action,
     reason,
   });
@@ -263,6 +266,25 @@ const canManageGroup = (group, user) => {
   return { isStaff, isLeader };
 };
 
+const softDeleteGroup = async (group, user) => {
+  const fromStatus = group.status;
+  group.status = 'cancelled';
+  group.isDeleted = true;
+  group.deletedAt = new Date();
+  group.deletedBy = user._id;
+  await group.save();
+
+  await logWorkflowEvent({
+    entityId: group._id,
+    fromStatus,
+    toStatus: 'cancelled',
+    actorId: user._id,
+    actorRoles: user.roles || ['STUDENT'],
+    action: 'SOFT_DELETE_GROUP',
+    reason: 'Xóa mềm nhóm đồ án',
+  });
+};
+
 const updateGroup = async (groupId, data, user) => {
   const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
   if (!group) {
@@ -317,22 +339,75 @@ const deleteGroup = async (groupId, user) => {
     throw { status: 400, message: 'Nhóm đã có đề tài/dự án liên kết nên không thể xóa. Hãy hủy hoặc xử lý trạng thái nghiệp vụ thay vì xóa.' };
   }
 
-  group.status = 'cancelled';
-  group.isDeleted = true;
-  group.deletedAt = new Date();
-  group.deletedBy = user._id;
-  await group.save();
-
-  await logWorkflowEvent({
-    entityId: group._id,
-    fromStatus: group.status,
-    toStatus: 'cancelled',
-    actorId: user._id,
-    action: 'SOFT_DELETE_GROUP',
-    reason: 'Xóa mềm nhóm đồ án',
-  });
+  await softDeleteGroup(group, user);
 
   return { success: true, message: 'Nhóm đồ án đã được xóa thành công.' };
+};
+
+const cancelLinkedWorkAndDeleteGroup = async (groupId, user) => {
+  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
+  if (!group) {
+    throw { status: 404, message: 'Nhóm đồ án không tồn tại hoặc đã bị xóa.' };
+  }
+
+  const { isStaff } = canManageGroup(group, user);
+  if (!isStaff) {
+    throw { status: 403, message: 'Chỉ giáo vụ hoặc quản trị viên mới có quyền hủy liên kết và xóa nhóm.' };
+  }
+
+  const [projects, topics] = await Promise.all([
+    Project.find({ groupId: group._id }),
+    ProjectTopic.find({ groupId: group._id, isDeleted: { $ne: true } }),
+  ]);
+
+  for (const project of projects) {
+    const fromStatus = project.status;
+    project.status = 'cancelled';
+    project.isDeleted = true;
+    project.deletedAt = new Date();
+    project.deletedBy = user._id;
+    await project.save();
+
+    await logWorkflowEvent({
+      entityType: 'Project',
+      entityId: project._id,
+      fromStatus,
+      toStatus: 'cancelled',
+      actorId: user._id,
+      actorRoles: user.roles || ['FACULTY_STAFF'],
+      action: 'CANCEL_LINKED_PROJECT_FOR_GROUP_DELETE',
+      reason: `Hủy dự án liên kết khi xóa mềm nhóm ${group.name}`,
+    });
+  }
+
+  for (const topic of topics) {
+    const fromStatus = topic.status;
+    topic.status = 'cancelled';
+    topic.isDeleted = true;
+    topic.deletedAt = new Date();
+    topic.deletedBy = user._id;
+    await topic.save();
+
+    await logWorkflowEvent({
+      entityType: 'ProjectTopic',
+      entityId: topic._id,
+      fromStatus,
+      toStatus: 'cancelled',
+      actorId: user._id,
+      actorRoles: user.roles || ['FACULTY_STAFF'],
+      action: 'CANCEL_LINKED_TOPIC_FOR_GROUP_DELETE',
+      reason: `Hủy đề tài liên kết khi xóa mềm nhóm ${group.name}`,
+    });
+  }
+
+  await softDeleteGroup(group, user);
+
+  return {
+    success: true,
+    message: 'Đã hủy đề tài/dự án liên kết và xóa mềm nhóm đồ án.',
+    cancelledProjects: projects.length,
+    cancelledTopics: topics.length,
+  };
 };
 
 const getGroupsByPeriod = async (periodId) => {
@@ -372,6 +447,7 @@ module.exports = {
   confirmGroup,
   updateGroup,
   deleteGroup,
+  cancelLinkedWorkAndDeleteGroup,
   getGroupsByPeriod,
   getGroupById,
 };

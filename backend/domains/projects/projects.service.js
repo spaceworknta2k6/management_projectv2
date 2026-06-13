@@ -3,6 +3,7 @@ const ProjectGroup = require('../../models/ProjectGroup');
 const Lecturer = require('../../models/Lecturer');
 const WorkflowEvent = require('../../models/WorkflowEvent');
 const { canAccessProject, assertProjectAccess, isStaff } = require('../../utils/access-control');
+const { resolveProjectOwner, isStudentOwner } = require('../../utils/project-owner');
 
 const logWorkflowEvent = async ({
   entityId,
@@ -29,6 +30,10 @@ const getProjects = async (query = {}, user = {}) => {
     .populate({
       path: 'groupId',
       select: 'name members status',
+    })
+    .populate({
+      path: 'studentId',
+      populate: { path: 'userId', select: 'fullName email' },
     })
     .populate({
       path: 'topicId',
@@ -65,6 +70,10 @@ const getProjectById = async (id, user = {}) => {
       select: 'name members status',
     })
     .populate({
+      path: 'studentId',
+      populate: { path: 'userId', select: 'fullName email' },
+    })
+    .populate({
       path: 'topicId',
       select: 'title summary objectives scope technologies',
     })
@@ -97,9 +106,14 @@ const markInProgress = async (projectId, actorUserId, actorStudentId) => {
   // Verify actor is part of the project group or the supervisor
   let isAuthorized = false;
   if (actorStudentId) {
-    const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
-    if (group) {
-      isAuthorized = group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted');
+    const owner = resolveProjectOwner(project);
+    if (isStudentOwner(owner, actorStudentId)) {
+      isAuthorized = true;
+    } else if (owner?.ownerType === 'group') {
+      const group = await ProjectGroup.findOne({ _id: owner.groupId || owner.ownerId, isDeleted: { $ne: true } });
+      if (group) {
+        isAuthorized = group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted');
+      }
     }
   } else {
     // Check if supervisor

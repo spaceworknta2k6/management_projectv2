@@ -1,5 +1,12 @@
 const extensionsService = require('./extensions.service');
 
+const handle = (res, next, error) => {
+  if (error.status) {
+    return res.status(error.status).json({ success: false, message: error.message });
+  }
+  return next(error);
+};
+
 const createExtensionRequest = async (req, res, next) => {
   try {
     if (!req.user.studentId) {
@@ -12,10 +19,7 @@ const createExtensionRequest = async (req, res, next) => {
       data: result,
     });
   } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, message: error.message });
-    }
-    next(error);
+    return handle(res, next, error);
   }
 };
 
@@ -31,26 +35,33 @@ const supervisorRecommend = async (req, res, next) => {
       data: result,
     });
   } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, message: error.message });
-    }
-    next(error);
+    return handle(res, next, error);
   }
 };
 
 const facultyDecide = async (req, res, next) => {
   try {
-    const result = await extensionsService.facultyDecide(req.params.id, req.body.status, req.body.note, req.user._id);
+    const result = await extensionsService.facultyDecide(req.params.id, req.body.status, req.body.note, req.user._id, req.user.roles || []);
     return res.status(200).json({
       success: true,
-      message: 'Quyết định phê duyệt gia hạn của Giáo vụ thành công!',
+      message: 'Quyết định phê duyệt gia hạn của giáo vụ thành công!',
       data: result,
     });
   } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, message: error.message });
-    }
-    next(error);
+    return handle(res, next, error);
+  }
+};
+
+const cancelRequest = async (req, res, next) => {
+  try {
+    const result = await extensionsService.cancelRequest(req.params.id, req.user);
+    return res.status(200).json({
+      success: true,
+      message: 'Đã hủy yêu cầu gia hạn.',
+      data: result,
+    });
+  } catch (error) {
+    return handle(res, next, error);
   }
 };
 
@@ -66,10 +77,10 @@ const getRequests = async (req, res, next) => {
         page: result.page,
         pages: result.pages,
         limit: result.limit,
-      }
+      },
     });
   } catch (error) {
-    next(error);
+    return handle(res, next, error);
   }
 };
 
@@ -82,10 +93,7 @@ const getRequestById = async (req, res, next) => {
       data: result,
     });
   } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, message: error.message });
-    }
-    next(error);
+    return handle(res, next, error);
   }
 };
 
@@ -93,6 +101,7 @@ module.exports = {
   createExtensionRequest,
   supervisorRecommend,
   facultyDecide,
+  cancelRequest,
   getRequests,
   getRequestById,
 };

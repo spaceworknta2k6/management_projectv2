@@ -3,6 +3,41 @@ const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
 const Milestone = require('../../models/Milestone');
 const SubmissionPackage = require('../../models/SubmissionPackage');
+const DefenseSession = require('../../models/DefenseSession');
+const WorkflowEvent = require('../../models/WorkflowEvent');
+const { resolveProjectOwner } = require('../../utils/project-owner');
+
+const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(role));
+
+const logWorkflowEvent = async ({
+  entityType = 'ExtensionRequest',
+  entityId,
+  fromStatus = '',
+  toStatus,
+  actorId,
+  actorRoles = [],
+  action,
+  reason = '',
+  metadata = {},
+}) => WorkflowEvent.create({
+  entityType,
+  entityId,
+  fromStatus,
+  toStatus,
+  actorId,
+  actorRoles,
+  action,
+  reason,
+  metadata,
+});
+
+const ensureStudentInGroup = async (groupId, studentId) => {
+  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
+  if (!group || !group.members.some((m) => m.studentId.toString() === studentId.toString() && m.status === 'accepted')) {
+    throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
+  }
+  return group;
+};
 
 const createExtensionRequest = async (requestData, actorUserId, actorStudentId) => {
   const { projectId } = requestData;
@@ -12,17 +47,26 @@ const createExtensionRequest = async (requestData, actorUserId, actorStudentId) 
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
 
-  // Verify group membership
-  const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
-  if (!group || !group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted')) {
-    throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
+  await ensureStudentInGroup(project.groupId, actorStudentId);
+
+  const existing = await ExtensionRequest.findOne({
+    targetType: requestData.targetType,
+    targetId: requestData.targetId,
+    status: 'pending',
+  });
+  if (existing) {
+    throw { status: 400, message: 'Đối tượng này đang có một yêu cầu gia hạn chờ xử lý.' };
   }
 
+  const owner = resolveProjectOwner(project);
   const request = new ExtensionRequest({
     targetType: requestData.targetType,
     targetId: requestData.targetId,
     projectId,
-    groupId: project.groupId,
+    ownerType: owner?.ownerType,
+    ownerId: owner?.ownerId,
+    studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
+    groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : undefined,
     reason: requestData.reason.trim(),
     evidenceFileIds: requestData.evidenceFileIds || [],
     requestedTo: new Date(requestData.requestedTo),
@@ -30,6 +74,21 @@ const createExtensionRequest = async (requestData, actorUserId, actorStudentId) 
   });
 
   await request.save();
+  await logWorkflowEvent({
+    entityId: request._id,
+    toStatus: 'pending',
+    actorId: actorUserId,
+    actorRoles: ['STUDENT'],
+    action: 'CREATE_EXTENSION_REQUEST',
+    reason: request.reason,
+    metadata: {
+      projectId,
+      groupId: project.groupId,
+      targetType: request.targetType,
+      targetId: request.targetId,
+    },
+  });
+
   return request;
 };
 
@@ -38,13 +97,15 @@ const supervisorRecommend = async (requestId, status, note, actorUserId, actorLe
   if (!request) {
     throw { status: 404, message: 'Yêu cầu gia hạn không tồn tại.' };
   }
+  if (request.status !== 'pending') {
+    throw { status: 400, message: 'Chỉ xử lý được yêu cầu gia hạn đang chờ duyệt.' };
+  }
 
   const project = await Project.findById(request.projectId);
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án liên kết không tồn tại.' };
   }
 
-  // Verify supervisor identity
   if (!actorLecturerId || project.supervisorId.toString() !== actorLecturerId.toString()) {
     throw { status: 403, message: 'Chỉ giảng viên hướng dẫn của dự án mới được phép đánh giá khuyến nghị gia hạn.' };
   }
@@ -57,15 +118,70 @@ const supervisorRecommend = async (requestId, status, note, actorUserId, actorLe
   };
 
   await request.save();
+  await logWorkflowEvent({
+    entityId: request._id,
+    fromStatus: 'pending',
+    toStatus: 'pending',
+    actorId: actorUserId,
+    actorRoles: ['LECTURER', 'SUPERVISOR'],
+    action: status === 'approved' ? 'SUPERVISOR_APPROVE_EXTENSION' : 'SUPERVISOR_REJECT_EXTENSION',
+    reason: note.trim(),
+  });
+
   return request;
 };
 
-const facultyDecide = async (requestId, status, note, actorUserId) => {
+const applyApprovedExtension = async (request) => {
+  if (request.targetType === 'milestone') {
+    const milestone = await Milestone.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
+    if (milestone) {
+      milestone.deadline = request.requestedTo;
+      await milestone.save();
+    }
+    return;
+  }
+
+  if (request.targetType === 'submission') {
+    const pkg = await SubmissionPackage.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
+    if (pkg) {
+      pkg.deadline = request.requestedTo;
+      await pkg.save();
+    }
+    return;
+  }
+
+  if (request.targetType === 'project') {
+    const project = await Project.findById(request.projectId);
+    if (project) {
+      project.extendedUntil = request.requestedTo;
+      await project.save();
+    }
+    return;
+  }
+
+  if (request.targetType === 'defense_session') {
+    const session = await DefenseSession.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
+    if (session) {
+      session.defenseDate = request.requestedTo;
+      session.status = 'rescheduled';
+      await session.save();
+    }
+  }
+};
+
+const facultyDecide = async (requestId, status, note, actorUserId, actorRoles = []) => {
   const request = await ExtensionRequest.findById(requestId);
   if (!request) {
     throw { status: 404, message: 'Yêu cầu gia hạn không tồn tại.' };
   }
+  if (request.status !== 'pending') {
+    throw { status: 400, message: 'Chỉ xử lý được yêu cầu gia hạn đang chờ duyệt.' };
+  }
+  if ((request.supervisorApproval?.status || 'pending') === 'pending') {
+    throw { status: 400, message: 'GVHD cần cho ý kiến trước khi giáo vụ/khoa duyệt gia hạn.' };
+  }
 
+  const fromStatus = request.status;
   request.facultyDecision = {
     status,
     by: actorUserId,
@@ -73,25 +189,61 @@ const facultyDecide = async (requestId, status, note, actorUserId) => {
     note: note.trim(),
   };
 
-  request.status = status; // 'approved' or 'rejected'
+  request.status = status;
   await request.save();
 
-  // If approved, dynamically update the target entity deadline
   if (status === 'approved') {
-    if (request.targetType === 'milestone') {
-      const milestone = await Milestone.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
-      if (milestone) {
-        milestone.deadline = request.requestedTo;
-        await milestone.save();
-      }
-    } else if (request.targetType === 'submission') {
-      const pkg = await SubmissionPackage.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
-      if (pkg) {
-        pkg.deadline = request.requestedTo;
-        await pkg.save();
-      }
-    }
+    await applyApprovedExtension(request);
   }
+
+  await logWorkflowEvent({
+    entityId: request._id,
+    fromStatus,
+    toStatus: request.status,
+    actorId: actorUserId,
+    actorRoles,
+    action: status === 'approved' ? 'FACULTY_APPROVE_EXTENSION' : 'FACULTY_REJECT_EXTENSION',
+    reason: note.trim(),
+    metadata: {
+      targetType: request.targetType,
+      targetId: request.targetId,
+      requestedTo: request.requestedTo,
+    },
+  });
+
+  return request;
+};
+
+const cancelRequest = async (requestId, user = {}) => {
+  const request = await ExtensionRequest.findById(requestId);
+  if (!request) {
+    throw { status: 404, message: 'Yêu cầu gia hạn không tồn tại.' };
+  }
+  if (request.status !== 'pending') {
+    throw { status: 400, message: 'Chỉ hủy được yêu cầu gia hạn đang chờ xử lý.' };
+  }
+
+  if (!isStaff(user)) {
+    if (!user.studentId) {
+      throw { status: 403, message: 'Bạn không có quyền hủy yêu cầu gia hạn này.' };
+    }
+    await ensureStudentInGroup(request.groupId, user.studentId);
+  }
+
+  request.status = 'cancelled';
+  request.cancelledAt = new Date();
+  request.cancelledBy = user._id;
+  await request.save();
+
+  await logWorkflowEvent({
+    entityId: request._id,
+    fromStatus: 'pending',
+    toStatus: 'cancelled',
+    actorId: user._id,
+    actorRoles: user.roles || [],
+    action: 'CANCEL_EXTENSION_REQUEST',
+    reason: 'Hủy yêu cầu gia hạn',
+  });
 
   return request;
 };
@@ -120,35 +272,32 @@ const getRequests = async (queryParams = {}, actor = {}) => {
   } else if (roles.includes('LECTURER') && actor.lecturerId) {
     const projects = await Project.find({ supervisorId: actor.lecturerId }).select('_id');
     filter.projectId = { $in: projects.map((project) => project._id) };
-  } else if (!roles.includes('FACULTY_STAFF') && !roles.includes('SYSTEM_ADMIN')) {
+  } else if (!isStaff(actor)) {
     filter._id = { $exists: false };
   }
 
   if (search) {
-    // Find matching groups by name
     const groups = await ProjectGroup.find({
       name: { $regex: search, $options: 'i' },
       isDeleted: { $ne: true },
     }).select('_id');
 
-    // Find matching topic titles
     const ProjectTopic = require('../../models/ProjectTopic');
     const topics = await ProjectTopic.find({
       title: { $regex: search, $options: 'i' },
       isDeleted: { $ne: true },
     }).select('_id');
 
-    // Find projects referencing those topics
     const projects = await Project.find({
-      topicId: { $in: topics.map(t => t._id) },
+      topicId: { $in: topics.map((t) => t._id) },
     }).select('_id');
 
     const searchFilter = [];
     if (groups.length > 0) {
-      searchFilter.push({ groupId: { $in: groups.map(g => g._id) } });
+      searchFilter.push({ groupId: { $in: groups.map((g) => g._id) } });
     }
     if (projects.length > 0) {
-      searchFilter.push({ projectId: { $in: projects.map(p => p._id) } });
+      searchFilter.push({ projectId: { $in: projects.map((p) => p._id) } });
     }
 
     if (searchFilter.length > 0) {
@@ -172,7 +321,7 @@ const getRequests = async (queryParams = {}, actor = {}) => {
       })
       .populate({
         path: 'groupId',
-        select: 'name'
+        select: 'name',
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -185,7 +334,7 @@ const getRequests = async (queryParams = {}, actor = {}) => {
     total,
     page: Number(page),
     pages: Math.ceil(total / Number(limit)),
-    limit: Number(limit)
+    limit: Number(limit),
   };
 };
 
@@ -201,7 +350,7 @@ const getRequestById = async (id, actor = {}) => {
     })
     .populate({
       path: 'groupId',
-      select: 'name'
+      select: 'name',
     });
 
   if (!request) {
@@ -209,25 +358,13 @@ const getRequestById = async (id, actor = {}) => {
   }
   const roles = actor.roles || [];
   if (roles.includes('STUDENT') && actor.studentId) {
-    const group = await ProjectGroup.findOne({
-      _id: request.groupId?._id || request.groupId,
-      isDeleted: { $ne: true },
-      members: {
-        $elemMatch: {
-          studentId: actor.studentId,
-          status: 'accepted',
-        },
-      },
-    });
-    if (!group) {
-      throw { status: 403, message: 'Bạn không có quyền xem yêu cầu gia hạn này.' };
-    }
+    await ensureStudentInGroup(request.groupId?._id || request.groupId, actor.studentId);
   } else if (roles.includes('LECTURER') && actor.lecturerId) {
     const supervisorId = request.projectId?.supervisorId?._id || request.projectId?.supervisorId;
     if (!supervisorId || supervisorId.toString() !== actor.lecturerId.toString()) {
       throw { status: 403, message: 'Bạn không có quyền xem yêu cầu gia hạn này.' };
     }
-  } else if (!roles.includes('FACULTY_STAFF') && !roles.includes('SYSTEM_ADMIN')) {
+  } else if (!isStaff(actor)) {
     throw { status: 403, message: 'Bạn không có quyền xem yêu cầu gia hạn này.' };
   }
 
@@ -238,6 +375,7 @@ module.exports = {
   createExtensionRequest,
   supervisorRecommend,
   facultyDecide,
+  cancelRequest,
   getRequests,
   getRequestById,
 };

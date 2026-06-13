@@ -12,6 +12,7 @@ import Spinner from '@/components/ui/Spinner';
 import Pagination from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatDateTime, hasAnyRole } from '@/lib/utils';
+import { getOwnerDisplay, getOwnerTypeLabel, isStudentProjectOwner } from '@/lib/projectOwner';
 import {
   ArrowsClockwise,
   Calendar,
@@ -36,6 +37,7 @@ const statusMeta = {
   approved: { label: 'Đã duyệt', variant: 'success' },
   rejected: { label: 'Từ chối', variant: 'error' },
   expired: { label: 'Hết hạn', variant: 'neutral' },
+  cancelled: { label: 'Đã hủy', variant: 'error' },
 };
 
 const approvalMeta = {
@@ -187,9 +189,7 @@ export default function ExtensionRequestsPage() {
 
   const visibleProjects = useMemo(() => {
     if (isStudent) {
-      return projects.filter((project) =>
-        project.groupId?.members?.some((member) => String(member.studentId?._id || member.studentId) === String(user?.studentId))
-      );
+      return projects.filter((project) => isStudentProjectOwner(project, user?.studentId));
     }
 
     if (isLecturer && !isFaculty) {
@@ -235,7 +235,7 @@ export default function ExtensionRequestsPage() {
 
       const scopedProjects = projectList.filter((project) => {
         if (isStudent) {
-          return project.groupId?.members?.some((member) => String(member.studentId?._id || member.studentId) === String(user?.studentId));
+          return isStudentProjectOwner(project, user?.studentId);
         }
         if (isLecturer && !isFaculty) {
           return String(project.supervisorId?._id || project.supervisorId) === String(user?.lecturerId);
@@ -426,6 +426,20 @@ export default function ExtensionRequestsPage() {
     ['approved', 'rejected'].includes(request.supervisorApproval?.status || '')
   );
 
+  const canCancelRequest = (request) => request.status === 'pending' && (isFaculty || isStudent);
+
+  const handleCancelRequest = async (request) => {
+    if (!window.confirm('Hủy yêu cầu gia hạn này?')) return;
+
+    try {
+      await api.post(`/extensions/${request._id}/cancel`, {}, token);
+      toast.success('Đã hủy yêu cầu gia hạn.');
+      loadData();
+    } catch (err) {
+      toast.error(err.message || 'Không thể hủy yêu cầu gia hạn.');
+    }
+  };
+
   const getTargetLabel = (request) => {
     const milestone = milestoneMap[request.targetId];
     if (milestone) return milestone.title;
@@ -461,7 +475,7 @@ export default function ExtensionRequestsPage() {
           <div className={css.searchField}>
             <Input
               label="Tìm kiếm yêu cầu"
-              placeholder="Nhập tên nhóm hoặc đề tài..."
+              placeholder="Nhập cá nhân/nhóm hoặc đề tài..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               icon={<MagnifyingGlass size={16} />}
@@ -483,6 +497,7 @@ export default function ExtensionRequestsPage() {
               <option value="approved">Đã duyệt</option>
               <option value="rejected">Từ chối</option>
               <option value="expired">Hết hạn</option>
+              <option value="cancelled">Đã hủy</option>
             </select>
           </div>
 
@@ -501,7 +516,7 @@ export default function ExtensionRequestsPage() {
 
       <div className={[css.extensionGrid, isStudent ? css.extensionGridStudent : ''].filter(Boolean).join(' ')}>
         {isStudent && (
-          <Card title="Gửi yêu cầu gia hạn" subtitle="Áp dụng cho mốc tiến độ của dự án nhóm">
+          <Card title="Gửi yêu cầu gia hạn" subtitle="Áp dụng cho mốc tiến độ của dự án cá nhân hoặc nhóm">
             {visibleProjects.length === 0 ? (
               <div className={css.s8}>
                 Bạn chưa có dự án đang tham gia để gửi yêu cầu gia hạn.
@@ -563,7 +578,7 @@ export default function ExtensionRequestsPage() {
           </Card>
         )}
  
-        <Card title="Danh sách yêu cầu" subtitle={isStudent ? 'Theo dõi trạng thái yêu cầu của nhóm' : 'Xử lý các yêu cầu gia hạn đang chờ'}>
+        <Card title="Danh sách yêu cầu" subtitle={isStudent ? 'Theo dõi trạng thái yêu cầu của cá nhân/nhóm' : 'Xử lý các yêu cầu gia hạn đang chờ'}>
           {requests.length === 0 ? (
             <div className={css.s10}>
               <Calendar size={36} weight="duotone" className={css.s11} />
@@ -580,7 +595,7 @@ export default function ExtensionRequestsPage() {
                         {getProjectTitle(request.projectId)}
                       </h3>
                       <p className={css.s17}>
-                        Nhóm: {request.groupId?.name || 'Không xác định'} · {getTargetLabel(request)}
+                        {getOwnerTypeLabel(request)}: {getOwnerDisplay(request)} · {getTargetLabel(request)}
                       </p>
                     </div>
                     <StatusBadge status={request.status} />
@@ -644,6 +659,13 @@ export default function ExtensionRequestsPage() {
                           Quyết định
                         </Button>
                       )}
+                    </div>
+                  )}
+                  {canCancelRequest(request) && (
+                    <div className={css.s30}>
+                      <Button size="sm" variant="secondary" icon={<X />} onClick={() => handleCancelRequest(request)}>
+                        Hủy yêu cầu
+                      </Button>
                     </div>
                   )}
                 </div>

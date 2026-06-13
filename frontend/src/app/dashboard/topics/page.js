@@ -11,6 +11,7 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import FilterCard from '@/components/ui/FilterCard';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import Tabs from '@/components/ui/Tabs';
@@ -68,9 +69,12 @@ export default function TopicsPage() {
   const [pageSize, setPageSize] = useState(initialQuery.limit);
   const [searchInput, setSearchInput] = useState(initialQuery.search);
   const [search, setSearch] = useState(initialQuery.search);
+  const [topicToCancel, setTopicToCancel] = useState(null);
+  const [cancellingTopic, setCancellingTopic] = useState(false);
   const {
     user,
     periods,
+    groups,
     loading,
     showProposeModal,
     setShowProposeModal,
@@ -103,6 +107,7 @@ export default function TopicsPage() {
     handleApprove,
     handleReject,
     handleRequestRevision,
+    handleCancelTopic,
     handleSuggestTopics,
     handleSendChat,
     handleSelectSuggestedTopic,
@@ -213,6 +218,14 @@ export default function TopicsPage() {
     exportToCSV(data, headers, `Danh_sach_de_tai_Karl_${new Date().toISOString().slice(0, 10)}`);
   };
 
+  const handleConfirmCancelTopic = async () => {
+    if (!topicToCancel) return;
+    setCancellingTopic(true);
+    const cancelled = await handleCancelTopic(topicToCancel._id);
+    setCancellingTopic(false);
+    if (cancelled) setTopicToCancel(null);
+  };
+
   return (
     <div>
       {/* Page Header section */}
@@ -298,6 +311,7 @@ export default function TopicsPage() {
               handleRequestRevision={handleRequestRevision}
               handleReject={handleReject}
               handleApprove={handleApprove}
+              handleCancelClick={setTopicToCancel}
               handleEditClick={handleEditClick}
               handleCheckDuplicate={handleCheckDuplicate}
               aiCheckingId={aiCheckingId}
@@ -324,11 +338,12 @@ export default function TopicsPage() {
           form={form}
           setForm={setForm}
           periods={periods}
+          groups={groups}
           handleSubmitTopic={handleSubmitTopic}
           onClose={() => {
             setShowProposeModal(false);
             setEditingTopicId(null);
-            setForm((prev) => ({ ...prev, title: '', summary: '' }));
+            setForm((prev) => ({ ...prev, ownerType: 'student', groupId: '', title: '', summary: '' }));
           }}
           submitting={submitting}
         />
@@ -360,6 +375,15 @@ export default function TopicsPage() {
           onClose={() => setChatOpen(false)}
         />
       )}
+      <ConfirmDialog
+        open={Boolean(topicToCancel)}
+        title="Hủy đề tài"
+        message={topicToCancel ? `Bạn có chắc chắn muốn hủy đề tài "${topicToCancel.title}"? Nếu đề tài đã có dự án liên kết, dự án đó cũng sẽ được hủy.` : ''}
+        confirmLabel="Hủy đề tài"
+        loading={cancellingTopic}
+        onCancel={() => setTopicToCancel(null)}
+        onConfirm={handleConfirmCancelTopic}
+      />
     </div>
   );
 }

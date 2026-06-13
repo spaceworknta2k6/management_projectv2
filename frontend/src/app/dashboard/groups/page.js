@@ -60,6 +60,12 @@ export default function GroupsPage() {
   const [loading, setLoading] = useState(true);
   const [groupToDelete, setGroupToDelete] = useState(null);
   const [deletingGroup, setDeletingGroup] = useState(false);
+  const [groupToCancelAndDelete, setGroupToCancelAndDelete] = useState(null);
+  const [cancellingLinkedWork, setCancellingLinkedWork] = useState(false);
+  const [groupToEdit, setGroupToEdit] = useState(null);
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editGroupError, setEditGroupError] = useState('');
+  const [updatingGroup, setUpdatingGroup] = useState(false);
 
   // Student active group
   const [myGroup, setMyGroup] = useState(null);
@@ -163,7 +169,10 @@ export default function GroupsPage() {
 
   const handleCreateGroup = async (e) => {
     e.preventDefault();
-    if (!newGroupName.trim()) return;
+    if (!newGroupName.trim()) {
+      toast.error('Vui lòng nhập tên nhóm đồ án.');
+      return;
+    }
     if (!periods.length) {
       toast.error('Không tìm thấy đợt đồ án đang hoạt động.');
       return;
@@ -190,7 +199,11 @@ export default function GroupsPage() {
 
   const handleInvite = async (e) => {
     e.preventDefault();
-    if (!inviteStudentId.trim() || !myGroup) return;
+    if (!inviteStudentId.trim()) {
+      toast.error('Vui lòng nhập ID sinh viên.');
+      return;
+    }
+    if (!myGroup) return;
 
     setInviting(true);
     try {
@@ -278,15 +291,43 @@ export default function GroupsPage() {
     setCurrentPage(1);
   };
 
-  const handleEditGroup = async (group) => {
-    const name = window.prompt('Tên nhóm mới', group.name);
-    if (!name || !name.trim() || name.trim() === group.name) return;
+  const handleEditGroup = (group) => {
+    setGroupToEdit(group);
+    setEditGroupName(group.name || '');
+    setEditGroupError('');
+  };
+
+  const handleCancelEditGroup = () => {
+    if (updatingGroup) return;
+    setGroupToEdit(null);
+    setEditGroupName('');
+    setEditGroupError('');
+  };
+
+  const handleUpdateGroup = async (e) => {
+    e.preventDefault();
+    if (!groupToEdit) return;
+    const name = editGroupName.trim();
+    if (!name) {
+      setEditGroupError('Vui lòng nhập tên nhóm mới.');
+      return;
+    }
+    if (name === groupToEdit.name) {
+      handleCancelEditGroup();
+      return;
+    }
+    setUpdatingGroup(true);
     try {
-      await api.patch(`/groups/${group._id}`, { name: name.trim() }, token);
+      await api.patch(`/groups/${groupToEdit._id}`, { name }, token);
       toast.success('Đã cập nhật nhóm đồ án.');
+      setGroupToEdit(null);
+      setEditGroupName('');
+      setEditGroupError('');
       reloadGroups();
     } catch (err) {
       toast.error(err.message || 'Không thể cập nhật nhóm');
+    } finally {
+      setUpdatingGroup(false);
     }
   };
 
@@ -298,9 +339,35 @@ export default function GroupsPage() {
       setGroupToDelete(null);
       reloadGroups();
     } catch (err) {
+      if (
+        isStaff &&
+        err.status === 400 &&
+        String(err.message || '').includes('đề tài/dự án liên kết')
+      ) {
+        setGroupToDelete(null);
+        setGroupToCancelAndDelete(group);
+        return;
+      }
       toast.error(err.message || 'Không thể xóa nhóm');
     } finally {
       setDeletingGroup(false);
+    }
+  };
+
+  const handleCancelLinkedWorkAndDeleteGroup = async (group) => {
+    setCancellingLinkedWork(true);
+    try {
+      const result = await api.post(`/groups/${group._id}/cancel-linked-and-delete`, {}, token);
+      const counts = result.data
+        ? ` Đã hủy ${result.data.cancelledTopics} đề tài và ${result.data.cancelledProjects} dự án liên kết.`
+        : '';
+      toast.success(`${result.message || 'Đã xóa mềm nhóm đồ án.'}${counts}`);
+      setGroupToCancelAndDelete(null);
+      reloadGroups();
+    } catch (err) {
+      toast.error(err.message || 'Không thể hủy liên kết và xóa nhóm');
+    } finally {
+      setCancellingLinkedWork(false);
     }
   };
 
@@ -496,13 +563,13 @@ export default function GroupsPage() {
                   <h4 className={css.s29}>
                     Mời thành viên mới
                   </h4>
-                  <form onSubmit={handleInvite} className={css.s30}>
+                  <form onSubmit={handleInvite} className={css.s30} noValidate>
                     <Input
                       name="inviteStudentId"
                       value={inviteStudentId}
                       onChange={(e) => setInviteStudentId(e.target.value)}
                       placeholder="Nhập ID Sinh viên..."
-                      required className={css.s37} />
+                      className={css.s37} />
                     <Button variant="primary" type="submit" loading={inviting} className={css.s31}>
                       <UserPlus size={16} /> Gửi lời mời
                     </Button>
@@ -517,14 +584,13 @@ export default function GroupsPage() {
                 <p className={css.s33}>
                   Bạn chưa có nhóm đồ án nào trong học kỳ này. Hãy đặt tên nhóm và ấn &quot;Khởi tạo nhóm&quot; để bắt đầu mời các thành viên khác.
                 </p>
-                <form onSubmit={handleCreateGroup} className={css.s34}>
+                <form onSubmit={handleCreateGroup} className={css.s34} noValidate>
                   <Input
                     label="Tên nhóm đồ án"
                     name="newGroupName"
                     value={newGroupName}
                     onChange={(e) => setNewGroupName(e.target.value)}
                     placeholder="Ví dụ: Nhóm Nghiên cứu AI K65"
-                    required
                   />
                   <Button variant="primary" type="submit" loading={creating} className={css.s35}>
                     <Plus size={18} /> Khởi tạo nhóm
@@ -535,6 +601,53 @@ export default function GroupsPage() {
           )}
         </div>
       )}
+      {groupToEdit && (
+        <div
+          role="presentation"
+          className={css.s38}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) handleCancelEditGroup();
+          }}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-group-title"
+            className={css.s39}
+            onSubmit={handleUpdateGroup}
+            noValidate
+          >
+            <div className={css.s40}>
+              <h3 id="edit-group-title" className={css.s41}>
+                Sửa tên nhóm
+              </h3>
+              <p className={css.s42}>
+                Cập nhật tên nhóm đồ án đang hiển thị trong danh sách.
+              </p>
+            </div>
+            <Input
+              label="Tên nhóm mới"
+              name="editGroupName"
+              value={editGroupName}
+              onChange={(e) => {
+                setEditGroupName(e.target.value);
+                if (editGroupError) setEditGroupError('');
+              }}
+              placeholder="Nhập tên nhóm mới"
+              error={editGroupError}
+              autoFocus
+            />
+            <div className={css.s43}>
+              <Button type="button" variant="secondary" onClick={handleCancelEditGroup} disabled={updatingGroup}>
+                Hủy
+              </Button>
+              <Button type="submit" variant="primary" loading={updatingGroup}>
+                Lưu thay đổi
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
       <ConfirmDialog
         open={Boolean(groupToDelete)}
         title="Xóa nhóm đồ án"
@@ -543,6 +656,15 @@ export default function GroupsPage() {
         loading={deletingGroup}
         onCancel={() => setGroupToDelete(null)}
         onConfirm={() => handleDeleteGroup(groupToDelete)}
+      />
+      <ConfirmDialog
+        open={Boolean(groupToCancelAndDelete)}
+        title="Hủy liên kết và xóa nhóm"
+        message={groupToCancelAndDelete ? `Nhóm "${groupToCancelAndDelete.name}" đã có đề tài/dự án liên kết. Thao tác này sẽ hủy và xóa mềm đề tài/dự án liên quan, sau đó xóa mềm nhóm.` : ''}
+        confirmLabel="Hủy & xóa mềm"
+        loading={cancellingLinkedWork}
+        onCancel={() => setGroupToCancelAndDelete(null)}
+        onConfirm={() => handleCancelLinkedWorkAndDeleteGroup(groupToCancelAndDelete)}
       />
     </div>
   );

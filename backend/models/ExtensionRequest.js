@@ -34,10 +34,20 @@ const ExtensionRequestSchema = new mongoose.Schema({
     ref: 'Project',
     required: true,
   },
+  ownerType: {
+    type: String,
+    enum: ['student', 'group'],
+  },
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+  },
+  studentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Student',
+  },
   groupId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ProjectGroup',
-    required: true,
   },
   reason: {
     type: String,
@@ -62,11 +72,30 @@ const ExtensionRequestSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected', 'expired'],
+    enum: ['pending', 'approved', 'rejected', 'expired', 'cancelled'],
     default: 'pending',
+  },
+  cancelledAt: {
+    type: Date,
+  },
+  cancelledBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
   },
 }, {
   timestamps: true,
 });
+
+ExtensionRequestSchema.pre('validate', function () {
+  if (!this.ownerType && this.groupId) this.ownerType = 'group';
+  if (!this.ownerId && this.ownerType === 'group' && this.groupId) this.ownerId = this.groupId;
+  if (!this.ownerId && this.ownerType === 'student' && this.studentId) this.ownerId = this.studentId;
+  if (!this.studentId && this.ownerType === 'student' && this.ownerId) this.studentId = this.ownerId;
+});
+
+ExtensionRequestSchema.index(
+  { targetType: 1, targetId: 1 },
+  { unique: true, partialFilterExpression: { status: 'pending' } }
+);
 
 module.exports = mongoose.model('ExtensionRequest', ExtensionRequestSchema);

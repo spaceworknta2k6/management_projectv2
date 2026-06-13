@@ -107,6 +107,25 @@ const deleteGroup = async (req, res, next) => {
   }
 };
 
+const cancelLinkedWorkAndDeleteGroup = async (req, res, next) => {
+  try {
+    const result = await groupsService.cancelLinkedWorkAndDeleteGroup(req.params.id, req.user);
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: {
+        cancelledProjects: result.cancelledProjects,
+        cancelledTopics: result.cancelledTopics,
+      },
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 const getGroups = async (req, res, next) => {
   try {
     const result = await groupsService.getGroupsByPeriod(req.query.periodId);
@@ -143,6 +162,7 @@ module.exports = {
   confirmGroup,
   updateGroup,
   deleteGroup,
+  cancelLinkedWorkAndDeleteGroup,
   getGroups,
   getGroupById,
 };

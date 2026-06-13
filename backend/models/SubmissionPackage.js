@@ -46,7 +46,17 @@ const SubmissionPackageSchema = new mongoose.Schema({
   groupId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ProjectGroup',
-    required: true,
+  },
+  studentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Student',
+  },
+  projectOwnerType: {
+    type: String,
+    enum: ['student', 'group'],
+  },
+  projectOwnerId: {
+    type: mongoose.Schema.Types.ObjectId,
   },
   periodId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -101,6 +111,13 @@ const SubmissionPackageSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+});
+
+SubmissionPackageSchema.pre('validate', function () {
+  if (!this.projectOwnerType && this.groupId) this.projectOwnerType = 'group';
+  if (!this.projectOwnerId && this.projectOwnerType === 'group' && this.groupId) this.projectOwnerId = this.groupId;
+  if (!this.projectOwnerId && this.projectOwnerType === 'student' && this.studentId) this.projectOwnerId = this.studentId;
+  if (!this.studentId && this.projectOwnerType === 'student' && this.projectOwnerId) this.studentId = this.projectOwnerId;
 });
 
 // A specific project/defense context can have only one package per phase

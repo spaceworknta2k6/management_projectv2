@@ -4,7 +4,7 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { getStatus } from '@/lib/utils';
-import { Pencil, X, Check, Cpu, Sparkle, Shield } from '@phosphor-icons/react';
+import { Pencil, X, Check, Cpu, Sparkle, Shield, Prohibit } from '@phosphor-icons/react';
 import css from '../page.module.css';
 
 export default function TopicCard({
@@ -15,6 +15,7 @@ export default function TopicCard({
   handleRequestRevision,
   handleReject,
   handleApprove,
+  handleCancelClick,
   handleEditClick,
   handleCheckDuplicate,
   aiCheckingId,
@@ -24,6 +25,7 @@ export default function TopicCard({
   const mappedStatus = (topic.status === 'submitted' || topic.status === 'ai_checked') ? 'pending_review' : topic.status;
   const statusInfo = getStatus(mappedStatus);
   const aiJob = aiResults[topic._id];
+  const canCancelTopic = isStaff && !['cancelled', 'completed'].includes(topic.status);
 
   return (
     <Card
@@ -50,6 +52,12 @@ export default function TopicCard({
           {isStudent && topic.status === 'needs_revision' && topic.proposedByStudentId?._id?.toString() === user?.studentId?.toString() && (
             <Button variant="secondary" size="sm" onClick={() => handleEditClick(topic)}>
               <Pencil size={14} /> Chỉnh sửa
+            </Button>
+          )}
+
+          {canCancelTopic && (
+            <Button variant="danger" size="sm" onClick={() => handleCancelClick(topic)}>
+              <Prohibit size={14} /> Hủy đề tài
             </Button>
           )}
         </div>

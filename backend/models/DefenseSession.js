@@ -35,10 +35,20 @@ const DefenseSessionSchema = new mongoose.Schema({
     ref: 'Project',
     required: true,
   },
+  ownerType: {
+    type: String,
+    enum: ['student', 'group'],
+  },
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+  },
+  studentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Student',
+  },
   groupId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ProjectGroup',
-    required: true,
   },
   committeeId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -112,6 +122,13 @@ const DefenseSessionSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+});
+
+DefenseSessionSchema.pre('validate', function () {
+  if (!this.ownerType && this.groupId) this.ownerType = 'group';
+  if (!this.ownerId && this.ownerType === 'group' && this.groupId) this.ownerId = this.groupId;
+  if (!this.ownerId && this.ownerType === 'student' && this.studentId) this.ownerId = this.studentId;
+  if (!this.studentId && this.ownerType === 'student' && this.ownerId) this.studentId = this.ownerId;
 });
 
 module.exports = mongoose.model('DefenseSession', DefenseSessionSchema);

@@ -30,10 +30,20 @@ const FinalGradeSchema = new mongoose.Schema({
     required: true,
     unique: true, // Only one aggregated grade record per project
   },
+  ownerType: {
+    type: String,
+    enum: ['student', 'group'],
+  },
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+  },
+  studentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Student',
+  },
   groupId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ProjectGroup',
-    required: true,
   },
   periodId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -82,6 +92,13 @@ const FinalGradeSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+});
+
+FinalGradeSchema.pre('validate', function () {
+  if (!this.ownerType && this.groupId) this.ownerType = 'group';
+  if (!this.ownerId && this.ownerType === 'group' && this.groupId) this.ownerId = this.groupId;
+  if (!this.ownerId && this.ownerType === 'student' && this.studentId) this.ownerId = this.studentId;
+  if (!this.studentId && this.ownerType === 'student' && this.ownerId) this.studentId = this.ownerId;
 });
 
 module.exports = mongoose.model('FinalGrade', FinalGradeSchema);

@@ -2,6 +2,41 @@ const SubmissionPackage = require('../../models/SubmissionPackage');
 const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
 const { assertProjectAccess } = require('../../utils/access-control');
+const { resolveProjectOwner, isStudentOwner } = require('../../utils/project-owner');
+
+const isAcceptedGroupMember = (group, studentId) => {
+  if (!group || !studentId) return false;
+  return group.members.some(
+    (member) => member.studentId.toString() === studentId.toString() && member.status === 'accepted'
+  );
+};
+
+const getPackageProjectOwner = (pkg) => {
+  if (pkg.projectOwnerType === 'student' || pkg.studentId) {
+    return {
+      ownerType: 'student',
+      ownerId: pkg.projectOwnerId || pkg.studentId,
+      studentId: pkg.studentId || pkg.projectOwnerId,
+    };
+  }
+
+  return {
+    ownerType: 'group',
+    ownerId: pkg.projectOwnerId || pkg.groupId,
+    groupId: pkg.groupId || pkg.projectOwnerId,
+  };
+};
+
+const ensureStudentCanSubmitForOwner = async (owner, actorStudentId) => {
+  if (isStudentOwner(owner, actorStudentId)) return;
+
+  if (owner?.ownerType === 'group') {
+    const group = await ProjectGroup.findOne({ _id: owner.groupId || owner.ownerId, isDeleted: { $ne: true } });
+    if (isAcceptedGroupMember(group, actorStudentId)) return;
+  }
+
+  throw { status: 403, message: 'Bạn không thuộc chủ thể sinh viên/nhóm thực hiện dự án này.' };
+};
 
 const initializePackage = async (projectId, phase, actorUserId, actorStudentId) => {
   const project = await Project.findById(projectId);
@@ -9,11 +44,9 @@ const initializePackage = async (projectId, phase, actorUserId, actorStudentId) 
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
 
-  // Verify group membership
-  const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
-  if (!group || !group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted')) {
-    throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
-  }
+  // Verify project owner access
+  const projectOwner = resolveProjectOwner(project);
+  await ensureStudentCanSubmitForOwner(projectOwner, actorStudentId);
 
   // Check if package already exists
   let pkg = await SubmissionPackage.findOne({ ownerType: 'project', ownerId: projectId, phase, isDeleted: { $ne: true } });
@@ -50,7 +83,10 @@ const initializePackage = async (projectId, phase, actorUserId, actorStudentId) 
   pkg = new SubmissionPackage({
     ownerType: 'project',
     ownerId: projectId,
-    groupId: project.groupId,
+    projectOwnerType: projectOwner.ownerType,
+    projectOwnerId: projectOwner.ownerId,
+    groupId: projectOwner.ownerType === 'group' ? projectOwner.groupId : undefined,
+    studentId: projectOwner.ownerType === 'student' ? projectOwner.studentId : undefined,
     periodId: project.periodId,
     phase,
     deadline,
@@ -68,11 +104,8 @@ const uploadPackageItem = async (packageId, type, fileId, actorUserId, actorStud
     throw { status: 404, message: 'Gói hồ sơ nộp không tồn tại.' };
   }
 
-  // Verify group membership
-  const group = await ProjectGroup.findOne({ _id: pkg.groupId, isDeleted: { $ne: true } });
-  if (!group || !group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted')) {
-    throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
-  }
+  // Verify project owner access
+  await ensureStudentCanSubmitForOwner(getPackageProjectOwner(pkg), actorStudentId);
 
   if (!['draft', 'needs_revision'].includes(pkg.status)) {
     throw { status: 400, message: 'Chỉ có thể tải lên tài liệu khi gói hồ sơ ở trạng thái draft hoặc needs_revision.' };
@@ -102,11 +135,8 @@ const submitPackage = async (packageId, actorUserId, actorStudentId) => {
     throw { status: 404, message: 'Gói hồ sơ nộp không tồn tại.' };
   }
 
-  // Verify group membership
-  const group = await ProjectGroup.findOne({ _id: pkg.groupId, isDeleted: { $ne: true } });
-  if (!group || !group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted')) {
-    throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
-  }
+  // Verify project owner access
+  await ensureStudentCanSubmitForOwner(getPackageProjectOwner(pkg), actorStudentId);
 
   if (!['draft', 'needs_revision'].includes(pkg.status)) {
     throw { status: 400, message: 'Không thể nộp gói hồ sơ đã gửi hoặc đã được khóa.' };
@@ -195,10 +225,7 @@ const canManagePackage = (pkg, user) => {
 };
 
 const ensureStudentInPackageGroup = async (pkg, studentId) => {
-  const group = await ProjectGroup.findOne({ _id: pkg.groupId, isDeleted: { $ne: true } });
-  if (!group || !group.members.some(m => m.studentId.toString() === studentId.toString() && m.status === 'accepted')) {
-    throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
-  }
+  await ensureStudentCanSubmitForOwner(getPackageProjectOwner(pkg), studentId);
 };
 
 const updatePackage = async (packageId, data, user) => {

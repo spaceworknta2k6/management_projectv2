@@ -235,3 +235,49 @@
 .s37 {
   flex: 1;
 }
+
+.s38 {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgba(15, 23, 42, 0.55);
+}
+
+.s39 {
+  width: 100%;
+  max-width: 420px;
+  padding: 22px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.28);
+}
+
+.s40 {
+  margin-bottom: 18px;
+}
+
+.s41 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.s42 {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.s43 {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}

@@ -6,10 +6,20 @@ const ProjectSchema = new mongoose.Schema({
     ref: 'ProjectPeriod',
     required: true,
   },
+  ownerType: {
+    type: String,
+    enum: ['student', 'group'],
+  },
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+  },
+  studentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Student',
+  },
   groupId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ProjectGroup',
-    required: true,
   },
   topicId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -72,12 +82,44 @@ const ProjectSchema = new mongoose.Schema({
   timestamps: true,
 });
 
+ProjectSchema.pre('validate', function () {
+  if (!this.ownerType && this.groupId) {
+    this.ownerType = 'group';
+  }
+
+  if (!this.ownerId && this.ownerType === 'group' && this.groupId) {
+    this.ownerId = this.groupId;
+  }
+
+  if (!this.ownerId && this.ownerType === 'student' && this.studentId) {
+    this.ownerId = this.studentId;
+  }
+
+  if (!this.studentId && this.ownerType === 'student' && this.ownerId) {
+    this.studentId = this.ownerId;
+  }
+});
+
+// An owner can only have one active (non-cancelled) project in a given period
+ProjectSchema.index(
+  { periodId: 1, ownerType: 1, ownerId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      ownerType: { $exists: true },
+      ownerId: { $exists: true },
+      status: { $ne: 'cancelled' },
+      isDeleted: false
+    }
+  }
+);
+
 // A group can only have one active (non-cancelled) project in a given period
 ProjectSchema.index(
   { periodId: 1, groupId: 1 },
   { 
     unique: true, 
-    partialFilterExpression: { status: { $ne: 'cancelled' }, isDeleted: false } 
+    partialFilterExpression: { groupId: { $exists: true }, status: { $ne: 'cancelled' }, isDeleted: false } 
   }
 );
 

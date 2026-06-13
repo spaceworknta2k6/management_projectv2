@@ -1,9 +1,14 @@
 const ProjectTopic = require('../../models/ProjectTopic');
 const ProjectGroup = require('../../models/ProjectGroup');
 const ProjectPeriod = require('../../models/ProjectPeriod');
+const ProjectRoster = require('../../models/ProjectRoster');
 const Lecturer = require('../../models/Lecturer');
 const Project = require('../../models/Project');
 const WorkflowEvent = require('../../models/WorkflowEvent');
+const { resolveProjectOwner } = require('../../utils/project-owner');
+
+const ACTIVE_TOPIC_STATUSES = ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'];
+const ACTIVE_PROJECT_STATUSES = { $nin: ['cancelled', 'archived', 'failed'] };
 
 const logWorkflowEvent = async ({
   entityType = 'ProjectTopic',
@@ -27,7 +32,135 @@ const logWorkflowEvent = async ({
   });
 };
 
+const assertStudentTopicOwnerAvailable = async (periodId, studentId) => {
+  const roster = await ProjectRoster.findOne({ periodId, studentId, status: 'active' });
+  if (!roster) {
+    throw { status: 403, message: 'Ban chua co trong danh sach tham gia dot nay.' };
+  }
+
+  const [existingTopic, existingProject] = await Promise.all([
+    ProjectTopic.findOne({
+      periodId,
+      ownerType: 'student',
+      ownerId: studentId,
+      isDeleted: false,
+      status: { $in: ACTIVE_TOPIC_STATUSES },
+    }),
+    Project.findOne({
+      periodId,
+      ownerType: 'student',
+      ownerId: studentId,
+      isDeleted: { $ne: true },
+      status: ACTIVE_PROJECT_STATUSES,
+    }),
+  ]);
+
+  if (existingTopic || existingProject) {
+    throw { status: 400, message: 'Ban da co de tai hoac du an ca nhan dang hoat dong trong dot do an nay.' };
+  }
+};
+
+const resolveGroupTopicOwner = async (periodId, groupId, studentId) => {
+  const group = await ProjectGroup.findOne({ _id: groupId, periodId, isDeleted: { $ne: true } });
+  if (!group) {
+    throw { status: 404, message: 'Nhom do an khong ton tai.' };
+  }
+
+  if (group.leaderStudentId.toString() !== studentId.toString()) {
+    throw { status: 403, message: 'Chi truong nhom moi co quyen de xuat de tai do an.' };
+  }
+
+  if (group.status === 'cancelled' || group.status === 'locked') {
+    throw { status: 400, message: 'Trang thai nhom khong hop le de dang ky de tai.' };
+  }
+
+  const callerMember = group.members.find(
+    (member) => member.studentId.toString() === studentId.toString() && member.status === 'accepted'
+  );
+  if (!callerMember) {
+    throw { status: 403, message: 'Ban chua la thanh vien da chap nhan cua nhom nay.' };
+  }
+
+  const existingActiveTopic = await ProjectTopic.findOne({
+    periodId,
+    $or: [
+      { ownerType: 'group', ownerId: group._id },
+      { groupId: group._id },
+    ],
+    isDeleted: false,
+    status: { $in: ACTIVE_TOPIC_STATUSES },
+  });
+
+  if (existingActiveTopic) {
+    throw { status: 400, message: 'Nhom cua ban da co mot de tai dang hoat dong trong dot do an nay.' };
+  }
+
+  return group;
+};
+
+const buildTopicPayload = ({ topicData, period, studentId, ownerType, ownerId, groupId }) => ({
+  periodId: topicData.periodId,
+  ownerType,
+  ownerId,
+  studentId: ownerType === 'student' ? ownerId : undefined,
+  groupId,
+  proposedByStudentId: studentId,
+  title: topicData.title.trim(),
+  summary: topicData.summary.trim(),
+  objectives: topicData.objectives.trim(),
+  scope: topicData.scope.trim(),
+  technologies: topicData.technologies || [],
+  expectedResult: topicData.expectedResult.trim(),
+  plan: topicData.plan.trim(),
+  keywords: topicData.keywords || [],
+  proposedSupervisorId: topicData.proposedSupervisorId,
+  departmentId: period.departmentId,
+  status: 'submitted',
+});
+
 const proposeTopic = async (topicData, studentId) => {
+  const incomingPeriodId = topicData.periodId;
+  const incomingOwnerType = topicData.ownerType === 'group' ? 'group' : 'student';
+
+  const periodRecord = await ProjectPeriod.findOne({ _id: incomingPeriodId, isDeleted: { $ne: true } });
+  if (!periodRecord) {
+    throw { status: 404, message: 'Dot do an khong ton tai.' };
+  }
+
+  let selectedGroupId;
+  let selectedOwnerId = studentId;
+
+  if (incomingOwnerType === 'student') {
+    await assertStudentTopicOwnerAvailable(incomingPeriodId, studentId);
+  } else {
+    const selectedGroup = await resolveGroupTopicOwner(incomingPeriodId, topicData.groupId, studentId);
+    selectedGroupId = selectedGroup._id;
+    selectedOwnerId = selectedGroup._id;
+  }
+
+  const createdTopic = new ProjectTopic(buildTopicPayload({
+    topicData,
+    period: periodRecord,
+    studentId,
+    ownerType: incomingOwnerType,
+    ownerId: selectedOwnerId,
+    groupId: selectedGroupId,
+  }));
+
+  await createdTopic.save();
+
+  await logWorkflowEvent({
+    entityId: createdTopic._id,
+    fromStatus: '',
+    toStatus: 'submitted',
+    actorId: studentId,
+    actorRoles: ['STUDENT'],
+    action: 'PROPOSE_TOPIC',
+    reason: `De xuat de tai: ${createdTopic.title}`,
+  });
+
+  return createdTopic;
+
   const { periodId, groupId } = topicData;
 
   const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
@@ -55,7 +188,7 @@ const proposeTopic = async (topicData, studentId) => {
     periodId,
     groupId,
     isDeleted: false,
-    status: { $in: ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'completed'] },
+    status: { $in: ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] },
   });
 
   if (existingActiveTopic) {
@@ -154,8 +287,11 @@ const assignSupervisor = async (topicId, supervisorId, actorUserId) => {
   topic.status = 'assigned';
   await topic.save();
 
-  // 2. Lock the ProjectGroup
-  const group = await ProjectGroup.findOne({ _id: topic.groupId, isDeleted: { $ne: true } });
+  const owner = resolveProjectOwner(topic);
+
+  // 2. Lock the ProjectGroup for group-owned topics only
+  const groupId = owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : null;
+  const group = groupId ? await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } }) : null;
   if (group) {
     group.status = 'locked';
     await group.save();
@@ -164,7 +300,10 @@ const assignSupervisor = async (topicId, supervisorId, actorUserId) => {
   // 3. Spawn official Project workspace linking period, group, topic, and supervisor
   const project = await Project.create({
     periodId: topic.periodId,
-    groupId: topic.groupId,
+    ownerType: owner?.ownerType,
+    ownerId: owner?.ownerId,
+    studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
+    groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : undefined,
     topicId: topic._id,
     supervisorId: supervisorId,
     status: 'assigned',
@@ -206,6 +345,10 @@ const getTopicsByPeriod = async (periodId) => {
       select: 'name status members',
     })
     .populate({
+      path: 'studentId',
+      populate: { path: 'userId', select: 'fullName email' },
+    })
+    .populate({
       path: 'proposedByStudentId',
       populate: { path: 'userId', select: 'fullName email' },
     })
@@ -225,6 +368,10 @@ const getTopicById = async (id) => {
     .populate({
       path: 'groupId',
       select: 'name status members',
+    })
+    .populate({
+      path: 'studentId',
+      populate: { path: 'userId', select: 'fullName email' },
     })
     .populate({
       path: 'proposedByStudentId',
@@ -290,11 +437,85 @@ const updateTopic = async (topicId, topicData, studentId) => {
   return topic;
 };
 
+const cancelTopic = async (topicId, actorUserId, actorRoles = ['FACULTY_STAFF']) => {
+  const topic = await ProjectTopic.findById(topicId);
+  if (!topic || topic.isDeleted) {
+    throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
+  }
+
+  if (topic.status === 'completed') {
+    throw { status: 400, message: 'Không thể hủy đề tài đã hoàn thành.' };
+  }
+
+  const projects = await Project.find({ topicId: topic._id });
+  for (const project of projects) {
+    const fromStatus = project.status;
+    project.status = 'cancelled';
+    project.isDeleted = true;
+    project.deletedAt = new Date();
+    project.deletedBy = actorUserId;
+    await project.save();
+
+    await logWorkflowEvent({
+      entityType: 'Project',
+      entityId: project._id,
+      fromStatus,
+      toStatus: 'cancelled',
+      actorId: actorUserId,
+      actorRoles,
+      action: 'CANCEL_PROJECT_BY_TOPIC_CANCEL',
+      reason: `Hủy dự án liên kết khi hủy đề tài ${topic.title}`,
+    });
+  }
+
+  const group = await ProjectGroup.findOne({ _id: topic.groupId, isDeleted: { $ne: true } });
+  if (group && group.status === 'locked') {
+    const fromStatus = group.status;
+    group.status = 'confirmed';
+    await group.save();
+
+    await logWorkflowEvent({
+      entityType: 'ProjectGroup',
+      entityId: group._id,
+      fromStatus,
+      toStatus: 'confirmed',
+      actorId: actorUserId,
+      actorRoles,
+      action: 'UNLOCK_GROUP_BY_TOPIC_CANCEL',
+      reason: `Mở khóa nhóm sau khi hủy đề tài ${topic.title}`,
+    });
+  }
+
+  const fromStatus = topic.status;
+  topic.status = 'cancelled';
+  topic.isDeleted = true;
+  topic.deletedAt = new Date();
+  topic.deletedBy = actorUserId;
+  await topic.save();
+
+  await logWorkflowEvent({
+    entityId: topic._id,
+    fromStatus,
+    toStatus: 'cancelled',
+    actorId: actorUserId,
+    actorRoles,
+    action: 'CANCEL_TOPIC',
+    reason: `Hủy đề tài: ${topic.title}`,
+  });
+
+  return {
+    success: true,
+    message: 'Đề tài đã được hủy thành công.',
+    cancelledProjects: projects.length,
+  };
+};
+
 module.exports = {
   proposeTopic,
   updateTopic,
   reviewTopic,
   assignSupervisor,
+  cancelTopic,
   getTopicsByPeriod,
   getTopicById,
 };

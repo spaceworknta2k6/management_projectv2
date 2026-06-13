@@ -83,6 +83,24 @@ const assignSupervisor = async (req, res, next) => {
   }
 };
 
+const cancelTopic = async (req, res, next) => {
+  try {
+    const result = await topicsService.cancelTopic(req.params.id, req.user._id, req.user.roles);
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: {
+        cancelledProjects: result.cancelledProjects,
+      },
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 const getTopics = async (req, res, next) => {
   try {
     const result = await topicsService.getTopicsByPeriod(req.query.periodId);
@@ -138,6 +156,7 @@ module.exports = {
   rejectTopic,
   requestRevision,
   assignSupervisor,
+  cancelTopic,
   getTopics,
   getTopicById,
 };
