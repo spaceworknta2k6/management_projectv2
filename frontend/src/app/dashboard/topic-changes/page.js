@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import Tabs from '@/components/ui/Tabs';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateTime, hasAnyRole } from '@/lib/utils';
 import { getOwnerDisplay, getOwnerTypeLabel, isStudentProjectOwner } from '@/lib/projectOwner';
@@ -21,6 +22,13 @@ const emptyForm = {
   newPlan: '',
   reason: '',
 };
+
+const requestTabs = [
+  { id: 'active', label: 'Đang xử lý' },
+  { id: 'history', label: 'Lịch sử' },
+];
+
+const historyStatuses = ['approved', 'rejected', 'expired', 'cancelled'];
 
 const statusMeta = {
   pending: { label: 'Chờ xử lý', variant: 'warning' },
@@ -91,6 +99,7 @@ export default function TopicChangesPage() {
   const [reviewModal, setReviewModal] = useState(null);
   const [reviewNote, setReviewNote] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [requestView, setRequestView] = useState('active');
 
   const isStudent = hasAnyRole(user, ['STUDENT']);
   const isLecturer = hasAnyRole(user, ['LECTURER']);
@@ -112,6 +121,18 @@ export default function TopicChangesPage() {
       scope: project.topicId.scope || '',
       plan: project.topicId.plan || '',
     }));
+
+  const activeRequests = useMemo(
+    () => requests.filter((request) => request.status === 'pending'),
+    [requests]
+  );
+
+  const historyRequests = useMemo(
+    () => requests.filter((request) => historyStatuses.includes(request.status)),
+    [requests]
+  );
+
+  const displayedRequests = requestView === 'history' ? historyRequests : activeRequests;
 
   const loadData = useCallback(async () => {
     if (!token) return;
@@ -309,14 +330,25 @@ export default function TopicChangesPage() {
         )}
 
         <Card title="Danh sách đơn đổi đề tài" subtitle={isStudent ? 'Theo dõi trạng thái đơn của cá nhân/nhóm' : 'Xử lý đơn đổi đề tài theo vai trò'}>
-          {requests.length === 0 ? (
+          <div className={css.requestTabs}>
+            <Tabs
+              tabs={requestTabs.map((tab) => ({
+                ...tab,
+                label: `${tab.label} (${tab.id === 'history' ? historyRequests.length : activeRequests.length})`,
+              }))}
+              activeTab={requestView}
+              onChange={setRequestView}
+            />
+          </div>
+
+          {displayedRequests.length === 0 ? (
             <div className={css.s10}>
               <FileText size={36} weight="duotone" className={css.s11} />
-              <p>Chưa có đơn đổi đề tài nào.</p>
+              <p>{requestView === 'history' ? 'Chưa có đơn nào trong lịch sử.' : 'Không có đơn đang chờ xử lý.'}</p>
             </div>
           ) : (
             <div className={css.s12}>
-              {requests.map((request) => (
+              {displayedRequests.map((request) => (
                 <div key={request._id} className={css.s13}>
                   <div className={css.s14}>
                     <div className={css.s15}>

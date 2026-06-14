@@ -45,6 +45,7 @@ export function useTopics(initialActiveTab = 'all') {
   const [editingTopicId, setEditingTopicId] = useState(null);
 
   const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']);
+  const isLecturer = hasAnyRole(user, ['LECTURER']);
   const isStudent = hasAnyRole(user, ['STUDENT']);
 
   const loadData = useCallback(async () => {
@@ -279,8 +280,9 @@ export function useTopics(initialActiveTab = 'all') {
 
   // Filter topics based on activeTab
   const filteredTopics = topics.filter((t) => {
-    if (activeTab === 'all') return true;
     const mappedStatus = (t.status === 'submitted' || t.status === 'ai_checked' || t.status === 'needs_revision') ? 'pending_review' : t.status;
+    if (activeTab === 'all') return !['cancelled', 'completed'].includes(mappedStatus);
+    if (activeTab === 'history') return ['cancelled', 'completed'].includes(mappedStatus);
     return mappedStatus === activeTab;
   });
 
@@ -295,6 +297,7 @@ export function useTopics(initialActiveTab = 'all') {
 
   return {
     user,
+    token,
     periods,
     groups: availableGroups,
     topics,
@@ -324,7 +327,9 @@ export function useTopics(initialActiveTab = 'all') {
     submitting,
     editingTopicId,
     setEditingTopicId,
+    loadData,
     isStaff,
+    isLecturer,
     isStudent,
     handleSubmitTopic,
     handleEditClick,

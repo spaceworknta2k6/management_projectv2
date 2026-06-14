@@ -126,6 +126,7 @@
 .s9 {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -143,6 +144,40 @@
 
 .s12 {
   margin-bottom: 16px;
+}
+
+.assignmentNotice {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background-color: var(--warning-bg);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: var(--radius-md);
+}
+
+.assignmentNoticeTitle {
+  margin-bottom: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.assignmentNoticeItems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assignmentNoticeItems span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  color: var(--warning);
+  background-color: var(--bg-surface);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .s13 {
@@ -252,7 +287,7 @@
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-between: space-between;
+  justify-content: space-between;
 }
 
 .s30 {
@@ -261,11 +296,59 @@
   color: var(--text-primary);
 }
 
+.assignModalSubtitle {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .s31 {
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.assignTopicSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background-color: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.assignTopicSummary strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.assignTopicLabel {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.assignStatusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assignStatusRow span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  color: var(--text-secondary);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .s32 {

@@ -26,6 +26,10 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
 }
 
+.requestTabs {
+  margin-bottom: 14px;
+}
+
 .s1 {
   display: block;
   font-size: 13px;
@@ -313,4 +317,3 @@
   gap: 8px;
   height: 40px;
 }
-

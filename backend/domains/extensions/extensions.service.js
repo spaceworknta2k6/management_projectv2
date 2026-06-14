@@ -5,7 +5,7 @@ const Milestone = require('../../models/Milestone');
 const SubmissionPackage = require('../../models/SubmissionPackage');
 const DefenseSession = require('../../models/DefenseSession');
 const WorkflowEvent = require('../../models/WorkflowEvent');
-const { resolveProjectOwner } = require('../../utils/project-owner');
+const { assertOwnerAccess, resolveProjectOwner } = require('../../utils/project-owner');
 
 const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(role));
 
@@ -47,7 +47,7 @@ const createExtensionRequest = async (requestData, actorUserId, actorStudentId) 
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
 
-  await ensureStudentInGroup(project.groupId, actorStudentId);
+  await assertOwnerAccess(project, { studentId: actorStudentId, roles: ['STUDENT'] });
 
   const existing = await ExtensionRequest.findOne({
     targetType: requestData.targetType,
@@ -227,7 +227,7 @@ const cancelRequest = async (requestId, user = {}) => {
     if (!user.studentId) {
       throw { status: 403, message: 'Bạn không có quyền hủy yêu cầu gia hạn này.' };
     }
-    await ensureStudentInGroup(request.groupId, user.studentId);
+    await assertOwnerAccess(request, user);
   }
 
   request.status = 'cancelled';
@@ -268,7 +268,10 @@ const getRequests = async (queryParams = {}, actor = {}) => {
         },
       },
     }).select('_id');
-    filter.groupId = { $in: groups.map((group) => group._id) };
+    filter.$or = [
+      { studentId: actor.studentId },
+      { groupId: { $in: groups.map((group) => group._id) } },
+    ];
   } else if (roles.includes('LECTURER') && actor.lecturerId) {
     const projects = await Project.find({ supervisorId: actor.lecturerId }).select('_id');
     filter.projectId = { $in: projects.map((project) => project._id) };
@@ -358,7 +361,7 @@ const getRequestById = async (id, actor = {}) => {
   }
   const roles = actor.roles || [];
   if (roles.includes('STUDENT') && actor.studentId) {
-    await ensureStudentInGroup(request.groupId?._id || request.groupId, actor.studentId);
+    await assertOwnerAccess(request, actor);
   } else if (roles.includes('LECTURER') && actor.lecturerId) {
     const supervisorId = request.projectId?.supervisorId?._id || request.projectId?.supervisorId;
     if (!supervisorId || supervisorId.toString() !== actor.lecturerId.toString()) {

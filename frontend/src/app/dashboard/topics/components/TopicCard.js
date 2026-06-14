@@ -15,6 +15,7 @@ export default function TopicCard({
   handleRequestRevision,
   handleReject,
   handleApprove,
+  handleAssignSupervisorClick,
   handleCancelClick,
   handleEditClick,
   handleCheckDuplicate,
@@ -26,6 +27,7 @@ export default function TopicCard({
   const statusInfo = getStatus(mappedStatus);
   const aiJob = aiResults[topic._id];
   const canCancelTopic = isStaff && !['cancelled', 'completed'].includes(topic.status);
+  const isAwaitingSupervisorAssignment = topic.status === 'approved';
 
   return (
     <Card
@@ -34,6 +36,9 @@ export default function TopicCard({
       actions={
         <div className={css.s9}>
           <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+          {isAwaitingSupervisorAssignment && (
+            <Badge variant="warning">Chờ phân công GVHD</Badge>
+          )}
 
           {isStaff && (topic.status === 'pending_review' || topic.status === 'submitted' || topic.status === 'ai_checked') && (
             <>
@@ -47,6 +52,12 @@ export default function TopicCard({
                 <Check size={14} /> Duyệt đề tài
               </Button>
             </>
+          )}
+
+          {isStaff && topic.status === 'approved' && (
+            <Button variant="primary" size="sm" onClick={() => handleAssignSupervisorClick(topic)}>
+              <Check size={14} /> Phân công GVHD
+            </Button>
           )}
 
           {isStudent && topic.status === 'needs_revision' && topic.proposedByStudentId?._id?.toString() === user?.studentId?.toString() && (
@@ -66,6 +77,17 @@ export default function TopicCard({
       <div className={css.s10}>
         <p className={css.s11}>Tóm tắt đề tài:</p>
         <p className={css.s12}>{topic.summary || 'Không có tóm tắt chi tiết.'}</p>
+
+        {isAwaitingSupervisorAssignment && (
+          <div className={css.assignmentNotice}>
+            <div className={css.assignmentNoticeTitle}>Trạng thái tạo dự án</div>
+            <div className={css.assignmentNoticeItems}>
+              <span>Đã duyệt</span>
+              <span>Chưa tạo dự án</span>
+              <span>Cần phân công GVHD</span>
+            </div>
+          </div>
+        )}
 
         {/* AI Duplicate Checker section */}
         {isStaff && (

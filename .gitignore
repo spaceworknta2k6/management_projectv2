@@ -49,8 +49,3 @@ UI_test/
 helper/
 .agents/
 AGENTS.md
-
-# Playwright E2E testing files (local only)
-clean-e2e.js
-frontend/e2e/
-frontend/playwright.config.js

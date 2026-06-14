@@ -4,7 +4,7 @@ const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
 const ProjectPeriod = require('../../models/ProjectPeriod');
 const WorkflowEvent = require('../../models/WorkflowEvent');
-const { resolveProjectOwner } = require('../../utils/project-owner');
+const { assertOwnerAccess, resolveProjectOwner } = require('../../utils/project-owner');
 
 const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(role));
 
@@ -53,7 +53,7 @@ const ensureVisible = async (request, user = {}) => {
   if (isStaff(user)) return;
 
   if ((user.roles || []).includes('STUDENT') && user.studentId) {
-    await ensureStudentInGroup(request.groupId?._id || request.groupId, user.studentId);
+    await assertOwnerAccess(request, user);
     return;
   }
 
@@ -75,7 +75,7 @@ const createChangeRequest = async (topicId, data, user) => {
     throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
   }
 
-  await ensureStudentInGroup(topic.groupId, user.studentId);
+  await assertOwnerAccess(topic, user);
 
   const project = await Project.findOne({ topicId: topic._id });
   if (!project || project.status === 'cancelled') {
@@ -137,7 +137,10 @@ const getRequests = async (queryParams = {}, user = {}) => {
         isDeleted: { $ne: true },
         members: { $elemMatch: { studentId: user.studentId, status: 'accepted' } },
       }).select('_id');
-      filter.groupId = { $in: groups.map((group) => group._id) };
+      filter.$or = [
+        { studentId: user.studentId },
+        { groupId: { $in: groups.map((group) => group._id) } },
+      ];
     } else if ((user.roles || []).includes('LECTURER') && user.lecturerId) {
       const projects = await Project.find({ supervisorId: user.lecturerId }).select('topicId');
       filter.topicId = { $in: projects.map((project) => project.topicId) };
@@ -314,7 +317,7 @@ const cancelRequest = async (id, user = {}) => {
     if (!user.studentId) {
       throw { status: 403, message: 'Bạn không có quyền hủy đơn đổi đề tài này.' };
     }
-    await ensureStudentInGroup(request.groupId, user.studentId);
+    await assertOwnerAccess(request, user);
   }
 
   request.status = 'cancelled';

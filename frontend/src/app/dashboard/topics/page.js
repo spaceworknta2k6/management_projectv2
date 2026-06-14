@@ -15,6 +15,8 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import Tabs from '@/components/ui/Tabs';
+import { useToast } from '@/components/ui/Toast';
+import api from '@/services/api';
 import { BookOpen, Plus, Lightbulb, MagnifyingGlass, FileText } from '@phosphor-icons/react';
 import { exportToCSV } from '@/lib/export';
 import css from './page.module.css';
@@ -24,6 +26,7 @@ const topicTabs = [
   { id: 'pending_review', label: 'Chờ duyệt' },
   { id: 'approved', label: 'Đã duyệt' },
   { id: 'rejected', label: 'Từ chối' },
+  { id: 'history', label: 'Lịch sử' },
 ];
 
 const PAGE_SIZE = 10;
@@ -64,6 +67,7 @@ function getInitialTopicsQuery() {
 export default function TopicsPage() {
   const router = useRouter();
   const pathname = usePathname();
+  const toast = useToast();
   const initialQuery = useMemo(() => getInitialTopicsQuery(), []);
   const [currentPage, setCurrentPage] = useState(initialQuery.page);
   const [pageSize, setPageSize] = useState(initialQuery.limit);
@@ -71,8 +75,13 @@ export default function TopicsPage() {
   const [search, setSearch] = useState(initialQuery.search);
   const [topicToCancel, setTopicToCancel] = useState(null);
   const [cancellingTopic, setCancellingTopic] = useState(false);
+  const [lecturers, setLecturers] = useState([]);
+  const [assignTopic, setAssignTopic] = useState(null);
+  const [selectedSupervisorId, setSelectedSupervisorId] = useState('');
+  const [assigningSupervisor, setAssigningSupervisor] = useState(false);
   const {
     user,
+    token,
     periods,
     groups,
     loading,
@@ -100,7 +109,9 @@ export default function TopicsPage() {
     submitting,
     editingTopicId,
     setEditingTopicId,
+    loadData,
     isStaff,
+    isLecturer,
     isStudent,
     handleSubmitTopic,
     handleEditClick,
@@ -154,6 +165,17 @@ export default function TopicsPage() {
       router.replace(nextUrl, { scroll: false });
     }
   }, [activeTab, currentPage, pageSize, pathname, router, search]);
+
+  useEffect(() => {
+    if (!token || !isStaff) {
+      setLecturers([]);
+      return;
+    }
+
+    api.get('/auth/lecturers', token)
+      .then((res) => setLecturers(res.data || []))
+      .catch(() => setLecturers([]));
+  }, [isStaff, token]);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -224,6 +246,35 @@ export default function TopicsPage() {
     const cancelled = await handleCancelTopic(topicToCancel._id);
     setCancellingTopic(false);
     if (cancelled) setTopicToCancel(null);
+  };
+
+  const openAssignSupervisorModal = (topic) => {
+    setAssignTopic(topic);
+    setSelectedSupervisorId(topic.supervisorId?._id || topic.proposedSupervisorId?._id || '');
+  };
+
+  const handleAssignSupervisor = async (e) => {
+    e.preventDefault();
+    if (!assignTopic) return;
+    if (!selectedSupervisorId) {
+      toast.warning('Vui lòng chọn giảng viên hướng dẫn trước khi phân công.');
+      return;
+    }
+
+    setAssigningSupervisor(true);
+    try {
+      await api.post(`/topics/${assignTopic._id}/assign-supervisor`, {
+        supervisorId: selectedSupervisorId,
+      }, token);
+      toast.success('Đã phân công GVHD và khởi tạo dự án cho đề tài.');
+      setAssignTopic(null);
+      setSelectedSupervisorId('');
+      loadData();
+    } catch (err) {
+      toast.error(err.message || 'Không thể phân công giảng viên hướng dẫn.');
+    } finally {
+      setAssigningSupervisor(false);
+    }
   };
 
   return (
@@ -311,6 +362,7 @@ export default function TopicsPage() {
               handleRequestRevision={handleRequestRevision}
               handleReject={handleReject}
               handleApprove={handleApprove}
+              handleAssignSupervisorClick={openAssignSupervisorModal}
               handleCancelClick={setTopicToCancel}
               handleEditClick={handleEditClick}
               handleCheckDuplicate={handleCheckDuplicate}
@@ -374,6 +426,53 @@ export default function TopicsPage() {
           handleSelectSuggestedTopic={handleSelectSuggestedTopic}
           onClose={() => setChatOpen(false)}
         />
+      )}
+
+      {assignTopic && (
+        <div className={css.s27}>
+          <div className={css.s28}>
+            <div className={css.s29}>
+              <div>
+                <h3 className={css.s30}>Phân công giảng viên hướng dẫn</h3>
+                <p className={css.assignModalSubtitle}>Sau khi xác nhận, hệ thống sẽ tạo dự án cho đề tài này.</p>
+              </div>
+            </div>
+            <form onSubmit={handleAssignSupervisor} className={css.s31}>
+              <div className={css.assignTopicSummary}>
+                <span className={css.assignTopicLabel}>Đề tài</span>
+                <strong>{assignTopic.title}</strong>
+                <div className={css.assignStatusRow}>
+                  <span>Đã duyệt</span>
+                  <span>Chưa tạo dự án</span>
+                  <span>Cần phân công GVHD</span>
+                </div>
+              </div>
+              <div className={css.s32}>
+                <label className={css.s33}>Giảng viên hướng dẫn</label>
+                <select
+                  value={selectedSupervisorId}
+                  onChange={(e) => setSelectedSupervisorId(e.target.value)}
+                  className={css.s70}
+                >
+                  <option value="">Chọn giảng viên</option>
+                  {lecturers.map((lecturer) => (
+                    <option key={lecturer._id} value={lecturer._id}>
+                      {lecturer.userId?.fullName || lecturer._id} ({lecturer.userId?.email || 'chưa có email'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={css.s36}>
+                <Button variant="secondary" onClick={() => setAssignTopic(null)}>
+                  Hủy
+                </Button>
+                <Button variant="primary" type="submit" loading={assigningSupervisor}>
+                  Xác nhận phân công
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
       <ConfirmDialog
         open={Boolean(topicToCancel)}

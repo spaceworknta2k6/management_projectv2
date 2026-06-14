@@ -43,6 +43,7 @@ export default function TopicModal({
               <div className={css.s32}>
                 <label className={css.s33}>Hình thức thực hiện</label>
                 <select
+                  name="ownerType"
                   value={form.ownerType}
                   onChange={(e) => setForm((p) => ({
                     ...p,
