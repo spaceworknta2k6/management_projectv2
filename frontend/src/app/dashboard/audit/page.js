@@ -65,8 +65,8 @@ const auditActionOptions = [
 ];
 
 const auditTabs = [
-  { id: 'general', label: 'Nháº­t kÃ½ chung' },
-  { id: 'entity', label: 'Tra cá»©u theo thá»±c thá»ƒ' },
+  { id: 'general', label: 'Nhật ký chung' },
+  { id: 'entity', label: 'Tra cứu theo thực thể' },
 ];
 
 const auditTabLabels = {

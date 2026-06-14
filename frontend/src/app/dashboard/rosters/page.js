@@ -95,11 +95,16 @@ export default function RostersPage() {
       const res = await api.get('/periods', token);
       const activePeriods = res.data || [];
       setPeriods(activePeriods);
-      if (activePeriods.length > 0 && !selectedPeriodId) {
-        setSelectedPeriodId(activePeriods[0]._id);
+      if (activePeriods.length > 0) {
+        if (!selectedPeriodId) {
+          setSelectedPeriodId(activePeriods[0]._id);
+        }
+      } else {
+        setLoading(false);
       }
     } catch (err) {
       toast.error('Không thể tải danh sách đợt đồ án');
+      setLoading(false);
     }
   }, [token, selectedPeriodId, toast]);
 
@@ -417,6 +422,12 @@ export default function RostersPage() {
         <div className={css.s6}>
           <Spinner size="lg" />
         </div>
+      ) : periods.length === 0 ? (
+        <Card>
+          <div className={css.emptyMessage}>
+            Chưa có đợt đồ án nào được tạo trong hệ thống. Vui lòng tạo đợt đồ án trước khi quản lý danh sách sinh viên.
+          </div>
+        </Card>
       ) : roster.length === 0 ? (
         <Card>
           <div className={css.emptyMessage}>

@@ -1,17 +1,4 @@
-const path = require('path');
-const fs = require('fs');
 const filesService = require('./files.service');
-
-const resolveStoredFilePath = (storageKey) => {
-  const backendRoot = path.join(__dirname, '../..');
-  const absolutePath = path.resolve(backendRoot, storageKey);
-
-  if (!absolutePath.startsWith(backendRoot + path.sep)) {
-    throw { status: 400, message: 'Đường dẫn tệp tin không hợp lệ.' };
-  }
-
-  return absolutePath;
-};
 
 const uploadFile = async (req, res, next) => {
   try {
@@ -72,16 +59,17 @@ const downloadFile = async (req, res, next) => {
     }
 
     const asset = await filesService.getFileById(id);
-    const absolutePath = resolveStoredFilePath(asset.storageKey);
-
-    if (!fs.existsSync(absolutePath)) {
-      return res.status(404).json({ success: false, message: 'Tệp tin vật lý không tồn tại trên hệ thống lưu trữ.' });
-    }
-
+    const fileStream = await filesService.createStoredFileReadStream(asset);
     res.setHeader('Content-Type', asset.mimeVerified || asset.mimeClient);
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(asset.originalName)}"`);
 
-    const fileStream = fs.createReadStream(absolutePath);
+    fileStream.on('error', (streamError) => {
+      if (res.headersSent) {
+        res.destroy(streamError);
+        return;
+      }
+      next(streamError);
+    });
     fileStream.pipe(res);
   } catch (error) {
     next(error);

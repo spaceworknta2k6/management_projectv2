@@ -78,12 +78,12 @@ function getPendingGroupInvite(room, user) {
 
 function getAttachmentLabel(message) {
   const firstAttachment = message?.attachments?.[0];
-  if (!firstAttachment) return 'ChÆ°a cÃ³ tin nháº¯n';
+  if (!firstAttachment) return 'Chưa có tin nhắn';
   return firstAttachment.kind === 'image' ? 'Đã gửi một ảnh' : `Đã gửi tệp ${firstAttachment.originalName || ''}`.trim();
 }
 
 function getLatestMessageText(message) {
-  if (!message) return 'ChÆ°a cÃ³ tin nháº¯n';
+  if (!message) return 'Chưa có tin nhắn';
   return message.body || getAttachmentLabel(message);
 }
 

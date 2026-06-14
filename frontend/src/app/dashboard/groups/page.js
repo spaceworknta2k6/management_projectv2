@@ -89,9 +89,11 @@ export default function GroupsPage() {
       setPeriods(activePeriods);
       if (activePeriods.length > 0) {
         setSelectedPeriodId(activePeriods[0]._id);
+      } else {
+        setLoading(false);
       }
     } catch {
-      // Suppress
+      setLoading(false);
     }
   }, [token]);
 
@@ -426,7 +428,13 @@ export default function GroupsPage() {
             </div>
           </FilterCard>
 
-          {visibleGroups.length === 0 ? (
+          {periods.length === 0 ? (
+            <Card>
+              <div className={css.s8}>
+                Chưa có đợt đồ án nào được tạo trong hệ thống. Vui lòng tạo đợt đồ án trước khi quản lý nhóm đồ án.
+              </div>
+            </Card>
+          ) : visibleGroups.length === 0 ? (
             <Card>
               <div className={css.s8}>
                 {search ? `Không tìm thấy kết quả cho "${search}".` : 'Chưa có nhóm nào được đăng ký trong đợt này.'}

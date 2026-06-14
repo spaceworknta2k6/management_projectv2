@@ -10,10 +10,103 @@ const Committee = require('../../models/Committee');
 const { getJwtSecret } = require('../../config/jwt');
 
 const PRIVATE_UPLOAD_DIR = path.join(__dirname, '../../uploads/private');
+const GRIDFS_STORAGE_PREFIX = 'gridfs:';
+const STORAGE_PROVIDERS = new Set(['local', 'gridfs']);
+
+const getStorageProvider = () => {
+  const provider = (process.env.STORAGE_PROVIDER || 'local').trim().toLowerCase();
+  if (!STORAGE_PROVIDERS.has(provider)) {
+    throw { status: 500, message: 'Cấu hình STORAGE_PROVIDER không hợp lệ. Chỉ hỗ trợ local hoặc gridfs.' };
+  }
+  return provider;
+};
 
 const sanitizeFileName = (originalName) => {
   const baseName = path.basename(originalName || 'upload.bin');
   return baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+};
+
+const getGridFsBucket = () => {
+  if (!mongoose.connection.db) {
+    throw { status: 500, message: 'Kết nối MongoDB chưa sẵn sàng để lưu tệp tin.' };
+  }
+
+  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+    bucketName: process.env.GRIDFS_BUCKET_NAME || 'fileAssets',
+  });
+};
+
+const uploadToGridFs = (multerFile, sha256Hash, verifiedMime, ownerType, ownerId, user) => (
+  new Promise((resolve, reject) => {
+    const bucket = getGridFsBucket();
+    const uploadStream = bucket.openUploadStream(sanitizeFileName(multerFile.originalname), {
+      contentType: verifiedMime || multerFile.mimetype,
+      metadata: {
+        originalName: multerFile.originalname,
+        mimeClient: multerFile.mimetype,
+        mimeVerified: verifiedMime,
+        sha256: sha256Hash,
+        ownerType: ownerType || 'project',
+        ownerId: (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) ? new mongoose.Types.ObjectId(ownerId) : null,
+        uploadedBy: user._id,
+      },
+    });
+
+    uploadStream.on('error', reject);
+    uploadStream.on('finish', () => resolve(`${GRIDFS_STORAGE_PREFIX}${uploadStream.id.toString()}`));
+    uploadStream.end(multerFile.buffer);
+  })
+);
+
+const saveToLocalStorage = (multerFile) => {
+  if (!fs.existsSync(PRIVATE_UPLOAD_DIR)) {
+    fs.mkdirSync(PRIVATE_UPLOAD_DIR, { recursive: true });
+  }
+
+  const uniqueFileName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitizeFileName(multerFile.originalname)}`;
+  const relativePath = path.join('uploads/private', uniqueFileName);
+  const absolutePath = path.join(PRIVATE_UPLOAD_DIR, uniqueFileName);
+
+  fs.writeFileSync(absolutePath, multerFile.buffer);
+  return relativePath;
+};
+
+const resolveStoredFilePath = (storageKey) => {
+  const backendRoot = path.join(__dirname, '../..');
+  const absolutePath = path.resolve(backendRoot, storageKey);
+
+  if (!absolutePath.startsWith(backendRoot + path.sep)) {
+    throw { status: 400, message: 'Đường dẫn tệp tin không hợp lệ.' };
+  }
+
+  return absolutePath;
+};
+
+const getGridFsObjectId = (storageKey) => {
+  const fileId = storageKey.slice(GRIDFS_STORAGE_PREFIX.length);
+  if (!mongoose.Types.ObjectId.isValid(fileId)) {
+    throw { status: 400, message: 'Mã lưu trữ GridFS không hợp lệ.' };
+  }
+  return new mongoose.Types.ObjectId(fileId);
+};
+
+const createStoredFileReadStream = async (asset) => {
+  if (asset.storageKey.startsWith(GRIDFS_STORAGE_PREFIX)) {
+    const bucket = getGridFsBucket();
+    const fileObjectId = getGridFsObjectId(asset.storageKey);
+    const [storedFile] = await bucket.find({ _id: fileObjectId }).limit(1).toArray();
+    if (!storedFile) {
+      throw { status: 404, message: 'Tệp tin GridFS không tồn tại trên hệ thống lưu trữ.' };
+    }
+    return bucket.openDownloadStream(fileObjectId);
+  }
+
+  const absolutePath = resolveStoredFilePath(asset.storageKey);
+  if (!fs.existsSync(absolutePath)) {
+    throw { status: 404, message: 'Tệp tin vật lý không tồn tại trên hệ thống lưu trữ.' };
+  }
+
+  return fs.createReadStream(absolutePath);
 };
 
 const hasAnyRole = (user, allowedRoles) => {
@@ -94,21 +187,16 @@ const uploadFile = async (multerFile, ownerType, ownerId, user) => {
     };
   }
 
-  // 3. Save file locally in a non-public upload folder.
-  if (!fs.existsSync(PRIVATE_UPLOAD_DIR)) {
-    fs.mkdirSync(PRIVATE_UPLOAD_DIR, { recursive: true });
-  }
-
-  const uniqueFileName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitizeFileName(multerFile.originalname)}`;
-  const relativePath = path.join('uploads/private', uniqueFileName);
-  const absolutePath = path.join(PRIVATE_UPLOAD_DIR, uniqueFileName);
-
-  fs.writeFileSync(absolutePath, fileBuffer);
+  // 3. Save file in the configured private storage backend.
+  const storageProvider = getStorageProvider();
+  const storageKey = storageProvider === 'gridfs'
+    ? await uploadToGridFs(multerFile, sha256Hash, verifiedMime, ownerType, ownerId, user)
+    : saveToLocalStorage(multerFile);
 
   // 4. Create FileAsset Record
   const fileAsset = new FileAsset({
     originalName: multerFile.originalname,
-    storageKey: relativePath,
+    storageKey,
     mimeClient: multerFile.mimetype,
     mimeVerified: verifiedMime,
     size: multerFile.size,
@@ -117,7 +205,10 @@ const uploadFile = async (multerFile, ownerType, ownerId, user) => {
     ownerId: (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) ? ownerId : null,
     uploadedBy: user._id,
     scanStatus: 'clean', // Automatically clean for mock context
-    accessPolicy: 'private'
+    accessPolicy: 'private',
+    metadata: {
+      storageProvider,
+    },
   });
 
   return await fileAsset.save();
@@ -281,6 +372,7 @@ module.exports = {
   uploadFile,
   getFileById,
   checkFileAccess,
+  createStoredFileReadStream,
   generateSignedUrl,
   verifySignedUrl,
   updateScanStatus,

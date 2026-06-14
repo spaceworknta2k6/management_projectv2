@@ -5,6 +5,9 @@
    ============================================================ */
 :root,
 [data-theme="dark"] {
+  --font-geist: var(--font-be-vietnam), "Segoe UI", Roboto, Arial, ui-sans-serif, system-ui, sans-serif;
+  --font-geist-mono: var(--font-mono), "Cascadia Code", Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+
   /* Backgrounds */
   --bg-base:      #09090f;
   --bg-surface:   #101018;

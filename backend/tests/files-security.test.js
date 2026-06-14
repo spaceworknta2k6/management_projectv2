@@ -13,6 +13,23 @@ const Project = require('../models/Project');
 const FileAsset = require('../models/FileAsset');
 
 const TEST_PORT = 5007;
+const TEST_OWNER_TYPE = 'file_security_test';
+
+const clearGridFsBucket = async () => {
+  const bucketName = process.env.GRIDFS_BUCKET_NAME || 'fileAssets';
+  const filesCollection = mongoose.connection.db.collection(`${bucketName}.files`);
+  const chunksCollection = mongoose.connection.db.collection(`${bucketName}.chunks`);
+  const files = await filesCollection
+    .find({ 'metadata.ownerType': TEST_OWNER_TYPE })
+    .project({ _id: 1 })
+    .toArray();
+
+  if (files.length === 0) return;
+
+  const fileIds = files.map((file) => file._id);
+  await chunksCollection.deleteMany({ files_id: { $in: fileIds } });
+  await filesCollection.deleteMany({ _id: { $in: fileIds } });
+};
 
 const runIntegrationTests = async () => {
   const server = app.listen(TEST_PORT, async () => {
@@ -35,7 +52,8 @@ const runIntegrationTests = async () => {
       if (!reviewerLecturer) throw new Error('❌ Reviewer Lecturer profile not found.');
 
       // Clean up previous runs
-      await FileAsset.deleteMany({});
+      await FileAsset.deleteMany({ ownerType: TEST_OWNER_TYPE });
+      await clearGridFsBucket();
       console.log('✅ Cleaned up old file assets.');
 
       // Logins
@@ -79,7 +97,7 @@ const runIntegrationTests = async () => {
       const formData = new FormData();
       const blob = new Blob([pdfContent], { type: 'application/pdf' });
       formData.append('file', blob, 'De_Cuong_Chi_Tiet.pdf');
-      formData.append('ownerType', 'project');
+      formData.append('ownerType', TEST_OWNER_TYPE);
       formData.append('ownerId', projectId.toString());
 
       const uploadRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/files/upload`, {
@@ -99,6 +117,12 @@ const runIntegrationTests = async () => {
       console.log('- sha256 Hashing:', uploadResult.data.sha256);
       console.log('- size:', uploadResult.data.size, 'bytes');
       console.log('- scanStatus:', uploadResult.data.scanStatus);
+      if ((process.env.STORAGE_PROVIDER || 'local').trim().toLowerCase() === 'gridfs') {
+        if (!String(uploadResult.data.storageKey || '').startsWith('gridfs:')) {
+          throw new Error('❌ Test 1 Failed: GridFS storage did not return a gridfs storage key.');
+        }
+        console.log('- storageKey:', 'gridfs:*');
+      }
       console.log('✅ Test 1 Passed: Valid PDF upload succeeded!');
 
       // 3. Fake format detection (Magic number blocks)
@@ -175,6 +199,8 @@ const runIntegrationTests = async () => {
 
       // Clean up project
       await Project.findByIdAndDelete(projectId);
+      await FileAsset.deleteMany({ ownerType: TEST_OWNER_TYPE });
+      await clearGridFsBucket();
 
       console.log('\n🎉 ALL PHASE 11 FILE SECURITY INTEGRATION TESTS PASSED SUCCESSFULLY! 🎉');
     } catch (error) {

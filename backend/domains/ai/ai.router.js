@@ -50,13 +50,13 @@ const checkCommitteeOrStaff = async (req, res, next) => {
 router.use(protect);
 
 router.get('/jobs/:id', aiValidator.validateJobId, aiController.getJobById);
-router.post('/jobs/:id/retry', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'LECTURER']), aiValidator.validateJobId, aiController.retryAiJob);
-router.post('/jobs/:id/manual-override', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'LECTURER']), aiValidator.validateJobId, aiValidator.validateManualOverride, aiController.manualOverrideJob);
+router.post('/jobs/:id/retry', requireRole(['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF', 'LECTURER']), aiValidator.validateJobId, aiController.retryAiJob);
+router.post('/jobs/:id/manual-override', requireRole(['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF', 'LECTURER']), aiValidator.validateJobId, aiValidator.validateManualOverride, aiController.manualOverrideJob);
 
-router.post('/topics/:id/check-duplicate', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF']), aiValidator.validateTopicId, aiController.checkDuplicateTopic);
-router.post('/students/:id/topic-suggestions', requireRole(['STUDENT', 'FACULTY_STAFF']), aiValidator.validateStudentId, aiController.suggestTopics);
-router.post('/students/:id/topic-chat', requireRole(['STUDENT', 'FACULTY_STAFF']), aiValidator.validateStudentId, aiController.chatTopicSuggestion);
-router.post('/submissions/:id/report-feedback', requireRole(['STUDENT', 'LECTURER', 'FACULTY_STAFF']), aiValidator.validateSubmissionId, aiController.analyzeReportFeedback);
+router.post('/topics/:id/check-duplicate', requireRole(['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF']), aiValidator.validateTopicId, aiController.checkDuplicateTopic);
+router.post('/students/:id/topic-suggestions', requireRole(['STUDENT', 'SYSTEM_ADMIN', 'FACULTY_STAFF']), aiValidator.validateStudentId, aiController.suggestTopics);
+router.post('/students/:id/topic-chat', requireRole(['STUDENT', 'SYSTEM_ADMIN', 'FACULTY_STAFF']), aiValidator.validateStudentId, aiController.chatTopicSuggestion);
+router.post('/submissions/:id/report-feedback', requireRole(['STUDENT', 'LECTURER', 'SYSTEM_ADMIN', 'FACULTY_STAFF']), aiValidator.validateSubmissionId, aiController.analyzeReportFeedback);
 
 // Committee only for defense questions
 router.post('/projects/:id/defense-questions', checkCommitteeOrStaff, aiValidator.validateProjectId, aiController.suggestDefenseQuestions);

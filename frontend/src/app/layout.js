@@ -1,26 +1,27 @@
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Be_Vietnam_Pro, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 
-const geist = Geist({
-  variable: '--font-geist',
-  subsets: ['latin'],
+const beVietnamPro = Be_Vietnam_Pro({
+  weight: ['400', '500', '600', '700'],
+  subsets: ['latin', 'vietnamese'],
+  variable: '--font-be-vietnam',
   display: 'swap',
 });
 
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
+const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
+  variable: '--font-mono',
   display: 'swap',
 });
 
 export const metadata = {
-  title: 'Karl — Quản lý Đồ án Tốt nghiệp',
+  title: 'Karl - Quản lý Đồ án Tốt nghiệp',
   description: 'Hệ thống quản lý đồ án tốt nghiệp dành cho Trường Đại học Phenikaa',
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="vi" className={`${geist.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html lang="vi" className={`${beVietnamPro.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
         <script
           dangerouslySetInnerHTML={{
@@ -40,7 +41,7 @@ export default function RootLayout({ children }) {
                   document.querySelectorAll('nextjs-portal').forEach(el => el.remove());
                 });
               })();
-            `
+            `,
           }}
         />
         {children}
