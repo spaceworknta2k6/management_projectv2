@@ -97,6 +97,8 @@ const io = new Server(server, {
   },
 });
 app.set('io', io);
+require('./config/socket-io-holder').setIo(io);
 require('./domains/chat/chat.socket')(io);
 
 module.exports = { app, server, io };
+

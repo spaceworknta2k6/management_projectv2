@@ -14,7 +14,19 @@ const createNotification = async (data) => {
     deadlineAt,
   });
 
-  return await notification.save();
+  const savedNotification = await notification.save();
+
+  try {
+    const socketIoHolder = require('../../config/socket-io-holder');
+    const io = socketIoHolder.getIo();
+    if (io) {
+      io.to(`user:${recipientId}`).emit('notification:new', savedNotification);
+    }
+  } catch (error) {
+    console.error('Lỗi khi phát sự kiện socket thông báo:', error.message);
+  }
+
+  return savedNotification;
 };
 
 const getNotifications = async (recipientId) => {

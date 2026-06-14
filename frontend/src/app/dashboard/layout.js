@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
+import { io } from 'socket.io-client';
 import {
   GraduationCap,
   House,
@@ -32,8 +33,57 @@ import Spinner from '@/components/ui/Spinner';
 import Button from '@/components/ui/Button';
 import { getAvatarUrl } from '@/lib/avatar';
 import { getPrimaryRole, getRoleLabel, hasAnyRole } from '@/lib/utils';
-import { ToastProvider } from '@/components/ui/Toast';
+import { ToastProvider, useToast } from '@/components/ui/Toast';
+import api from '@/services/api';
 import css from './layout.module.css';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
+const SOCKET_URL = API_BASE_URL.replace('/api/v1', '');
+
+function RealtimeNotificationHandler({ onNewNotification }) {
+  const { token, user } = useAuthStore();
+  const toast = useToast();
+
+  useEffect(() => {
+    if (!token || !user) return undefined;
+
+    const socket = io(SOCKET_URL, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+    });
+
+    socket.on('notification:new', (notification) => {
+      // Show info toast
+      toast.info(
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
+          <strong style={{ fontSize: '13px', color: 'inherit' }}>{notification.title}</strong>
+          <span style={{ fontSize: '12px', opacity: 0.9 }}>{notification.body}</span>
+        </div>
+      );
+
+      // Play audio notification sound if possible (best-effort)
+      try {
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-500.wav');
+        audio.volume = 0.4;
+        audio.play().catch(() => {});
+      } catch (soundErr) {
+        // Suppress audio play errors
+      }
+
+      // Dispatch custom DOM event for active sub-pages
+      window.dispatchEvent(new CustomEvent('notification:new', { detail: notification }));
+      
+      // Notify parent layout to increment unread badge count
+      onNewNotification?.(notification);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [token, user, toast, onNewNotification]);
+
+  return null;
+}
 
 /* ─── Navigation Items ──────────────────────────────────────────────── */
 const NAV_ITEMS = [
@@ -56,7 +106,7 @@ const NAV_ITEMS = [
 ];
 
 /* ─── Sidebar ──────────────────────────────────────────────────────── */
-function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate, user }) {
+function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate, user, unreadNotificationsCount }) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -93,6 +143,7 @@ function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate, user }) {
         {visibleItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
+          const isNotificationItem = item.href === '/dashboard/notifications';
           return (
             <button
               key={item.href}
@@ -107,8 +158,41 @@ function Sidebar({ collapsed, mobileOpen, onToggle, onNavigate, user }) {
                 isActive ? css.navButtonActive : '',
               ].filter(Boolean).join(' ')}
             >
-              <Icon size={20} weight={isActive ? 'duotone' : 'regular'} className={css.s5} />
-              {!collapsed && item.label}
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <Icon size={20} weight={isActive ? 'duotone' : 'regular'} className={css.s5} />
+                {isNotificationItem && unreadNotificationsCount > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-2px',
+                    right: '-2px',
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    backgroundColor: '#ef4444',
+                    border: '1.5px solid var(--bg-surface, #ffffff)',
+                  }} />
+                )}
+              </span>
+              {!collapsed && (
+                <span style={{ display: 'flex', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
+                  <span>{item.label}</span>
+                  {isNotificationItem && unreadNotificationsCount > 0 && (
+                    <span style={{
+                      backgroundColor: '#ef4444',
+                      color: '#ffffff',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      padding: '1px 6px',
+                      borderRadius: '10px',
+                      minWidth: '16px',
+                      textAlign: 'center',
+                      lineHeight: '1.4',
+                    }}>
+                      {unreadNotificationsCount}
+                    </span>
+                  )}
+                </span>
+              )}
             </button>
           );
         })}
@@ -209,6 +293,40 @@ export default function DashboardLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [networkError, setNetworkError] = useState(false);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+
+  // Fetch initial notifications list to compute unread count
+  useEffect(() => {
+    if (!token || !user) return;
+    api.get('/notifications', token)
+      .then((res) => {
+        const list = res.data || [];
+        const unread = list.filter((n) => !n.readAt).length;
+        setUnreadNotificationsCount(unread);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch initial notifications:', err);
+      });
+  }, [token, user]);
+
+  // Listen to custom DOM events for read / read-all actions from sub-pages
+  useEffect(() => {
+    const handleNotificationRead = () => {
+      setUnreadNotificationsCount((prev) => Math.max(0, prev - 1));
+    };
+
+    const handleNotificationReadAll = () => {
+      setUnreadNotificationsCount(0);
+    };
+
+    window.addEventListener('notification:read', handleNotificationRead);
+    window.addEventListener('notification:read-all', handleNotificationReadAll);
+
+    return () => {
+      window.removeEventListener('notification:read', handleNotificationRead);
+      window.removeEventListener('notification:read-all', handleNotificationReadAll);
+    };
+  }, []);
 
   // Apply saved theme on mount
   useEffect(() => {
@@ -327,12 +445,16 @@ export default function DashboardLayout({ children }) {
 
   return (
     <ToastProvider>
+      <RealtimeNotificationHandler
+        onNewNotification={() => setUnreadNotificationsCount((prev) => prev + 1)}
+      />
       <Sidebar
         collapsed={collapsed}
         mobileOpen={mobileMenuOpen}
         onToggle={() => setCollapsed((p) => !p)}
         onNavigate={() => setMobileMenuOpen(false)}
         user={user}
+        unreadNotificationsCount={unreadNotificationsCount}
       />
       {mobileMenuOpen && (
         <button

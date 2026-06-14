@@ -4,7 +4,35 @@ const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
 const ProjectPeriod = require('../../models/ProjectPeriod');
 const WorkflowEvent = require('../../models/WorkflowEvent');
+const Lecturer = require('../../models/Lecturer');
+const Student = require('../../models/Student');
+const User = require('../../models/User');
+const notificationsService = require('../notifications/notifications.service');
 const { assertOwnerAccess, resolveProjectOwner } = require('../../utils/project-owner');
+
+const getRequestStudentUserIds = async (request) => {
+  const userIds = [];
+  if (request.studentId) {
+    const student = await Student.findOne({ _id: request.studentId, isDeleted: false });
+    if (student && student.userId) {
+      userIds.push(student.userId);
+    }
+  } else if (request.groupId) {
+    const group = await ProjectGroup.findOne({ _id: request.groupId, isDeleted: false })
+      .populate({
+        path: 'members.studentId',
+        match: { isDeleted: false },
+      });
+    if (group) {
+      for (const m of group.members) {
+        if (m.status === 'accepted' && m.studentId && m.studentId.userId) {
+          userIds.push(m.studentId.userId);
+        }
+      }
+    }
+  }
+  return userIds;
+};
 
 const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(role));
 
@@ -121,6 +149,28 @@ const createChangeRequest = async (topicId, data, user) => {
     metadata: { topicId: topic._id, groupId: topic.groupId },
   });
 
+  // Gửi thông báo đến GVHD
+  try {
+    const project = await Project.findOne({ topicId: topic._id });
+    if (project && project.supervisorId) {
+      const lecturer = await Lecturer.findOne({ _id: project.supervisorId, isDeleted: false });
+      if (lecturer && lecturer.userId) {
+        const studentName = user.fullName || user.email;
+        await notificationsService.createNotification({
+          recipientId: lecturer.userId,
+          type: 'TOPIC_CHANGE_REQUEST_SUBMITTED',
+          title: 'Yêu cầu đổi đề tài mới',
+          body: `Sinh viên ${studentName} đã gửi đơn xin đổi tên đề tài từ "${request.oldTitle}" thành "${request.newTitle}".`,
+          entityType: 'TopicChangeRequest',
+          entityId: request._id,
+          actionUrl: `/dashboard/topic-changes`,
+        });
+      }
+    }
+  } catch (notifyErr) {
+    console.error('Lỗi khi gửi thông báo gửi đơn đổi đề tài:', notifyErr.message);
+  }
+
   return request;
 };
 
@@ -218,6 +268,47 @@ const supervisorReview = async (id, decision, note, user) => {
     reason: note.trim(),
   });
 
+  // Gửi thông báo cho sinh viên và khoa/bộ môn
+  try {
+    const studentUserIds = await getRequestStudentUserIds(request);
+    const statusLabel = decision === 'approved' ? 'đồng ý' : 'từ chối';
+    
+    // 1. Thông báo cho sinh viên thực hiện đề tài
+    for (const studentUserId of studentUserIds) {
+      await notificationsService.createNotification({
+        recipientId: studentUserId,
+        type: decision === 'approved' ? 'TOPIC_CHANGE_SUPERVISOR_APPROVED' : 'TOPIC_CHANGE_SUPERVISOR_REJECTED',
+        title: `GVHD ${decision === 'approved' ? 'đồng ý' : 'từ chối'} đơn đổi đề tài`,
+        body: `Giảng viên hướng dẫn đã ${statusLabel} đơn xin đổi đề tài của bạn. Lý do: "${note.trim()}".`,
+        entityType: 'TopicChangeRequest',
+        entityId: request._id,
+        actionUrl: `/dashboard/topic-changes`,
+      });
+    }
+
+    // 2. Nếu GVHD đồng ý, gửi thông báo cho Giáo vụ khoa/Admin để duyệt tiếp
+    if (decision === 'approved') {
+      const staffUsers = await User.find({
+        roles: { $in: ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'] },
+        isDeleted: false,
+        status: 'active'
+      });
+      for (const staff of staffUsers) {
+        await notificationsService.createNotification({
+          recipientId: staff._id,
+          type: 'TOPIC_CHANGE_PENDING_FACULTY',
+          title: 'Đơn đổi đề tài chờ Khoa duyệt',
+          body: `Yêu cầu đổi đề tài sang "${request.newTitle}" đã được GVHD thông qua và đang chờ duyệt cấp Khoa.`,
+          entityType: 'TopicChangeRequest',
+          entityId: request._id,
+          actionUrl: `/dashboard/topic-changes`,
+        });
+      }
+    }
+  } catch (notifyErr) {
+    console.error('Lỗi khi gửi thông báo GVHD duyệt đơn đổi đề tài:', notifyErr.message);
+  }
+
   return request;
 };
 
@@ -300,6 +391,44 @@ const facultyReview = async (id, decision, note, user) => {
     reason: note.trim(),
     metadata: { topicId: request.topicId },
   });
+
+  // Gửi thông báo cho sinh viên và GVHD
+  try {
+    const studentUserIds = await getRequestStudentUserIds(request);
+    const statusLabel = decision === 'approved' ? 'phê duyệt' : 'từ chối';
+
+    // 1. Thông báo cho sinh viên thực hiện đề tài
+    for (const studentUserId of studentUserIds) {
+      await notificationsService.createNotification({
+        recipientId: studentUserId,
+        type: decision === 'approved' ? 'TOPIC_CHANGE_FACULTY_APPROVED' : 'TOPIC_CHANGE_FACULTY_REJECTED',
+        title: `Khoa đã ${statusLabel} đơn đổi đề tài`,
+        body: `Yêu cầu đổi đề tài của bạn đã được Khoa ${statusLabel}. ${decision === 'approved' ? 'Tên đề tài mới đã chính thức được áp dụng.' : `Lý do: "${note.trim()}".`}`,
+        entityType: 'TopicChangeRequest',
+        entityId: request._id,
+        actionUrl: `/dashboard/topic-changes`,
+      });
+    }
+
+    // 2. Thông báo cho GVHD
+    const project = await Project.findOne({ topicId: request.topicId });
+    if (project && project.supervisorId) {
+      const lecturer = await Lecturer.findOne({ _id: project.supervisorId, isDeleted: false });
+      if (lecturer && lecturer.userId) {
+        await notificationsService.createNotification({
+          recipientId: lecturer.userId,
+          type: decision === 'approved' ? 'TOPIC_CHANGE_FACULTY_APPROVED_SUPERVISOR' : 'TOPIC_CHANGE_FACULTY_REJECTED_SUPERVISOR',
+          title: `Khoa đã ${statusLabel} đơn đổi đề tài của sinh viên`,
+          body: `Đơn xin đổi đề tài của sinh viên do thầy/cô hướng dẫn đã được Khoa ${statusLabel}.`,
+          entityType: 'TopicChangeRequest',
+          entityId: request._id,
+          actionUrl: `/dashboard/topic-changes`,
+        });
+      }
+    }
+  } catch (notifyErr) {
+    console.error('Lỗi khi gửi thông báo Khoa duyệt đơn đổi đề tài:', notifyErr.message);
+  }
 
   return request;
 };

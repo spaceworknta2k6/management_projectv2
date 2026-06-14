@@ -46,6 +46,9 @@ const registerChatSocket = (io) => {
   });
 
   io.on('connection', (socket) => {
+    // Join a user-specific room to receive real-time notifications
+    socket.join(`user:${socket.user._id}`);
+
     socket.on('chat:join', async ({ roomId }, ack) => {
       try {
         await chatService.getRoomForUser(roomId, socket.user);

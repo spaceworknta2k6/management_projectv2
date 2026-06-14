@@ -169,6 +169,22 @@ export default function NotificationsPage() {
     fetchNotifications();
   }, [fetchNotifications]);
 
+  // Lắng nghe thông báo real-time khi trang đang mở
+  useEffect(() => {
+    const handleNewNotification = (e) => {
+      const newNotification = e.detail;
+      setNotifications((prev) => {
+        if (prev.some((n) => n._id === newNotification._id)) return prev;
+        return [newNotification, ...prev];
+      });
+    };
+
+    window.addEventListener('notification:new', handleNewNotification);
+    return () => {
+      window.removeEventListener('notification:new', handleNewNotification);
+    };
+  }, []);
+
   const handleMarkRead = async (id) => {
     setMarkingId(id);
     try {
@@ -177,6 +193,9 @@ export default function NotificationsPage() {
         prev.map((notification) => (notification._id === id ? res.data : notification))
       );
       toast.success('Đã đánh dấu thông báo là đã đọc.');
+      
+      // Bắn sự kiện DOM để giảm số lượng badge ở Sidebar của layout
+      window.dispatchEvent(new CustomEvent('notification:read', { detail: { id } }));
     } catch (err) {
       toast.error(err.message || 'Không thể đánh dấu thông báo.');
     } finally {
@@ -195,6 +214,9 @@ export default function NotificationsPage() {
         }))
       );
       toast.success('Đã đánh dấu đọc toàn bộ thông báo.');
+      
+      // Bắn sự kiện DOM để reset số lượng badge ở Sidebar của layout
+      window.dispatchEvent(new CustomEvent('notification:read-all'));
     } catch (err) {
       toast.error(err.message || 'Không thể đánh dấu đọc toàn bộ thông báo.');
     } finally {
