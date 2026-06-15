@@ -42,6 +42,7 @@ const auditRouter = require('./domains/audit/audit.router');
 const filesRouter = require('./domains/files/files.router');
 const aiRouter = require('./domains/ai/ai.router');
 const usersRouter = require('./domains/users/users.router');
+const rubricsRouter = require('./domains/rubrics/rubrics.router');
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/periods', periodsRouter);
@@ -60,6 +61,7 @@ app.use('/api/v1/audit', auditRouter);
 app.use('/api/v1/files', filesRouter);
 app.use('/api/v1/ai', aiRouter);
 app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/rubrics', rubricsRouter);
 
 // Basic Health Check Route
 app.get('/health', (req, res) => {

@@ -252,3 +252,98 @@
   color: var(--text-primary);
   resize: vertical;
 }
+
+/* Print scorecard styling */
+.screenArea {
+  display: block;
+}
+
+.printArea {
+  display: none;
+}
+
+@media print {
+  .screenArea {
+    display: none !important;
+  }
+
+  .printArea {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    padding: 40px;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: "Times New Roman", Times, serif;
+  }
+
+  /* Reset tables for printing */
+  .printTable {
+    display: table !important;
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    margin-bottom: 20px;
+  }
+
+  .printTable tr {
+    display: table-row !important;
+  }
+
+  .printTable th, .printTable td {
+    display: table-cell !important;
+    border: 1px solid #000 !important;
+    padding: 8px 12px !important;
+    text-align: left;
+    color: #000 !important;
+  }
+
+  .printHeader {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+
+  .printTitle {
+    font-size: 20px;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-top: 10px;
+  }
+
+  .printInfoGrid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 24px;
+    font-size: 14px;
+  }
+
+  .printSignatures {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    margin-top: 40px;
+    text-align: center;
+    font-size: 14px;
+  }
+
+  .printQrContainer {
+    display: flex !important;
+    align-items: center;
+    gap: 16px;
+    margin-top: 30px;
+    border-top: 1px dashed #000;
+    padding-top: 20px;
+    font-size: 12px;
+  }
+
+  .printQrImage {
+    display: block !important;
+    width: 100px;
+    height: 100px;
+  }
+}

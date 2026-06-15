@@ -13,6 +13,7 @@ import css from './page.module.css';
 export default function PeriodsPage() {
   const {
     periods,
+    rubrics,
     loading,
     showModal,
     setShowModal,
@@ -96,6 +97,7 @@ export default function PeriodsPage() {
             setEditingPeriod(null);
           }}
           submitting={submitting}
+          rubrics={rubrics}
         />
       )}
 

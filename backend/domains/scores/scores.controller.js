@@ -148,6 +148,21 @@ const resolveVariance = async (req, res, next) => {
   }
 };
 
+const getPublicScoreSheetVerify = async (req, res, next) => {
+  try {
+    const data = await scoresService.getPublicScoreSheetVerify(req.params.id);
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 module.exports = {
   submitScoreSheet,
   getScoreSheets,
@@ -160,4 +175,5 @@ module.exports = {
   publishFinalGrade,
   lockFinalGrade,
   resolveVariance,
+  getPublicScoreSheetVerify,
 };

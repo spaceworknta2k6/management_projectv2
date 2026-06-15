@@ -5,6 +5,9 @@ const scoresController = require('./scores.controller');
 const scoresValidator = require('./scores.validator');
 const { protect, requireRole } = require('../../middlewares/auth.middleware');
 
+// Public scorecard verification endpoint (no login required)
+router.get('/score-sheets/:id/public-verify', scoresController.getPublicScoreSheetVerify);
+
 router.use(protect);
 
 router.get('/score-sheets', scoresController.getScoreSheets);

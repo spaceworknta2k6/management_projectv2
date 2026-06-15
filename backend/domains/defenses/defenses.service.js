@@ -49,12 +49,29 @@ const scheduleSession = async (data, user) => {
   return await session.save();
 };
 
+const populateSessionQuery = (query) => query
+  .populate({
+    path: 'projectId',
+    populate: [
+      { path: 'topicId' },
+    ],
+  })
+  .populate('groupId')
+  .populate({
+    path: 'committeeId',
+    populate: { path: 'periodId' },
+  });
+
 const getSessions = async (query = {}) => {
-  return await DefenseSession.find({ ...query, isDeleted: { $ne: true } }).populate('projectId').populate('committeeId');
+  return await populateSessionQuery(
+    DefenseSession.find({ ...query, isDeleted: { $ne: true } })
+  );
 };
 
 const getSessionById = async (id) => {
-  const session = await DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } }).populate('projectId').populate('committeeId');
+  const session = await populateSessionQuery(
+    DefenseSession.findOne({ _id: id, isDeleted: { $ne: true } })
+  );
   if (!session) {
     throw { status: 404, message: 'Phiên bảo vệ không tồn tại.' };
   }

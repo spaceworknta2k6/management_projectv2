@@ -1,4 +1,4 @@
-// Validation rules for project period requests matching the standard in VALIDATION.md
+const mongoose = require('mongoose');
 
 const validatePeriodCreate = (req, res, next) => {
   const {
@@ -21,10 +21,17 @@ const validatePeriodCreate = (req, res, next) => {
     varianceThreshold,
     passScore,
     rubricVersion,
+    rubricId,
     scoringFormula
   } = req.body;
 
   const errors = [];
+
+  if (rubricId !== undefined && rubricId !== null && rubricId !== '') {
+    if (!mongoose.Types.ObjectId.isValid(rubricId)) {
+      errors.push({ field: 'rubricId', code: 'RUBRIC_ID_INVALID', message: 'Mã tiêu chí đánh giá (rubricId) không hợp lệ.' });
+    }
+  }
 
   // 1. Core Fields presence checks
   if (!name || typeof name !== 'string' || name.trim() === '') {
@@ -130,8 +137,14 @@ const validatePeriodCreate = (req, res, next) => {
 
 const validatePeriodUpdate = (req, res, next) => {
   // Supports partial updates but ensures updated dates are correct
-  const { minGroupSize, maxGroupSize, scoringFormula } = req.body;
+  const { minGroupSize, maxGroupSize, scoringFormula, rubricId } = req.body;
   const errors = [];
+
+  if (rubricId !== undefined && rubricId !== null && rubricId !== '') {
+    if (!mongoose.Types.ObjectId.isValid(rubricId)) {
+      errors.push({ field: 'rubricId', code: 'RUBRIC_ID_INVALID', message: 'Mã tiêu chí đánh giá (rubricId) không hợp lệ.' });
+    }
+  }
 
   if (minGroupSize !== undefined || maxGroupSize !== undefined) {
     const min = minGroupSize !== undefined ? parseInt(minGroupSize, 10) : undefined;

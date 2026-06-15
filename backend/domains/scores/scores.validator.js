@@ -44,7 +44,7 @@ const validateScoreSheetSubmit = (req, res, next) => {
       if (c.score === undefined || typeof c.score !== 'number' || c.score < 0 || c.score > (c.maxScore || 10)) {
         errors.push({ field: `criteriaScores[${idx}].score`, code: 'SCORE_INVALID', message: `Điểm chấm phải từ 0 đến điểm tối đa (${c.maxScore || 10}).` });
       }
-      if (c.weight === undefined || typeof c.weight !== 'number' || c.weight < 0) {
+      if (c.weight !== undefined && (typeof c.weight !== 'number' || c.weight < 0)) {
         errors.push({ field: `criteriaScores[${idx}].weight`, code: 'WEIGHT_INVALID', message: 'Trọng số tiêu chí không hợp lệ.' });
       }
     });

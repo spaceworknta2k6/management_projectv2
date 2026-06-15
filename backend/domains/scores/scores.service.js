@@ -4,6 +4,7 @@ const Project = require('../../models/Project');
 const ProjectPeriod = require('../../models/ProjectPeriod');
 const DefenseSession = require('../../models/DefenseSession');
 const Committee = require('../../models/Committee');
+const EvaluationRubric = require('../../models/EvaluationRubric');
 const { assertProjectAccess, canAccessProject, isStaff } = require('../../utils/access-control');
 const { resolveProjectOwner } = require('../../utils/project-owner');
 
@@ -55,8 +56,48 @@ const submitScoreSheet = async (data, user) => {
   }
   await assertScoreSheetPermission(project, rubricRole, user);
 
-  // Calculate raw total and rounded total
-  const rawTotal = criteriaScores.reduce((acc, c) => acc + (c.score * (c.weight !== undefined ? c.weight : 1.0)), 0);
+  const period = await ProjectPeriod.findById(periodId);
+  if (!period) {
+    throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
+  }
+
+  let rubricIdToSave = data.rubricId || period.rubricId;
+  let rubricVersionToSave = data.rubricVersion || '1.0';
+  let finalCriteriaScores = criteriaScores;
+
+  if (period.rubricId) {
+    const activeRubric = await EvaluationRubric.findOne({ _id: period.rubricId, isDeleted: { $ne: true } });
+    if (activeRubric) {
+      rubricIdToSave = activeRubric._id;
+      rubricVersionToSave = activeRubric.version;
+      const rubricCriteria = activeRubric.criteria[rubricRole];
+      if (!rubricCriteria || rubricCriteria.length === 0) {
+        throw { status: 400, message: `Không tìm thấy tiêu chí chấm điểm nào cho vai trò ${rubricRole} trong Rubric.` };
+      }
+
+      const validatedCriteriaScores = [];
+      for (const item of rubricCriteria) {
+        const clientItem = criteriaScores.find(c => c.criteriaCode === item.criteriaCode);
+        if (!clientItem) {
+          throw { status: 400, message: `Thiếu điểm cho tiêu chí: ${item.criteriaName} (${item.criteriaCode})` };
+        }
+        const scoreNum = Number(clientItem.score);
+        if (isNaN(scoreNum) || scoreNum < 0 || scoreNum > item.maxScore) {
+          throw { status: 400, message: `Điểm tiêu chí "${item.criteriaName}" không hợp lệ. Phải từ 0 đến ${item.maxScore}.` };
+        }
+        validatedCriteriaScores.push({
+          criteriaCode: item.criteriaCode,
+          criteriaName: item.criteriaName,
+          maxScore: item.maxScore,
+          weight: item.weight,
+          score: scoreNum
+        });
+      }
+      finalCriteriaScores = validatedCriteriaScores;
+    }
+  }
+
+  const rawTotal = finalCriteriaScores.reduce((acc, c) => acc + (c.score * (c.weight !== undefined ? c.weight : 1.0)), 0);
   const roundedTotal = Math.round(rawTotal * 100) / 100;
 
   const existing = await ScoreSheet.findOne({ targetType, targetId, graderId });
@@ -78,10 +119,12 @@ const submitScoreSheet = async (data, user) => {
       };
     }
 
-    existing.criteriaScores = criteriaScores;
+    existing.criteriaScores = finalCriteriaScores;
     existing.rawTotal = rawTotal;
     existing.roundedTotal = roundedTotal;
     existing.comment = comment;
+    existing.rubricId = rubricIdToSave;
+    existing.rubricVersion = rubricVersionToSave;
     if (data.consentForDefense !== undefined) {
       existing.consentForDefense = data.consentForDefense;
     }
@@ -96,7 +139,6 @@ const submitScoreSheet = async (data, user) => {
       } else if (rubricRole === 'REVIEWER') {
         graderRole = 'REVIEWER';
       } else if (rubricRole === 'COMMITTEE_MEMBER') {
-        // Trace committee role
         const session = await DefenseSession.findOne({ projectId, isDeleted: { $ne: true } });
         if (session) {
           const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
@@ -119,9 +161,9 @@ const submitScoreSheet = async (data, user) => {
 
     const owner = resolveProjectOwner(project);
     const sheet = new ScoreSheet({
-      rubricId: data.rubricId,
+      rubricId: rubricIdToSave,
       rubricRole,
-      rubricVersion: data.rubricVersion || '1.0',
+      rubricVersion: rubricVersionToSave,
       targetType,
       targetId,
       projectId,
@@ -132,7 +174,7 @@ const submitScoreSheet = async (data, user) => {
       periodId,
       graderId,
       graderRole,
-      criteriaScores,
+      criteriaScores: finalCriteriaScores,
       rawTotal,
       roundedTotal,
       comment,
@@ -194,8 +236,39 @@ const updateScoreSheet = async (id, data, user) => {
   }
 
   if (data.criteriaScores) {
-    sheet.criteriaScores = data.criteriaScores;
-    const rawTotal = data.criteriaScores.reduce((acc, c) => acc + (c.score * (c.weight !== undefined ? c.weight : 1.0)), 0);
+    let finalCriteriaScores = data.criteriaScores;
+    const period = await ProjectPeriod.findById(sheet.periodId);
+    if (period && period.rubricId) {
+      const activeRubric = await EvaluationRubric.findOne({ _id: period.rubricId, isDeleted: { $ne: true } });
+      if (activeRubric) {
+        const rubricCriteria = activeRubric.criteria[sheet.rubricRole];
+        if (!rubricCriteria || rubricCriteria.length === 0) {
+          throw { status: 400, message: `Không tìm thấy tiêu chí chấm điểm nào cho vai trò ${sheet.rubricRole} trong Rubric.` };
+        }
+
+        const validatedCriteriaScores = [];
+        for (const item of rubricCriteria) {
+          const clientItem = data.criteriaScores.find(c => c.criteriaCode === item.criteriaCode);
+          if (!clientItem) {
+            throw { status: 400, message: `Thiếu điểm cho tiêu chí: ${item.criteriaName} (${item.criteriaCode})` };
+          }
+          const scoreNum = Number(clientItem.score);
+          if (isNaN(scoreNum) || scoreNum < 0 || scoreNum > item.maxScore) {
+            throw { status: 400, message: `Điểm tiêu chí "${item.criteriaName}" không hợp lệ. Phải từ 0 đến ${item.maxScore}.` };
+          }
+          validatedCriteriaScores.push({
+            criteriaCode: item.criteriaCode,
+            criteriaName: item.criteriaName,
+            maxScore: item.maxScore,
+            weight: item.weight,
+            score: scoreNum
+          });
+        }
+        finalCriteriaScores = validatedCriteriaScores;
+      }
+    }
+    sheet.criteriaScores = finalCriteriaScores;
+    const rawTotal = finalCriteriaScores.reduce((acc, c) => acc + (c.score * (c.weight !== undefined ? c.weight : 1.0)), 0);
     sheet.rawTotal = rawTotal;
     sheet.roundedTotal = Math.round(rawTotal * 100) / 100;
   }
@@ -429,6 +502,128 @@ const resolveVariance = async (id, flagType, resolution, userId) => {
   return await grade.save();
 };
 
+const getStudentDisplay = (student) => {
+  const user = student?.userId || {};
+  return {
+    studentId: student?._id?.toString() || '',
+    fullName: user.fullName || '',
+    email: user.email || '',
+    studentCode: student?.studentCode || '',
+    className: student?.className || '',
+  };
+};
+
+const buildVerificationSubject = (sheet) => {
+  if (sheet.studentId) {
+    const student = getStudentDisplay(sheet.studentId);
+    return {
+      ownerType: 'student',
+      displayName: student.fullName || student.studentCode || 'Sinh viên',
+      primaryStudent: student,
+      students: student.studentId ? [student] : [],
+    };
+  }
+
+  const group = sheet.groupId;
+  if (!group) {
+    return {
+      ownerType: sheet.ownerType || 'unknown',
+      displayName: 'Chưa xác định',
+      primaryStudent: null,
+      students: [],
+    };
+  }
+
+  const members = (group.members || [])
+    .filter((member) => member.status === 'accepted')
+    .map((member) => getStudentDisplay(member.studentId))
+    .filter((student) => student.studentId);
+  const leader = group.leaderStudentId ? getStudentDisplay(group.leaderStudentId) : members[0] || null;
+
+  return {
+    ownerType: 'group',
+    displayName: group.name || 'Nhóm sinh viên',
+    groupId: group._id?.toString() || '',
+    groupName: group.name || '',
+    primaryStudent: leader,
+    students: members.length > 0 ? members : (leader ? [leader] : []),
+  };
+};
+
+const getVerifyHashSecret = () => {
+  const secret = process.env.SCORE_VERIFY_SECRET || process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    throw { status: 500, message: 'Thiếu khóa ký xác thực phiếu điểm.' };
+  }
+  return secret || 'test-score-verify-secret';
+};
+
+const getPublicScoreSheetVerify = async (id) => {
+  const sheet = await ScoreSheet.findById(id)
+    .populate({
+      path: 'projectId',
+      populate: { path: 'topicId' }
+    })
+    .populate({
+      path: 'studentId',
+      populate: { path: 'userId', select: 'fullName email' }
+    })
+    .populate({
+      path: 'groupId',
+      populate: [
+        { path: 'leaderStudentId', populate: { path: 'userId', select: 'fullName email' } },
+        { path: 'members.studentId', populate: { path: 'userId', select: 'fullName email' } },
+      ]
+    })
+    .populate({
+      path: 'graderId',
+      populate: { path: 'userId', select: 'fullName' }
+    })
+    .populate('periodId');
+
+  if (!sheet) {
+    throw { status: 404, message: 'Phiếu điểm không tồn tại.' };
+  }
+
+  const verificationSubject = buildVerificationSubject(sheet);
+  const crypto = require('crypto');
+  const hashPayload = {
+    scoreSheetId: sheet._id.toString(),
+    projectId: sheet.projectId?._id?.toString() || '',
+    projectTitle: sheet.projectId?.topicId?.title || '',
+    periodId: sheet.periodId?._id?.toString() || '',
+    periodName: sheet.periodId?.name || '',
+    rubricId: sheet.rubricId?.toString() || '',
+    rubricRole: sheet.rubricRole,
+    rubricVersion: sheet.rubricVersion,
+    graderId: sheet.graderId?._id?.toString() || '',
+    graderName: sheet.graderId?.userId?.fullName || '',
+    graderRole: sheet.graderRole,
+    owner: verificationSubject,
+    criteriaScores: (sheet.criteriaScores || []).map((item) => ({
+      criteriaCode: item.criteriaCode,
+      criteriaName: item.criteriaName,
+      maxScore: item.maxScore,
+      weight: item.weight,
+      score: item.score,
+    })),
+    rawTotal: sheet.rawTotal,
+    roundedTotal: sheet.roundedTotal,
+    comment: sheet.comment || '',
+    lockedAt: sheet.lockedAt ? sheet.lockedAt.toISOString() : '',
+  };
+  const integrityHash = crypto
+    .createHash('sha256')
+    .update(`${JSON.stringify(hashPayload)}.${getVerifyHashSecret()}`)
+    .digest('hex');
+
+  return {
+    sheet,
+    verificationSubject,
+    integrityHash,
+  };
+};
+
 module.exports = {
   submitScoreSheet,
   getScoreSheets,
@@ -441,4 +636,5 @@ module.exports = {
   publishFinalGrade,
   lockFinalGrade,
   resolveVariance,
+  getPublicScoreSheetVerify,
 };

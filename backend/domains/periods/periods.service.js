@@ -62,11 +62,11 @@ const createPeriod = async (periodData, actorId) => {
 };
 
 const getAllPeriods = async (query = {}) => {
-  return await ProjectPeriod.find({ ...query, isDeleted: { $ne: true } }).sort({ createdAt: -1 });
+  return await ProjectPeriod.find({ ...query, isDeleted: { $ne: true } }).populate('rubricId').sort({ createdAt: -1 });
 };
 
 const getPeriodById = async (id) => {
-  const period = await ProjectPeriod.findOne({ _id: id, isDeleted: { $ne: true } });
+  const period = await ProjectPeriod.findOne({ _id: id, isDeleted: { $ne: true } }).populate('rubricId');
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }

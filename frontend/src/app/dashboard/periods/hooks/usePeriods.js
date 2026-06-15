@@ -12,7 +12,8 @@ const DEFAULT_FORM_STATE = {
   type: 'foundation_project',
   minGroupSize: '1',
   maxGroupSize: '3',
-  rubricVersion: 'PHENIKAA-KARL-2026',
+  rubricId: '',
+  rubricVersion: 'v1.0',
   supervisorWeight: '0.3',
   reviewerWeight: '0.2',
   committeeWeight: '0.5',
@@ -33,6 +34,7 @@ export function usePeriods() {
   const token = useAuthStore((s) => s.token);
   const toast = useToast();
   const [periods, setPeriods] = useState([]);
+  const [rubrics, setRubrics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState(null);
@@ -65,6 +67,7 @@ export function usePeriods() {
       type: period.type || 'foundation_project',
       minGroupSize: String(period.minGroupSize || 1),
       maxGroupSize: String(period.maxGroupSize || 3),
+      rubricId: period.rubricId?._id || period.rubricId || '',
       rubricVersion: period.rubricVersion || '',
       supervisorWeight: String(period.scoringFormula?.supervisor ?? 0.3),
       reviewerWeight: String(period.scoringFormula?.reviewer ?? 0.2),
@@ -89,6 +92,8 @@ export function usePeriods() {
     try {
       const res = await api.get('/periods', token);
       setPeriods(res.data || []);
+      const rubricsRes = await api.get('/rubrics', token);
+      setRubrics(rubricsRes.data || []);
     } catch (err) {
       toast.error(err.message || 'Không thể tải danh sách đợt đồ án');
     } finally {
@@ -131,7 +136,8 @@ export function usePeriods() {
       type: form.type,
       minGroupSize: parseInt(form.minGroupSize, 10),
       maxGroupSize: parseInt(form.maxGroupSize, 10),
-      rubricVersion: form.rubricVersion,
+      rubricId: form.rubricId || undefined,
+      rubricVersion: form.rubricVersion || '1.0',
       scoringFormula: {
         supervisor: sup,
         reviewer: rev,
@@ -208,6 +214,7 @@ export function usePeriods() {
 
   return {
     periods,
+    rubrics,
     loading,
     showModal,
     setShowModal,

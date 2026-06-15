@@ -13,6 +13,7 @@ export default function PeriodModal({
   handleSubmit,
   onClose,
   submitting,
+  rubrics = [],
 }) {
   return (
     <div className={css.s22}>
@@ -67,14 +68,35 @@ export default function PeriodModal({
               </select>
             </div>
 
-            <Input
-              label="Tiêu chí chấm (Rubric Version)"
-              name="rubricVersion"
-              value={form.rubricVersion}
-              onChange={handleChange}
-              error={formErrors.rubricVersion}
-              required
-            />
+            <div className={css.s29}>
+              <label className={css.s30}>
+                Tiêu chí chấm <span className={css.s31}>*</span>
+              </label>
+              <select
+                name="rubricId"
+                value={form.rubricId || ''}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  const foundRubric = rubrics.find((r) => r._id === selectedId);
+                  handleChange({ target: { name: 'rubricId', value: selectedId } });
+                  handleChange({ target: { name: 'rubricVersion', value: foundRubric ? foundRubric.version : '1.0' } });
+                }}
+                className={css.s32}
+                required
+              >
+                <option value="">-- Chọn tiêu chí chấm --</option>
+                {rubrics.map((r) => (
+                  <option key={r._id} value={r._id}>
+                    {r.name} (v{r.version})
+                  </option>
+                ))}
+              </select>
+              {formErrors.rubricId && (
+                <span className="text-error" style={{ fontSize: '12px', marginTop: '4px' }}>
+                  {formErrors.rubricId}
+                </span>
+              )}
+            </div>
 
             <Input
               label="Số thành viên tối thiểu"

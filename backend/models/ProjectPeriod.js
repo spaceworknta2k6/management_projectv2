@@ -93,6 +93,10 @@ const ProjectPeriodSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  rubricId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'EvaluationRubric',
+  },
   scoringFormula: {
     type: mongoose.Schema.Types.Map,
     of: Number,

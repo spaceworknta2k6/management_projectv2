@@ -89,6 +89,7 @@ function RealtimeNotificationHandler({ onNewNotification }) {
 const NAV_ITEMS = [
   { href: '/dashboard',            label: 'Tổng quan',     icon: House,            roles: null },
   { href: '/dashboard/periods',    label: 'Đợt đồ án',    icon: CalendarBlank,    roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
+  { href: '/dashboard/rubrics',    label: 'Tiêu chí đánh giá', icon: FileText,        roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/rosters',    label: 'Danh sách sinh viên', icon: Users,            roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/groups',     label: 'Nhóm',          icon: Users,            roles: ['STUDENT', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/topics',     label: 'Đề tài',        icon: BookOpen,         roles: null },
