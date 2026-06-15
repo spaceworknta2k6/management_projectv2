@@ -531,3 +531,129 @@
   outline: none;
   resize: none;
 }
+
+/* AI Assistant Styles */
+.aiAnalysisSection {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: all 0.3s ease;
+}
+
+.aiHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.aiTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #a78bfa; /* violet-400 */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aiStatusBadge {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+}
+
+.aiStatusOk {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #34d399; /* emerald-400 */
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.aiStatusError {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #f87171; /* red-400 */
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.aiContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-size: 13px;
+  color: #cbd5e1; /* slate-300 */
+}
+
+.aiSectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f1f5f9; /* slate-100 */
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-left: 3px solid #7c3aed;
+  padding-left: 8px;
+}
+
+.aiMissingList {
+  margin: 0;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aiMissingItem {
+  color: #fca5a5; /* red-300 */
+  list-style-type: none;
+  position: relative;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+
+.aiMissingItem::before {
+  content: "✕";
+  color: #ef4444; /* red-500 */
+  position: absolute;
+  left: 0;
+  font-weight: bold;
+}
+
+.aiText {
+  line-height: 1.6;
+  white-space: pre-wrap;
+  background-color: rgba(0, 0, 0, 0.45);
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #f8fafc; /* slate-50 */
+}
+
+.aiButtonBlock {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0;
+}
+
+.aiButton {
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%) !important;
+  color: white !important;
+  border: none !important;
+  padding: 8px 16px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3) !important;
+  transition: all 0.2s ease !important;
+}
+
+.aiButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.45) !important;
+}
+
+.aiButton:active {
+  transform: translateY(1px);
+}

@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const mammoth = require("mammoth");
 const AiJob = require("../../models/AiJob");
 const TopicEmbedding = require("../../models/TopicEmbedding");
 const ProjectTopic = require("../../models/ProjectTopic");
@@ -6,6 +7,8 @@ const Student = require("../../models/Student");
 const User = require("../../models/User");
 const Project = require("../../models/Project");
 const SubmissionPackage = require("../../models/SubmissionPackage");
+const Milestone = require("../../models/Milestone");
+const filesService = require("../files/files.service");
 
 const {
   getApiKey,
@@ -476,6 +479,81 @@ const manualOverrideJob = async (id, result, user) => {
   return await job.save();
 };
 
+const getFileBuffer = async (fileId) => {
+  const asset = await filesService.getFileById(fileId);
+  const stream = await filesService.createStoredFileReadStream(asset);
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    stream.on('data', (chunk) => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+};
+
+const analyzeMilestoneReport = async (milestoneId, fileId, user) => {
+  const milestone = await Milestone.findOne({ _id: milestoneId, isDeleted: { $ne: true } });
+  if (!milestone) throw { status: 404, message: "Mốc nộp bài không tồn tại." };
+
+  const project = await Project.findById(milestone.projectId).populate("topicId");
+  if (!project) throw { status: 404, message: "Dự án đồ án không tồn tại." };
+
+  const fileAsset = await filesService.getFileById(fileId);
+  if (!fileAsset) throw { status: 404, message: "Tệp tin không tồn tại." };
+
+  const topicTitle = project.topicId ? project.topicId.title : "Đồ án Nghiên cứu";
+  const phase = milestone.title || "Báo cáo tiến độ";
+
+  const inputs = {
+    milestoneId: milestone._id,
+    fileId: fileId,
+  };
+  const inputHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(inputs))
+    .digest("hex");
+
+  const cachedJob = await AiJob.findOne({
+    feature: "report_feedback",
+    targetType: "Milestone",
+    targetId: milestoneId,
+    inputHash,
+    status: "succeeded",
+  });
+  if (cachedJob) return cachedJob;
+
+  const job = new AiJob({
+    feature: "report_feedback",
+    targetType: "Milestone",
+    targetId: milestoneId,
+    inputHash,
+    model: getModelName(),
+    createdBy: user._id,
+  });
+  await job.save();
+
+  const processFn = async () => {
+    const isDocx = fileAsset.originalName.toLowerCase().endsWith('.docx') || fileAsset.originalName.toLowerCase().endsWith('.doc');
+    const buffer = await getFileBuffer(fileId);
+
+    if (isDocx) {
+      const result = await mammoth.extractRawText({ buffer });
+      const extractedText = result.value || '';
+      const prompt = getFeedbackPrompt(topicTitle, phase, fileAsset.originalName, extractedText);
+      return await callGemini(prompt, null);
+    } else {
+      const base64Data = buffer.toString('base64');
+      const fileData = {
+        mimeType: "application/pdf",
+        data: base64Data,
+      };
+      const prompt = getFeedbackPrompt(topicTitle, phase, fileAsset.originalName, null);
+      return await callGemini(prompt, fileData);
+    }
+  };
+
+  return await executeJob(job, processFn);
+};
+
 module.exports = {
   checkDuplicateTopic,
   suggestTopics,
@@ -485,4 +563,5 @@ module.exports = {
   getJobById,
   retryAiJob,
   manualOverrideJob,
+  analyzeMilestoneReport,
 };

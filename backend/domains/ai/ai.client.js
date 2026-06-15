@@ -10,7 +10,7 @@ const getModelName = () => {
   return "gemini-2.5-flash";
 };
 
-const callGemini = async (prompt) => {
+const callGemini = async (prompt, fileData = null) => {
   const apiKey = getApiKey();
   const isOpenRouter = apiKey && apiKey.startsWith("sk-or-");
 
@@ -26,9 +26,19 @@ const callGemini = async (prompt) => {
     headers["HTTP-Referer"] = "http://localhost:3000";
     headers["X-Title"] = "Karl Management System";
 
+    const content = [{ type: "text", text: prompt }];
+    if (fileData) {
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${fileData.mimeType};base64,${fileData.data}`
+        }
+      });
+    }
+
     payload = {
       model: "google/gemini-2.5-pro",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content }],
       response_format: { type: "json_object" },
     };
   } else {
@@ -36,10 +46,20 @@ const callGemini = async (prompt) => {
     url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     headers["x-goog-api-key"] = apiKey;
 
+    const parts = [{ text: prompt }];
+    if (fileData) {
+      parts.unshift({
+        inlineData: {
+          mimeType: fileData.mimeType,
+          data: fileData.data
+        }
+      });
+    }
+
     payload = {
       contents: [
         {
-          parts: [{ text: prompt }],
+          parts,
         },
       ],
       generationConfig: {
@@ -54,12 +74,12 @@ const callGemini = async (prompt) => {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(90000),
     });
   } catch (err) {
     if (err.name === "TimeoutError" || err.name === "AbortError") {
       throw new Error(
-        "Yêu cầu tới AI API bị quá thời gian chờ (Timeout 30 giây).",
+        "Yêu cầu tới AI API bị quá thời gian chờ (Timeout 90 giây).",
       );
     }
     throw err;
@@ -146,12 +166,12 @@ const callAIChat = async (messages) => {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(90000),
     });
   } catch (err) {
     if (err.name === "TimeoutError" || err.name === "AbortError") {
       throw new Error(
-        "Cuộc hội thoại với AI bị quá thời gian chờ (Timeout 30 giây).",
+        "Cuộc hội thoại với AI bị quá thời gian chờ (Timeout 90 giây).",
       );
     }
     throw err;

@@ -198,6 +198,28 @@ const markNoShow = async (id) => {
   return await session.save();
 };
 
+const validateSchedule = async (data) => {
+  const { projectId, committeeId, defenseDate, startTime, endTime, excludeSessionId } = data;
+
+  const project = await Project.findById(projectId);
+  if (!project) {
+    throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
+  }
+
+  const committee = await Committee.findOne({ _id: committeeId, isDeleted: { $ne: true } });
+  if (!committee) {
+    throw { status: 404, message: 'Hội đồng chấm không tồn tại.' };
+  }
+
+  // 1. Conflict of Interest Check
+  checkConflictOfInterest(committee, project);
+
+  // 2. Overlapping Schedule Check
+  await checkScheduleOverlap(defenseDate, startTime, endTime, committeeId, excludeSessionId);
+
+  return { success: true };
+};
+
 module.exports = {
   scheduleSession,
   getSessions,
@@ -211,4 +233,5 @@ module.exports = {
   completeSession,
   rescheduleSession,
   markNoShow,
+  validateSchedule,
 };

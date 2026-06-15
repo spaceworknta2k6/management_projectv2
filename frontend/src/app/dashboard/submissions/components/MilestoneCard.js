@@ -1,11 +1,36 @@
 'use client';
 
+import { useState } from 'react';
+import useAuthStore from '@/store/auth.store';
+import api from '@/services/api';
+import { useToast } from '@/components/ui/Toast';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { formatDate, getTechnicalLabel } from '@/lib/utils';
-import { Calendar, Upload, PencilSimple, Trash, Shield, Clock, Download } from '@phosphor-icons/react';
+import { Calendar, Upload, PencilSimple, Trash, Shield, Clock, Download, Sparkle } from '@phosphor-icons/react';
 import css from '../page.module.css';
+
+const cleanAiError = (errStr) => {
+  if (!errStr) return 'AI phân tích thất bại.';
+  if (errStr.includes('The document has no pages')) {
+    return 'Tài liệu PDF tải lên không chứa trang hoặc nội dung bị lỗi định dạng. Vui lòng kiểm tra và tải lên tệp PDF thực tế.';
+  }
+  if (errStr.includes('quota') || errStr.includes('rate limit')) {
+    return 'Giới hạn/Hạn ngạch dịch vụ AI hiện tại đã hết. Vui lòng thử lại sau.';
+  }
+  return errStr;
+};
+
+const formatMarkdown = (text) => {
+  if (!text) return '';
+  let formatted = text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\s*[-*]\s+(.*)$/gm, '• $1')
+    .replace(/^(\d+\.\s+.*)$/gm, '<strong style="color: #a78bfa; display: block; margin-top: 8px;">$1</strong>');
+
+  return <span dangerouslySetInnerHTML={{ __html: formatted }} />;
+};
 
 const getMilestoneStatusBadge = (status) => {
   switch (status) {
@@ -43,6 +68,42 @@ export default function MilestoneCard({
 }) {
   const hasSubmissions = milestone.submissions && milestone.submissions.length > 0;
   const hasFeedbacks = milestone.feedback && milestone.feedback.length > 0;
+
+  const token = useAuthStore((s) => s.token);
+  const toast = useToast();
+  const [showAiFileId, setShowAiFileId] = useState(null);
+  const [aiReport, setAiReport] = useState(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+
+  const toggleAiReport = async (fileId) => {
+    if (showAiFileId === fileId) {
+      setShowAiFileId(null);
+      setAiReport(null);
+      return;
+    }
+
+    setShowAiFileId(fileId);
+    setLoadingAi(true);
+    setAiReport(null);
+
+    try {
+      const res = await api.post(`/ai/milestones/${milestone._id}/files/${fileId}/analyze`, {}, token);
+      const job = res.data?.data || res.data;
+      if (job.status === 'succeeded') {
+        setAiReport(job.result);
+      } else if (job.status === 'failed') {
+        toast.error(cleanAiError(job.error));
+        setShowAiFileId(null);
+      } else {
+        toast.info('Tác vụ AI đang được xử lý...');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi kết nối với dịch vụ phân tích AI.');
+      setShowAiFileId(null);
+    } finally {
+      setLoadingAi(false);
+    }
+  };
 
   return (
     <Card
@@ -106,23 +167,106 @@ export default function MilestoneCard({
           <div>
             <p className={css.s17}>Tài liệu sinh viên đã nộp:</p>
             {milestone.submissions.map((sub, idx) => (
-              <div key={idx} className={css.s18}>
-                <div>
-                  <p className={css.s19}>Ghi chú sinh viên: &quot;{sub.note || 'Không có ghi chú.'}&quot;</p>
-                  <p className={css.s20}>
-                    Người nộp: {sub.submittedBy?.fullName || 'Sinh viên'} | Thời gian: {formatDate(sub.submittedAt)}
-                  </p>
+              <div key={idx} style={{ marginBottom: '12px' }}>
+                <div className={css.s18}>
+                  <div>
+                    <p className={css.s19}>Ghi chú sinh viên: &quot;{sub.note || 'Không có ghi chú.'}&quot;</p>
+                    <p className={css.s20}>
+                      Người nộp: {sub.submittedBy?.fullName || 'Sinh viên'} | Thời gian: {formatDate(sub.submittedAt)}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {sub.fileIds?.map((fId) => (
+                      <div key={fId} style={{ display: 'flex', gap: '6px' }}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleDownloadFile(fId)}
+                          className={css.s65}
+                        >
+                          <Download size={14} /> Tải báo cáo
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => toggleAiReport(fId)}
+                          className={css.s65}
+                        >
+                          <Sparkle size={14} /> Nhận xét AI
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+
+                {/* AI Review Result for this submission's file */}
                 {sub.fileIds?.map((fId) => (
-                  <Button
-                    key={fId}
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => handleDownloadFile(fId)}
-                    className={css.s65}
-                  >
-                    <Download size={14} /> Tải báo cáo
-                  </Button>
+                  showAiFileId === fId && (
+                    <div key={`ai-panel-${fId}`} className={css.aiAnalysisSection} style={{ marginBottom: '12px' }}>
+                      <div className={css.aiHeader}>
+                        <span className={css.aiTitle}>
+                          <Sparkle size={18} />
+                          Trợ lý AI nhận xét báo cáo
+                        </span>
+                        {loadingAi ? (
+                          <span className={css.aiStatusBadge} style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                            Đang phân tích...
+                          </span>
+                        ) : (
+                          aiReport && (
+                            <span
+                              className={`${css.aiStatusBadge} ${
+                                aiReport.structureOk ? css.aiStatusOk : css.aiStatusError
+                              }`}
+                            >
+                              {aiReport.structureOk
+                                ? 'Cấu trúc & Định dạng: ĐẠT'
+                                : 'Cấu trúc & Định dạng: CHƯA ĐẠT'}
+                            </span>
+                          )
+                        )}
+                      </div>
+
+                      {loadingAi ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                          <span className="text-muted" style={{ fontSize: '13px' }}>Đang nạp nhận xét từ Trợ lý AI học thuật...</span>
+                        </div>
+                      ) : aiReport ? (
+                        <div className={css.aiContent}>
+                          {aiReport.missingSections && aiReport.missingSections.length > 0 && (
+                            <div>
+                              <div className={css.aiSectionTitle}>Phần/Yêu cầu thiếu hoặc lỗi:</div>
+                              <ul className={css.aiMissingList}>
+                                {aiReport.missingSections.map((sec, i) => (
+                                  <li key={i} className={css.aiMissingItem}>
+                                    {sec}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {aiReport.weaknesses && (
+                            <div>
+                              <div className={css.aiSectionTitle}>Điểm yếu cần khắc phục:</div>
+                              <div className={css.aiText}>{formatMarkdown(aiReport.weaknesses)}</div>
+                            </div>
+                          )}
+
+                          {aiReport.suggestions && (
+                            <div>
+                              <div className={css.aiSectionTitle}>Gợi ý chỉnh sửa chi tiết:</div>
+                              <div className={css.aiText}>{formatMarkdown(aiReport.suggestions)}</div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                          <span className="text-muted" style={{ fontSize: '13px' }}>Không tìm thấy nhận xét. Thử lại sau.</span>
+                        </div>
+                      )}
+                    </div>
+                  )
                 ))}
               </div>
             ))}

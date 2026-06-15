@@ -40,6 +40,7 @@ const checkSecretaryOrStaff = async (req, res, next) => {
 router.use(protect);
 
 router.get('/', defensesController.getSessions);
+router.post('/validate', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesController.validateSchedule);
 router.post('/', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesValidator.validateScheduleSession, defensesController.scheduleSession);
 router.get('/:id', defensesController.getSessionById);
 router.patch('/:id', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), defensesController.updateSession);

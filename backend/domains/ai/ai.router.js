@@ -57,6 +57,7 @@ router.post('/topics/:id/check-duplicate', requireRole(['SYSTEM_ADMIN', 'FACULTY
 router.post('/students/:id/topic-suggestions', requireRole(['STUDENT', 'SYSTEM_ADMIN', 'FACULTY_STAFF']), aiValidator.validateStudentId, aiController.suggestTopics);
 router.post('/students/:id/topic-chat', requireRole(['STUDENT', 'SYSTEM_ADMIN', 'FACULTY_STAFF']), aiValidator.validateStudentId, aiController.chatTopicSuggestion);
 router.post('/submissions/:id/report-feedback', requireRole(['STUDENT', 'LECTURER', 'SYSTEM_ADMIN', 'FACULTY_STAFF']), aiValidator.validateSubmissionId, aiController.analyzeReportFeedback);
+router.post('/milestones/:milestoneId/files/:fileId/analyze', requireRole(['STUDENT', 'LECTURER', 'SYSTEM_ADMIN', 'FACULTY_STAFF']), aiController.analyzeMilestoneReport);
 
 // Committee only for defense questions
 router.post('/projects/:id/defense-questions', checkCommitteeOrStaff, aiValidator.validateProjectId, aiController.suggestDefenseQuestions);

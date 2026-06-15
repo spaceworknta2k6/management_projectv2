@@ -37,6 +37,9 @@ export default function SubmissionsPage() {
     submissionNote,
     setSubmissionNote,
     submittingWork,
+    aiAnalysisResult,
+    analyzingFile,
+    runAiAnalysis,
     showFeedbackModal,
     setShowFeedbackModal,
     feedbackStatus,
@@ -165,6 +168,10 @@ export default function SubmissionsPage() {
           submissionNote={submissionNote}
           setSubmissionNote={setSubmissionNote}
           submittingWork={submittingWork}
+          aiAnalysisResult={aiAnalysisResult}
+          analyzingFile={analyzingFile}
+          runAiAnalysis={runAiAnalysis}
+          milestoneId={showSubmitModal}
         />
       )}
 

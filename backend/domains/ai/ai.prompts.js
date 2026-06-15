@@ -79,20 +79,48 @@ Danh sách đề tài được duyệt hiện có trong bộ môn:
 ${topicList}`;
 };
 
-const getFeedbackPrompt = (topicTitle, phase, fileNames) => {
-  return `Hệ thống thẩm định chất lượng báo cáo Đồ án tốt nghiệp.
+const getFeedbackPrompt = (topicTitle, phase, fileNames, extractedText = null) => {
+  const isWord = !!extractedText;
+  const targetDocType = isWord ? "tệp tin Word (.docx/.doc)" : "tệp tin PDF";
+
+  return `Bạn là Trợ lý AI Đánh giá Báo cáo Tốt nghiệp của Trường Đại học Phenikaa (Karl).
+Nhiệm vụ của bạn là thẩm định bản thảo báo cáo đồ án tốt nghiệp bằng ${targetDocType} đi kèm.
+
 Thông tin đồ án mục tiêu:
 - Tên đề tài: "${topicTitle}"
 - Giai đoạn nộp bài: "${phase}"
 - Các tệp hồ sơ đính kèm: "${fileNames}"
 
-Hãy đưa ra nhận xét phản hồi chi tiết về cấu trúc và các điểm cần hoàn thiện của báo cáo tiến độ ở giai đoạn này. Không được tự ý chấm điểm số.
-Trả về kết quả duy nhất ở định dạng JSON theo schema:
+${isWord ? `Dưới đây là TOÀN BỘ nội dung văn bản trích xuất từ tệp Word (.docx) của sinh viên:
+--- BẮT ĐẦU VĂN BẢN ---
+${extractedText}
+--- KẾT THÚC VĂN BẢN ---` : 'Hãy tiến hành đọc kỹ tệp tin PDF báo cáo đính kèm (nếu có) và đánh giá chi tiết:'}
+
+Hãy đánh giá chi tiết trên hai khía cạnh:
+1. Hình thức:
+   ${isWord ? `- Vì đây là văn bản trích xuất từ tệp Word, bạn không thể đánh giá trực quan các lỗi căn lề, giãn dòng hay cỡ chữ.
+   - Hãy đánh giá Cấu trúc trang bìa (có đầy đủ tên trường, tên khoa, đề tài, giảng viên hướng dẫn, phản biện, sinh viên thực hiện, niên khóa dựa trên phần đầu văn bản không?).
+   - Kiểm tra xem phần đầu văn bản có Mục lục, Danh mục hình vẽ/bảng biểu không.
+   - Tài liệu tham khảo ở cuối văn bản có được trích dẫn chuẩn hóa không (ví dụ trích dẫn chuẩn APA hoặc IEEE)?` : `- Cấu trúc trang bìa (có đầy đủ tên trường, tên khoa, đề tài, giảng viên hướng dẫn, phản biện, sinh viên thực hiện, niên khóa không?).
+   - Có Mục lục, Danh mục hình vẽ/bảng biểu rõ ràng hay không?
+   - Căn lề, giãn dòng, cỡ chữ có đồng đều không?
+   - Tài liệu tham khảo có được trích dẫn chuẩn hóa không (ví dụ trích dẫn chuẩn APA hoặc IEEE)?`}
+2. Nội dung:
+   - Tóm tắt tiến độ dự án: Nội dung có phản ánh đúng giai đoạn "${phase}" của đồ án không?
+   - Tính logic: Các phần viết có mạch lạc, logic không? Chỉ ra cụ thể các chương, mục viết còn sơ sài, thiếu mô tả kỹ thuật, hoặc thiếu các biểu đồ cần thiết (ví dụ: sơ đồ luồng dữ liệu DFD, sơ đồ thực thể liên kết ERD, biểu đồ UML, cấu trúc cơ sở dữ liệu).
+
+Quy tắc:
+- Hãy đưa ra nhận xét phản hồi chi tiết mang tính xây dựng cao.
+- Không được tự ý chấm điểm số.
+- Luôn trả về kết quả duy nhất ở định dạng JSON hợp lệ theo schema sau:
+
 {
-  "structureOk": boolean (true nếu đủ các hồ sơ yêu cầu cho phase này),
-  "missingSections": ["string (các chương/mục thiết yếu bị thiếu theo chuẩn học thuật)"],
-  "weaknesses": "string (nhận xét điểm yếu kỹ thuật, ví dụ: thiếu biểu đồ UML, cấu trúc CSDL chưa chuẩn, phân tích yêu cầu sơ sài)",
-  "suggestions": "string (hướng dẫn cụ thể từng bước để sinh viên bổ sung chỉnh sửa đạt chuẩn Phenikaa)"
+  "structureOk": boolean (true nếu đủ các cấu trúc và định dạng yêu cầu tối thiểu cho giai đoạn này),
+  "missingSections": [
+    "string (các chương/mục hoặc yếu tố định dạng bị thiếu, ví dụ: 'Thiếu Chương 3: Thiết kế hệ thống', 'Trang bìa thiếu tên Giảng viên phản biện', 'Tài liệu tham khảo chưa định dạng chuẩn APA/IEEE')"
+  ],
+  "weaknesses": "string (nhận xét chi tiết các điểm yếu về kỹ thuật, hình thức hoặc logic viết trong báo cáo)",
+  "suggestions": "string (hướng dẫn cụ thể từng bước để sinh viên bổ sung chỉnh sửa đạt chuẩn chất lượng Phenikaa)"
 }`;
 };
 

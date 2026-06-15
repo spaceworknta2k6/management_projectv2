@@ -23,6 +23,53 @@ const ensureStudentCanSubmitForProject = async (project, actorStudentId) => {
   throw { status: 403, message: 'Chỉ sinh viên thuộc chủ thể thực hiện dự án này mới có quyền nộp báo cáo mốc tiến độ.' };
 };
 
+const emitMilestoneChange = async (projectId) => {
+  try {
+    const Project = require('../../models/Project');
+    const ProjectGroup = require('../../models/ProjectGroup');
+    const Student = require('../../models/Student');
+    const Lecturer = require('../../models/Lecturer');
+    
+    const project = await Project.findById(projectId);
+    if (!project) return;
+    
+    const socketIoHolder = require('../../config/socket-io-holder');
+    const io = socketIoHolder.getIo();
+    if (!io) return;
+
+    const userIdsToNotify = new Set();
+    
+    if (project.supervisorId) {
+      const supervisor = await Lecturer.findById(project.supervisorId);
+      if (supervisor) userIdsToNotify.add(supervisor.userId.toString());
+    }
+    if (project.reviewerId) {
+      const reviewer = await Lecturer.findById(project.reviewerId);
+      if (reviewer) userIdsToNotify.add(reviewer.userId.toString());
+    }
+    if (project.ownerType === 'student' && project.studentId) {
+      const student = await Student.findById(project.studentId);
+      if (student) userIdsToNotify.add(student.userId.toString());
+    } else if (project.ownerType === 'group' && (project.groupId || project.ownerId)) {
+      const gId = project.groupId || project.ownerId;
+      const group = await ProjectGroup.findById(gId).populate('members.studentId');
+      if (group && group.members) {
+        for (const m of group.members) {
+          if (m.studentId) {
+            userIdsToNotify.add(m.studentId.userId.toString());
+          }
+        }
+      }
+    }
+    
+    for (const userId of userIdsToNotify) {
+      io.to(`user:${userId}`).emit('milestone:changed', { projectId });
+    }
+  } catch (err) {
+    console.error('Lỗi khi phát sự kiện socket milestone:', err.message);
+  }
+};
+
 const createMilestone = async (projectId, milestoneData, actorUserId, actorLecturerId) => {
   const project = await Project.findById(projectId);
   if (!project) {
@@ -43,6 +90,7 @@ const createMilestone = async (projectId, milestoneData, actorUserId, actorLectu
   });
 
   await milestone.save();
+  await emitMilestoneChange(projectId);
   return milestone;
 };
 
@@ -71,6 +119,7 @@ const updateMilestone = async (milestoneId, milestoneData, actorUserId, actorLec
   if (milestoneData.status !== undefined) milestone.status = milestoneData.status;
 
   await milestone.save();
+  await emitMilestoneChange(milestone.projectId);
   return milestone;
 };
 
@@ -97,6 +146,7 @@ const deleteMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
   milestone.deletedAt = new Date();
   milestone.deletedBy = actorUserId;
   await milestone.save();
+  await emitMilestoneChange(milestone.projectId);
 
   return { success: true, message: 'Mốc tiến độ đã được xóa thành công.' };
 };
@@ -128,6 +178,7 @@ const submitMilestoneWork = async (milestoneId, submissionData, actorUserId, act
 
   milestone.status = 'submitted';
   await milestone.save();
+  await emitMilestoneChange(milestone.projectId);
 
   return milestone;
 };
@@ -158,6 +209,7 @@ const submitFeedback = async (milestoneId, feedbackData, actorUserId, actorLectu
 
   milestone.status = feedbackData.status;
   await milestone.save();
+  await emitMilestoneChange(milestone.projectId);
 
   return milestone;
 };
@@ -179,6 +231,7 @@ const lockMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
 
   milestone.status = 'locked';
   await milestone.save();
+  await emitMilestoneChange(milestone.projectId);
 
   return milestone;
 };
@@ -218,6 +271,7 @@ const unlockMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
   }
 
   await milestone.save();
+  await emitMilestoneChange(milestone.projectId);
   return milestone;
 };
 

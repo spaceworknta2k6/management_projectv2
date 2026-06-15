@@ -105,6 +105,20 @@ const manualOverrideJob = async (req, res, next) => {
   }
 };
 
+const analyzeMilestoneReport = async (req, res, next) => {
+  try {
+    const { milestoneId, fileId } = req.params;
+    const job = await aiService.analyzeMilestoneReport(milestoneId, fileId, req.user);
+    res.status(200).json({
+      success: true,
+      message: 'Tác vụ đánh giá báo cáo bằng AI đã hoàn tất.',
+      data: job,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   checkDuplicateTopic,
   suggestTopics,
@@ -114,4 +128,5 @@ module.exports = {
   getJobById,
   retryAiJob,
   manualOverrideJob,
+  analyzeMilestoneReport,
 };

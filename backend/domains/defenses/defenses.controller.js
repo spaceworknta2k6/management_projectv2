@@ -165,6 +165,19 @@ const markNoShow = async (req, res, next) => {
   }
 };
 
+const validateSchedule = async (req, res, next) => {
+  try {
+    const result = await defensesService.validateSchedule(req.body);
+    res.status(200).json({
+      success: true,
+      message: 'Lịch bảo vệ hợp lệ (không trùng lịch và không xung đột lợi ích).',
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   scheduleSession,
   getSessions,
@@ -178,4 +191,5 @@ module.exports = {
   completeSession,
   rescheduleSession,
   markNoShow,
+  validateSchedule,
 };

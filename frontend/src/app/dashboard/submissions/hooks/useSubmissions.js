@@ -6,12 +6,24 @@ import useAuthStore from '@/store/auth.store';
 import api from '@/services/api';
 import { useToast } from '@/components/ui/Toast';
 import { hasAnyRole } from '@/lib/utils';
+import { io } from 'socket.io-client';
 
 const getId = (value) => value?._id || value;
 
 const isStudentProjectOwner = (project, studentId) => (
   project?.ownerType === 'student' && String(getId(project.studentId) || getId(project.ownerId)) === String(studentId)
 );
+
+const cleanAiError = (errStr) => {
+  if (!errStr) return 'AI phân tích thất bại.';
+  if (errStr.includes('The document has no pages')) {
+    return 'Tài liệu PDF tải lên không chứa trang hoặc nội dung bị lỗi định dạng. Vui lòng kiểm tra và tải lên tệp PDF thực tế.';
+  }
+  if (errStr.includes('quota') || errStr.includes('rate limit')) {
+    return 'Giới hạn/Hạn ngạch dịch vụ AI hiện tại đã hết. Vui lòng thử lại sau.';
+  }
+  return errStr;
+};
 
 const isStudentGroupProjectMember = (project, studentId) => (
   project?.groupId?.members?.some((member) => String(getId(member.studentId)) === String(studentId))
@@ -37,6 +49,8 @@ export function useSubmissions() {
   const [fileName, setFileName] = useState('');
   const [submissionNote, setSubmissionNote] = useState('');
   const [submittingWork, setSubmittingWork] = useState(false);
+  const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
+  const [analyzingFile, setAnalyzingFile] = useState(false);
 
   // Form states for Feedback (Lecturer)
   const [showFeedbackModal, setShowFeedbackModal] = useState(null); // milestoneId
@@ -127,6 +141,29 @@ export function useSubmissions() {
     }
   }, [loadMilestones, selectedProjectId]);
 
+  // Connect to socket.io for real-time milestone changes
+  useEffect(() => {
+    if (!token || !selectedProjectId) return;
+
+    const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
+    const SOCKET_URL = BASE_URL.replace('/api/v1', '');
+
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      auth: { token },
+    });
+
+    socket.on('milestone:changed', ({ projectId }) => {
+      if (String(projectId) === String(selectedProjectId)) {
+        loadMilestones(selectedProjectId);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [token, selectedProjectId, loadMilestones]);
+
   useEffect(() => {
     if (!selectedProjectId) return;
     const params = new URLSearchParams();
@@ -198,6 +235,34 @@ export function useSubmissions() {
       toast.error(err.message || 'Lỗi khi nộp bài');
     } finally {
       setSubmittingWork(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showSubmitModal) {
+      setAiAnalysisResult(null);
+    }
+  }, [showSubmitModal]);
+
+  const runAiAnalysis = async (milestoneId, fileId) => {
+    if (!milestoneId || !fileId) return;
+    setAnalyzingFile(true);
+    setAiAnalysisResult(null);
+    try {
+      const res = await api.post(`/ai/milestones/${milestoneId}/files/${fileId}/analyze`, {}, token);
+      const job = res.data?.data || res.data;
+      if (job.status === 'succeeded') {
+        setAiAnalysisResult(job.result);
+        toast.success('Đã phân tích báo cáo bằng AI thành công!');
+      } else if (job.status === 'failed') {
+        toast.error(cleanAiError(job.error));
+      } else {
+        toast.info('Tác vụ AI đang được chạy...');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi kết nối với dịch vụ phân tích AI.');
+    } finally {
+      setAnalyzingFile(false);
     }
   };
 
@@ -339,6 +404,10 @@ export function useSubmissions() {
     submissionNote,
     setSubmissionNote,
     submittingWork,
+    aiAnalysisResult,
+    setAiAnalysisResult,
+    analyzingFile,
+    runAiAnalysis,
     showFeedbackModal,
     setShowFeedbackModal,
     feedbackStatus,
