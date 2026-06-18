@@ -198,7 +198,8 @@
 }
 
 .s31 {
-  margin-top: 25px;
+  flex-shrink: 0;
+  align-self: flex-end;
 }
 
 .s32 {

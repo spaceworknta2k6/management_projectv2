@@ -111,7 +111,6 @@ export default function GroupsPage() {
     }
   }, [toast, token]);
 
-  // Load student-specific group data
   const fetchStudentGroupData = useCallback(async () => {
     if (!user?.studentId) {
       setLoading(false);
@@ -119,29 +118,31 @@ export default function GroupsPage() {
     }
     setLoading(true);
     try {
-      // To find the student's group, we fetch all groups in periods and check where the student is a member
       const resPeriods = await api.get('/periods', token).catch(() => ({ data: [] }));
       const activePeriods = resPeriods.data || [];
-      
+
+      // Fetch tất cả periods song song thay vì tuần tự
+      const groupsPerPeriod = await Promise.all(
+        activePeriods.map((p) =>
+          api.get(`/groups?periodId=${p._id}`, token)
+            .then((res) => ({ period: p, groups: res.data || [] }))
+            .catch(() => ({ period: p, groups: [] }))
+        )
+      );
+
       let foundGroup = null;
       let invitations = [];
 
-      for (const p of activePeriods) {
-        const resG = await api.get(`/groups?periodId=${p._id}`, token).catch(() => ({ data: [] }));
-        const list = resG.data || [];
+      for (const { period, groups: list } of groupsPerPeriod) {
         for (const g of list) {
-          const isMember = g.members?.some(
+          const myMemberInfo = g.members?.find(
             (m) => (m.studentId?._id || m.studentId) === user?.studentId
           );
-          if (isMember) {
-            const myMemberInfo = g.members.find(
-              (m) => (m.studentId?._id || m.studentId) === user?.studentId
-            );
-            if (myMemberInfo?.status === 'accepted') {
-              foundGroup = g;
-            } else if (myMemberInfo?.status === 'invited') {
-              invitations.push({ group: g, period: p });
-            }
+          if (!myMemberInfo) continue;
+          if (myMemberInfo.status === 'accepted') {
+            foundGroup = g;
+          } else if (myMemberInfo.status === 'invited') {
+            invitations.push({ group: g, period });
           }
         }
       }
