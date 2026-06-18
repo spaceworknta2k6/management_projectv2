@@ -1,14 +1,45 @@
 const SubmissionPackage = require('../../models/SubmissionPackage');
 const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
+const Student = require('../../models/Student');
+const Lecturer = require('../../models/Lecturer');
 const { assertProjectAccess } = require('../../utils/access-control');
 const { resolveProjectOwner, isStudentOwner } = require('../../utils/project-owner');
+const notificationsService = require('../notifications/notifications.service');
+
 
 const isAcceptedGroupMember = (group, studentId) => {
   if (!group || !studentId) return false;
   return group.members.some(
     (member) => member.studentId.toString() === studentId.toString() && member.status === 'accepted'
   );
+};
+
+const getProjectStudentUserIds = async (projectId) => {
+  const project = await Project.findById(projectId);
+  if (!project) return [];
+
+  const userIds = [];
+  if (project.studentId) {
+    const student = await Student.findOne({ _id: project.studentId, isDeleted: false });
+    if (student && student.userId) {
+      userIds.push(student.userId.toString());
+    }
+  } else if (project.groupId) {
+    const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: false })
+      .populate({
+        path: 'members.studentId',
+        match: { isDeleted: false },
+      });
+    if (group) {
+      for (const m of group.members) {
+        if (m.status === 'accepted' && m.studentId && m.studentId.userId) {
+          userIds.push(m.studentId.userId.toString());
+        }
+      }
+    }
+  }
+  return userIds;
 };
 
 const getPackageProjectOwner = (pkg) => {
@@ -162,6 +193,33 @@ const submitPackage = async (packageId, actorUserId, actorStudentId) => {
     }
   }
 
+  // Gửi thông báo cho GVHD khi sinh viên nộp bài
+  try {
+    const project = await Project.findById(pkg.ownerId).populate({
+      path: 'supervisorId',
+      populate: { path: 'userId' }
+    });
+    if (project && project.supervisorId && project.supervisorId.userId) {
+      const ProjectGroup = require('../../models/ProjectGroup');
+      const ownerGroup = pkg.groupId ? await ProjectGroup.findById(pkg.groupId) : null;
+      const Student = require('../../models/Student');
+      const ownerStudent = pkg.studentId ? await Student.findById(pkg.studentId).populate('userId') : null;
+      const senderName = ownerGroup ? ownerGroup.name : (ownerStudent?.userId?.fullName || 'Sinh viên');
+
+      await notificationsService.createNotification({
+        recipientId: project.supervisorId.userId._id,
+        type: 'SUBMISSION_SUBMITTED',
+        title: 'Sinh viên nộp báo cáo/sản phẩm mới',
+        body: `${senderName} đã nộp báo cáo giai đoạn "${pkg.phase}" và đang chờ thầy/cô nhận xét.`,
+        entityType: 'SubmissionPackage',
+        entityId: pkg._id,
+        actionUrl: `/dashboard/submissions`,
+      });
+    }
+  } catch (notifyErr) {
+    console.error('Lỗi khi gửi thông báo nộp bài:', notifyErr.message);
+  }
+
   return pkg;
 };
 
@@ -211,6 +269,26 @@ const reviewPackageItem = async (packageId, type, status, actorUserId, actorLect
   if (pkg.phase === 'pre_defense' && pkg.status === 'accepted') {
     project.status = 'supervisor_reviewed';
     await project.save();
+  }
+
+  // Gửi thông báo cho sinh viên khi GVHD/GVPB nhận xét bài nộp
+  try {
+    const studentUserIds = await getProjectStudentUserIds(pkg.ownerId);
+    const statusLabel = pkg.status === 'accepted' ? 'chấp nhận' : pkg.status === 'needs_revision' ? 'yêu cầu chỉnh sửa' : 'cập nhật';
+    
+    for (const studentUserId of studentUserIds) {
+      await notificationsService.createNotification({
+        recipientId: studentUserId,
+        type: pkg.status === 'accepted' ? 'SUBMISSION_ACCEPTED' : 'SUBMISSION_REVISION_REQUESTED',
+        title: `Hồ sơ nộp ${pkg.phase} đã được đánh giá`,
+        body: `Gói hồ sơ nộp giai đoạn "${pkg.phase}" của bạn đã được Giảng viên đánh giá và ${statusLabel}.`,
+        entityType: 'SubmissionPackage',
+        entityId: pkg._id,
+        actionUrl: `/dashboard/submissions`,
+      });
+    }
+  } catch (notifyErr) {
+    console.error('Lỗi khi gửi thông báo đánh giá bài nộp:', notifyErr.message);
   }
 
   return pkg;

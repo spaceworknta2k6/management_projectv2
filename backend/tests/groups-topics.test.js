@@ -122,12 +122,12 @@ const runIntegrationTests = async () => {
       await ProjectRoster.findOneAndUpdate(
         { periodId: period._id, studentId: student1Profile._id },
         { classSection: 'IT4911', status: 'active', importedBy: staffUser._id },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
       await ProjectRoster.findOneAndUpdate(
         { periodId: period._id, studentId: student2Profile._id },
         { classSection: 'IT4911', status: 'active', importedBy: staffUser._id },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
       console.log('✅ Registered both students in the Active Project Roster.');
 

@@ -4,10 +4,38 @@ const ProjectGroup = require('../../models/ProjectGroup');
 const Milestone = require('../../models/Milestone');
 const SubmissionPackage = require('../../models/SubmissionPackage');
 const DefenseSession = require('../../models/DefenseSession');
+const Student = require('../../models/Student');
+const User = require('../../models/User');
 const WorkflowEvent = require('../../models/WorkflowEvent');
 const { assertOwnerAccess, resolveProjectOwner } = require('../../utils/project-owner');
+const notificationsService = require('../notifications/notifications.service');
+
 
 const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(role));
+
+const getRequestStudentUserIds = async (request) => {
+  const userIds = [];
+  if (request.studentId) {
+    const student = await Student.findOne({ _id: request.studentId, isDeleted: false });
+    if (student && student.userId) {
+      userIds.push(student.userId.toString());
+    }
+  } else if (request.groupId) {
+    const group = await ProjectGroup.findOne({ _id: request.groupId, isDeleted: false })
+      .populate({
+        path: 'members.studentId',
+        match: { isDeleted: false },
+      });
+    if (group) {
+      for (const m of group.members) {
+        if (m.status === 'accepted' && m.studentId && m.studentId.userId) {
+          userIds.push(m.studentId.userId.toString());
+        }
+      }
+    }
+  }
+  return userIds;
+};
 
 const logWorkflowEvent = async ({
   entityType = 'ExtensionRequest',
@@ -128,6 +156,47 @@ const supervisorRecommend = async (requestId, status, note, actorUserId, actorLe
     reason: note.trim(),
   });
 
+  // Gửi thông báo cho sinh viên và khoa/bộ môn
+  try {
+    const studentUserIds = await getRequestStudentUserIds(request);
+    const actionLabel = status === 'approved' ? 'đồng ý' : 'từ chối';
+    
+    // 1. Thông báo cho sinh viên thực hiện đề tài
+    for (const studentUserId of studentUserIds) {
+      await notificationsService.createNotification({
+        recipientId: studentUserId,
+        type: status === 'approved' ? 'EXTENSION_SUPERVISOR_APPROVED' : 'EXTENSION_SUPERVISOR_REJECTED',
+        title: `GVHD ${actionLabel} khuyến nghị gia hạn`,
+        body: `Giảng viên hướng dẫn đã ${actionLabel} ý kiến về đơn xin gia hạn của bạn.${note ? ` Ghi chú: "${note.trim()}"` : ''}`,
+        entityType: 'ExtensionRequest',
+        entityId: request._id,
+        actionUrl: `/dashboard/extensions`,
+      });
+    }
+
+    // 2. Nếu GVHD đồng ý, gửi thông báo cho Giáo vụ khoa/Admin để duyệt tiếp
+    if (status === 'approved') {
+      const staffUsers = await User.find({
+        roles: { $in: ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'] },
+        isDeleted: false,
+        status: 'active'
+      });
+      for (const staff of staffUsers) {
+        await notificationsService.createNotification({
+          recipientId: staff._id,
+          type: 'EXTENSION_PENDING_FACULTY',
+          title: 'Đơn gia hạn chờ Khoa duyệt',
+          body: `Yêu cầu gia hạn mới đã được GVHD thông qua và đang chờ duyệt cấp Khoa.`,
+          entityType: 'ExtensionRequest',
+          entityId: request._id,
+          actionUrl: `/dashboard/extensions`,
+        });
+      }
+    }
+  } catch (notifyErr) {
+    console.error('Lỗi khi gửi thông báo GVHD duyệt đơn gia hạn:', notifyErr.message);
+  }
+
   return request;
 };
 
@@ -210,6 +279,45 @@ const facultyDecide = async (requestId, status, note, actorUserId, actorRoles = 
       requestedTo: request.requestedTo,
     },
   });
+
+  // Gửi thông báo cho sinh viên và GVHD
+  try {
+    const studentUserIds = await getRequestStudentUserIds(request);
+    const actionLabel = status === 'approved' ? 'phê duyệt' : 'từ chối';
+    
+    // 1. Thông báo cho sinh viên thực hiện đề tài
+    for (const studentUserId of studentUserIds) {
+      await notificationsService.createNotification({
+        recipientId: studentUserId,
+        type: status === 'approved' ? 'EXTENSION_FACULTY_APPROVED' : 'EXTENSION_FACULTY_REJECTED',
+        title: `Khoa đã ${actionLabel} yêu cầu gia hạn`,
+        body: `Đơn xin gia hạn của bạn đã được Khoa ${actionLabel}.${note ? ` Ghi chú: "${note.trim()}"` : ''}`,
+        entityType: 'ExtensionRequest',
+        entityId: request._id,
+        actionUrl: `/dashboard/extensions`,
+      });
+    }
+
+    // 2. Thông báo cho GVHD
+    const Lecturer = require('../../models/Lecturer');
+    const project = await Project.findById(request.projectId).populate({
+      path: 'supervisorId',
+      populate: { path: 'userId' }
+    });
+    if (project && project.supervisorId && project.supervisorId.userId) {
+      await notificationsService.createNotification({
+        recipientId: project.supervisorId.userId._id,
+        type: status === 'approved' ? 'EXTENSION_FACULTY_APPROVED_SUPERVISOR' : 'EXTENSION_FACULTY_REJECTED_SUPERVISOR',
+        title: `Khoa đã ${actionLabel} đơn gia hạn của sinh viên`,
+        body: `Yêu cầu gia hạn của đồ án do thầy/cô hướng dẫn đã được Khoa ${actionLabel}.`,
+        entityType: 'ExtensionRequest',
+        entityId: request._id,
+        actionUrl: `/dashboard/extensions`,
+      });
+    }
+  } catch (notifyErr) {
+    console.error('Lỗi khi gửi thông báo Khoa duyệt đơn gia hạn:', notifyErr.message);
+  }
 
   return request;
 };

@@ -4,8 +4,35 @@ const ProjectPeriod = require('../../models/ProjectPeriod');
 const ProjectRoster = require('../../models/ProjectRoster');
 const Lecturer = require('../../models/Lecturer');
 const Project = require('../../models/Project');
+const Student = require('../../models/Student');
 const WorkflowEvent = require('../../models/WorkflowEvent');
 const { resolveProjectOwner } = require('../../utils/project-owner');
+const notificationsService = require('../notifications/notifications.service');
+
+const getTopicStudentUserIds = async (topic) => {
+  const userIds = [];
+  if (topic.studentId) {
+    const student = await Student.findOne({ _id: topic.studentId, isDeleted: false });
+    if (student && student.userId) {
+      userIds.push(student.userId.toString());
+    }
+  } else if (topic.groupId) {
+    const group = await ProjectGroup.findOne({ _id: topic.groupId, isDeleted: { $ne: true } })
+      .populate({
+        path: 'members.studentId',
+        match: { isDeleted: false },
+      });
+    if (group) {
+      for (const m of group.members) {
+        if (m.status === 'accepted' && m.studentId && m.studentId.userId) {
+          userIds.push(m.studentId.userId.toString());
+        }
+      }
+    }
+  }
+  return userIds;
+};
+
 
 const ACTIVE_TOPIC_STATUSES = ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'];
 const ACTIVE_PROJECT_STATUSES = { $nin: ['cancelled', 'archived', 'failed'] };
@@ -262,6 +289,27 @@ const reviewTopic = async (topicId, action, actorUserId, note = '') => {
     reason: note || `Xét duyệt đề tài với kết quả [${toStatus}]`,
   });
 
+  // Gửi thông báo cho sinh viên thực hiện đề tài
+  try {
+    const studentUserIds = await getTopicStudentUserIds(topic);
+    const actionLabel = action === 'approve' ? 'phê duyệt' : action === 'request-revision' ? 'yêu cầu chỉnh sửa' : 'từ chối';
+    const notifyType = action === 'approve' ? 'TOPIC_APPROVED' : action === 'request-revision' ? 'TOPIC_REVISION_REQUESTED' : 'TOPIC_REJECTED';
+    
+    for (const studentUserId of studentUserIds) {
+      await notificationsService.createNotification({
+        recipientId: studentUserId,
+        type: notifyType,
+        title: `Đề tài đồ án đã được ${actionLabel}`,
+        body: `Đề tài "${topic.title}" của bạn đã được ${actionLabel} bởi giáo vụ.${note ? ` Lý do/Ghi chú: "${note}"` : ''}`,
+        entityType: 'ProjectTopic',
+        entityId: topic._id,
+        actionUrl: `/dashboard/topics`,
+      });
+    }
+  } catch (notifyErr) {
+    console.error('Lỗi khi gửi thông báo xét duyệt đề tài:', notifyErr.message);
+  }
+
   return topic;
 };
 
@@ -330,6 +378,41 @@ const assignSupervisor = async (topicId, supervisorId, actorUserId) => {
     action: 'SPAWN_PROJECT',
     reason: 'Tự động khởi tạo Workspace khi phân công GVHD',
   });
+
+  // Gửi thông báo cho sinh viên và Giảng viên hướng dẫn
+  try {
+    const supervisorLecturer = await Lecturer.findById(supervisorId).populate('userId');
+    if (supervisorLecturer && supervisorLecturer.userId) {
+      const supervisorName = supervisorLecturer.userId.fullName || 'Giảng viên';
+      
+      // 1. Thông báo cho sinh viên
+      const studentUserIds = await getTopicStudentUserIds(topic);
+      for (const studentUserId of studentUserIds) {
+        await notificationsService.createNotification({
+          recipientId: studentUserId,
+          type: 'SUPERVISOR_ASSIGNED',
+          title: 'Đề tài đã được phân công GVHD',
+          body: `Đề tài "${topic.title}" của bạn đã được phân công Giảng viên hướng dẫn: ${supervisorName}.`,
+          entityType: 'Project',
+          entityId: project._id,
+          actionUrl: `/dashboard/projects`,
+        });
+      }
+
+      // 2. Thông báo cho Giảng viên hướng dẫn
+      await notificationsService.createNotification({
+        recipientId: supervisorLecturer.userId._id,
+        type: 'LECTURER_SUPERVISOR_ASSIGNED',
+        title: 'Được phân công hướng dẫn đồ án mới',
+        body: `Thầy/cô đã được phân công hướng dẫn đề tài "${topic.title}" của sinh viên/nhóm.`,
+        entityType: 'Project',
+        entityId: project._id,
+        actionUrl: `/dashboard/projects`,
+      });
+    }
+  } catch (notifyErr) {
+    console.error('Lỗi khi gửi thông báo phân công GVHD:', notifyErr.message);
+  }
 
   return project;
 };
