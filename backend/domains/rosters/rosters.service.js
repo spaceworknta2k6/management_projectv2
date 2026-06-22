@@ -5,6 +5,9 @@ const ProjectRoster = require('../../models/ProjectRoster');
 const User = require('../../models/User');
 const Student = require('../../models/Student');
 const WorkflowEvent = require('../../models/WorkflowEvent');
+const Project = require('../../models/Project');
+const ProjectTopic = require('../../models/ProjectTopic');
+const ProjectGroup = require('../../models/ProjectGroup');
 
 const logWorkflowEvent = async ({
   entityId,
@@ -164,7 +167,7 @@ const importRoster = async (periodId, rosterList, actorId) => {
 const addSingleStudent = async (periodId, studentData, actorId) => {
   const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
   if (!period) {
-    throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
+    throw { status: 404, message: 'Học phần đồ án không tồn tại.' };
   }
 
   const salt = await bcrypt.genSalt(10);
@@ -189,7 +192,7 @@ const addSingleStudent = async (periodId, studentData, actorId) => {
     rosterEntry.importedAt = new Date();
     await rosterEntry.save();
   } else {
-    throw { status: 400, message: 'Sinh viên đã tồn tại trong đợt đồ án này.' };
+    throw { status: 400, message: 'Sinh viên đã tồn tại trong học phần đồ án này.' };
   }
 
   await logWorkflowEvent({
@@ -216,11 +219,64 @@ const getRosterByPeriod = async (periodId) => {
 const removeStudentFromRoster = async (periodId, studentId, actorId) => {
   const rosterEntry = await ProjectRoster.findOne({ periodId, studentId });
   if (!rosterEntry) {
-    throw { status: 404, message: 'Không tìm thấy sinh viên trong danh sách đợt đồ án.' };
+    throw { status: 404, message: 'Không tìm thấy sinh viên trong danh sách học phần đồ án.' };
   }
 
   if (rosterEntry.status === 'removed') {
     throw { status: 400, message: 'Sinh viên đã được rút tên trước đó.' };
+  }
+
+  // Enforce validation checks before removing a student
+  const activeProject = await Project.findOne({
+    periodId,
+    studentId,
+    status: { $ne: 'cancelled' },
+  });
+  if (activeProject) {
+    throw { status: 400, message: 'Sinh viên đang thực hiện dự án hoạt động trong học phần này, không thể xóa khỏi danh sách.' };
+  }
+
+  const activeTopic = await ProjectTopic.findOne({
+    periodId,
+    proposedByStudentId: studentId,
+    status: { $in: ['submitted', 'approved', 'assigned', 'locked', 'changed'] },
+  });
+  if (activeTopic) {
+    throw { status: 400, message: 'Sinh viên đang có đề tài hoạt động trong học phần này, không thể xóa khỏi danh sách.' };
+  }
+
+  // Check group linkages
+  const studentGroups = await ProjectGroup.find({
+    periodId,
+    isDeleted: { $ne: true },
+    status: { $ne: 'cancelled' },
+    members: {
+      $elemMatch: {
+        studentId,
+        status: 'accepted'
+      }
+    }
+  });
+
+  if (studentGroups.length > 0) {
+    const groupIds = studentGroups.map(g => g._id);
+    const activeGroupProject = await Project.findOne({
+      periodId,
+      groupId: { $in: groupIds },
+      status: { $ne: 'cancelled' },
+    });
+    if (activeGroupProject) {
+      throw { status: 400, message: 'Sinh viên thuộc nhóm đang thực hiện dự án hoạt động, không thể xóa khỏi danh sách.' };
+    }
+
+    const activeGroupTopic = await ProjectTopic.findOne({
+      periodId,
+      groupId: { $in: groupIds },
+      status: { $in: ['submitted', 'approved', 'assigned', 'locked', 'changed'] },
+    });
+    if (activeGroupTopic) {
+      throw { status: 400, message: 'Sinh viên thuộc nhóm có đề tài hoạt động, không thể xóa khỏi danh sách.' };
+    }
   }
 
   rosterEntry.status = 'removed';

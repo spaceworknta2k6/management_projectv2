@@ -56,4 +56,10 @@ const NotificationSchema = new mongoose.Schema({
 // Index to quickly fetch unread notifications for a user in chronological order
 NotificationSchema.index({ recipientId: 1, isDeleted: 1, readAt: 1, createdAt: -1 });
 
+NotificationSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
+
 module.exports = mongoose.model('Notification', NotificationSchema);

@@ -34,7 +34,7 @@ const ScoreSheetSchema = new mongoose.Schema({
   },
   rubricRole: {
     type: String,
-    enum: ['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER'],
+    enum: ['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER', 'SECOND_MARKER'],
     required: true,
   },
   rubricVersion: {
@@ -43,7 +43,7 @@ const ScoreSheetSchema = new mongoose.Schema({
   },
   targetType: {
     type: String,
-    enum: ['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER', 'NON_DEFENSE_MARKER', 'RECHECK'],
+    enum: ['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER', 'NON_DEFENSE_MARKER', 'RECHECK', 'SECOND_MARKER'],
     required: true,
   },
   targetId: {

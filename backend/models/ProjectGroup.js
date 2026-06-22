@@ -76,4 +76,10 @@ const ProjectGroupSchema = new mongoose.Schema({
 ProjectGroupSchema.index({ periodId: 1, status: 1 });
 ProjectGroupSchema.index({ periodId: 1, isDeleted: 1 });
 
+ProjectGroupSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
+
 module.exports = mongoose.model('ProjectGroup', ProjectGroupSchema);

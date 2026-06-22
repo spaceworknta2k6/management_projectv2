@@ -298,6 +298,15 @@ export function useSubmissions() {
     e.preventDefault();
     if (!selectedProjectId) return;
 
+    if (!newMilestone.title || !newMilestone.title.trim()) {
+      toast.error('Vui lòng nhập tên mốc báo cáo.');
+      return;
+    }
+    if (!newMilestone.deadline) {
+      toast.error('Vui lòng chọn hạn chót nộp báo cáo.');
+      return;
+    }
+
     setCreatingMilestone(true);
     try {
       const payload = {

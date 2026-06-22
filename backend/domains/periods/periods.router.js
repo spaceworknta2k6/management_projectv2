@@ -22,6 +22,9 @@ router.delete('/:id', periodsController.deletePeriod);
 // Lifecycle Transition Hooks
 router.post('/:id/open-registration', periodsController.openRegistration);
 router.post('/:id/start', periodsController.startPeriod);
+router.post('/:id/start-grading', periodsController.startGrading);
+router.post('/:id/publish-results', periodsController.publishResults);
+router.post('/:id/open-appeal', periodsController.openAppeal);
 router.post('/:id/lock-results', periodsController.lockResults);
 router.post('/:id/archive', periodsController.archivePeriod);
 

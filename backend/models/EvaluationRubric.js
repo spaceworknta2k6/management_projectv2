@@ -48,6 +48,10 @@ const EvaluationRubricSchema = new mongoose.Schema({
       type: [RubricCriteriaSchema],
       default: [],
     },
+    SECOND_MARKER: {
+      type: [RubricCriteriaSchema],
+      default: [],
+    },
     COMMITTEE_MEMBER: {
       type: [RubricCriteriaSchema],
       default: [],
@@ -74,6 +78,12 @@ const EvaluationRubricSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+});
+
+EvaluationRubricSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
 });
 
 module.exports = mongoose.model('EvaluationRubric', EvaluationRubricSchema);

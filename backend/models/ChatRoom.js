@@ -92,4 +92,10 @@ ChatRoomSchema.index(
 );
 ChatRoomSchema.index({ memberIds: 1, isDeleted: 1, lastMessageAt: -1 });
 
+ChatRoomSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
+
 module.exports = mongoose.model('ChatRoom', ChatRoomSchema);

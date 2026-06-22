@@ -93,19 +93,30 @@ const updateUserStatus = async (userId, status) => {
 /**
  * Soft-delete tài khoản
  */
-const deleteUser = async (userId) => {
+const deleteUser = async (userId, deletedByUserId) => {
   const user = await User.findById(userId);
   if (!user || user.isDeleted) {
     throw { status: 404, message: 'Tài khoản không tồn tại hoặc đã bị xóa.' };
   }
 
+  const deletedAt = new Date();
   user.isDeleted = true;
+  user.deletedAt = deletedAt;
+  if (deletedByUserId) {
+    user.deletedBy = deletedByUserId;
+  }
   await user.save();
 
   // Soft-delete profile tương ứng nếu có
+  const updatePayload = {
+    isDeleted: true,
+    deletedAt,
+    ...(deletedByUserId && { deletedBy: deletedByUserId }),
+  };
+
   await Promise.all([
-    Student.findOneAndUpdate({ userId: user._id }, { isDeleted: true }),
-    Lecturer.findOneAndUpdate({ userId: user._id }, { isDeleted: true }),
+    Student.findOneAndUpdate({ userId: user._id }, updatePayload),
+    Lecturer.findOneAndUpdate({ userId: user._id }, updatePayload),
   ]);
 
   return { success: true, message: 'Tài khoản đã được xóa thành công.' };

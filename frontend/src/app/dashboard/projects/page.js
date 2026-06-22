@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import useAuthStore from '@/store/auth.store';
+import usePeriodStore from '@/store/period.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -49,6 +50,8 @@ export default function ProjectsPage() {
   const token = useAuthStore((s) => s.token);
   const toast = useToast();
 
+  const { periods, selectedPeriodId, setSelectedPeriodId, fetchPeriods } = usePeriodStore();
+
   const initialQuery = useMemo(() => getInitialQuery(), []);
   const [currentPage, setCurrentPage] = useState(initialQuery.page);
   const [pageSize, setPageSize] = useState(initialQuery.limit);
@@ -71,7 +74,10 @@ export default function ProjectsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Fetch all projects
+      // 1. Fetch periods first
+      await fetchPeriods(token);
+
+      // 2. Fetch all projects
       const resProjects = await api.get('/projects', token);
       
       // If student, filter projects by project owner (personal or group)
@@ -89,7 +95,7 @@ export default function ProjectsPage() {
       }
       setProjects(projectList);
 
-      // 2. Fetch lecturers for assignment (Staff only)
+      // 3. Fetch lecturers for assignment (Staff only)
       if (isStaff) {
         const resLecturers = await api.get('/auth/lecturers', token);
         setLecturers(resLecturers.data || []);
@@ -99,7 +105,7 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [isLecturer, isStaff, toast, token, user?.id, user?.lecturerId, user?.studentId]);
+  }, [isLecturer, isStaff, toast, token, user?.id, user?.lecturerId, user?.studentId, fetchPeriods]);
 
   useEffect(() => {
     if (token) {
@@ -108,9 +114,16 @@ export default function ProjectsPage() {
   }, [loadData, token]);
 
   const visibleProjects = useMemo(() => {
+    let list = projects;
+    if (selectedPeriodId) {
+      list = list.filter((p) => {
+        const pId = p.periodId?._id || p.periodId;
+        return pId === selectedPeriodId;
+      });
+    }
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return projects;
-    return projects.filter((p) => {
+    if (!keyword) return list;
+    return list.filter((p) => {
       const values = [
         p.topicId?.title,
         getOwnerDisplay(p),
@@ -120,7 +133,7 @@ export default function ProjectsPage() {
       ];
       return values.some((v) => String(v || '').toLowerCase().includes(keyword));
     });
-  }, [projects, search]);
+  }, [projects, selectedPeriodId, search]);
 
   const totalPages = Math.max(1, Math.ceil(visibleProjects.length / pageSize));
   const pagedProjects = visibleProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -169,19 +182,23 @@ export default function ProjectsPage() {
 
   const handleAssignReviewer = async (e) => {
     e.preventDefault();
-    if (!showAssignModal || !selectedReviewerId) return;
+    if (!selectedReviewerId) {
+      toast.error('Vui lòng chọn giảng viên chấm 2.');
+      return;
+    }
+    if (!showAssignModal) return;
 
     setSubmitting(true);
     try {
       await api.post(`/projects/${showAssignModal}/assign-reviewer`, {
         reviewerId: selectedReviewerId
       }, token);
-      toast.success('Đã phân công giảng viên phản biện thành công!');
+      toast.success('Đã phân công giảng viên chấm 2 thành công!');
       setShowAssignModal(null);
       setSelectedReviewerId('');
       loadData();
     } catch (err) {
-      toast.error(err.message || 'Lỗi khi phân công phản biện');
+      toast.error(err.message || 'Lỗi khi phân công giảng viên chấm 2');
     } finally {
       setSubmitting(false);
     }
@@ -233,13 +250,13 @@ export default function ProjectsPage() {
       case 'in_progress':
         return <Badge variant="warning">Đang thực hiện</Badge>;
       case 'pre_defense_submitted':
-        return <Badge variant="info">Đã nộp trước bảo vệ</Badge>;
+        return <Badge variant="info">Đã nộp báo cáo</Badge>;
       case 'supervisor_reviewed':
         return <Badge variant="success">GVHD đã đánh giá</Badge>;
       case 'reviewer_reviewed':
-        return <Badge variant="success">GVPB đã đánh giá</Badge>;
+        return <Badge variant="success">GV chấm 2 đã đánh giá</Badge>;
       case 'defense_eligible':
-        return <Badge variant="success">Đủ ĐK bảo vệ</Badge>;
+        return <Badge variant="success">Sẵn sàng chấm</Badge>;
       case 'finalized':
         return <Badge variant="success">Đã hoàn thành</Badge>;
       case 'cancelled':
@@ -265,10 +282,10 @@ export default function ProjectsPage() {
       switch (status) {
         case 'assigned': return 'Mới phân công';
         case 'in_progress': return 'Đang thực hiện';
-        case 'pre_defense_submitted': return 'Đã nộp trước bảo vệ';
+        case 'pre_defense_submitted': return 'Đã nộp báo cáo';
         case 'supervisor_reviewed': return 'GVHD đã đánh giá';
-        case 'reviewer_reviewed': return 'GVPB đã đánh giá';
-        case 'defense_eligible': return 'Đủ ĐK bảo vệ';
+        case 'reviewer_reviewed': return 'GV chấm 2 đã đánh giá';
+        case 'defense_eligible': return 'Sẵn sàng chấm';
         case 'finalized': return 'Đã hoàn thành';
         case 'cancelled': return 'Đã hủy';
         default: return status || '';
@@ -282,7 +299,7 @@ export default function ProjectsPage() {
         `${getOwnerTypeLabel(p)}: ${getOwnerDisplay(p)}`,
         getMemberDisplay(p),
         p.supervisorId?.userId?.fullName || '',
-        p.reviewerId?.userId?.fullName || 'Chưa phân công phản biện',
+        p.reviewerId?.userId?.fullName || 'Chưa phân công giảng viên chấm 2',
         getStatusLabel(p.status),
       ]);
 
@@ -299,7 +316,7 @@ export default function ProjectsPage() {
             Quản lý Dự án Đồ án
           </h1>
           <p className={css.s4}>
-            Xem thông tin tiến độ, phân công phản biện và quản lý vòng đời thực hiện đề tài đồ án tốt nghiệp
+            Xem thông tin tiến độ, phân công giảng viên chấm 2 và quản lý vòng đời thực hiện đề tài học phần đồ án
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -316,14 +333,44 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* Projects list */}
-      <FilterCard
-        searchInput={searchInput}
-        setSearchInput={setSearchInput}
-        onSearch={handleSearchSubmit}
-        onReset={handleResetSearch}
-        placeholder="Tìm theo tên đề tài, cá nhân/nhóm, GVHD..."
-      />
+      {/* Period Selection and Filter bar */}
+      <div className="no-print" style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <div style={{ minWidth: '240px', flex: '1' }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', marginBottom: '6px', color: 'var(--text-secondary)' }}>Học phần đồ án</label>
+          <select
+            value={selectedPeriodId}
+            onChange={(e) => setSelectedPeriodId(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px',
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text-primary)',
+              outline: 'none',
+              fontSize: '14px',
+              height: '42px'
+            }}
+          >
+            <option value="">Chọn học phần</option>
+            {periods.map((p) => (
+              <option key={p._id} value={p._id}>
+                {p.name} ({p.courseCode})
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        <div style={{ flex: '2', minWidth: '300px', marginTop: '22px' }}>
+          <FilterCard
+            searchInput={searchInput}
+            setSearchInput={setSearchInput}
+            onSearch={handleSearchSubmit}
+            onReset={handleResetSearch}
+            placeholder="Tìm theo tên đề tài, cá nhân/nhóm, GVHD..."
+          />
+        </div>
+      </div>
 
       {loading ? (
         <div className={css.s5}>
@@ -367,12 +414,12 @@ export default function ProjectsPage() {
                             setSelectedReviewerId(p.reviewerId?._id || '');
                           }}
                         >
-                          <UserCheck size={14} /> Phân công phản biện
+                          <UserCheck size={14} /> Phân công GV chấm 2
                         </Button>
 
                         {allowedDefense && (
                           <Button variant="primary" size="sm" onClick={() => handleMarkDefenseEligible(p._id)}>
-                            <ShieldCheck size={14} /> Duyệt bảo vệ
+                            <ShieldCheck size={14} /> Sẵn sàng chấm
                           </Button>
                         )}
 
@@ -406,13 +453,13 @@ export default function ProjectsPage() {
                     </div>
                   </div>
                   <div>
-                    <p className={css.s12}>Giảng viên phản biện:</p>
+                    <p className={css.s12}>Giảng viên chấm 2:</p>
                     <div className={css.lecturerLine}>
                       <p className={css.s13}>
                         {p.reviewerId?.userId?.fullName ? (
                           <span>{p.reviewerId.userId.fullName} ({p.reviewerId.userId.email})</span>
                         ) : (
-                          <span className={css.s14}>Chưa phân công phản biện</span>
+                          <span className={css.s14}>Chưa phân công giảng viên chấm 2</span>
                         )}
                       </p>
                       {isStudent && p.reviewerId?.userId?._id && (
@@ -453,7 +500,7 @@ export default function ProjectsPage() {
           <div className={css.s19} >
             <div className={css.s20}>
               <h3 className={css.s21}>
-                Phân công Giảng viên phản biện
+                Phân công Giảng viên chấm 2
               </h3>
               <button
                 onClick={() => setShowAssignModal(null)} className={css.s26} >
@@ -462,11 +509,11 @@ export default function ProjectsPage() {
             </div>
             <form onSubmit={handleAssignReviewer} className={css.s22}>
               <div className={css.s23}>
-                <label className={css.s24}>Chọn giảng viên phản biện</label>
+                <label className={css.s24}>Chọn giảng viên chấm 2</label>
                 <select
                   value={selectedReviewerId}
                   onChange={(e) => setSelectedReviewerId(e.target.value)}
-                  required className={css.s27} >
+                  className={css.s27} >
                   <option value="">-- Chọn giảng viên --</option>
                   {lecturers.map((l) => (
                     <option key={l._id} value={l._id}>

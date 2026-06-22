@@ -22,7 +22,19 @@ const validatePeriodCreate = (req, res, next) => {
     passScore,
     rubricVersion,
     rubricId,
-    scoringFormula
+    scoringFormula,
+    // new fields
+    courseCode,
+    courseName,
+    projectType,
+    coordinatorLecturerId,
+    allowIndividual,
+    allowGroup,
+    groupMinSize,
+    groupMaxSize,
+    finalSubmissionDeadline,
+    gradingStart,
+    gradingEnd,
   } = req.body;
 
   const errors = [];
@@ -43,18 +55,44 @@ const validatePeriodCreate = (req, res, next) => {
   if (!semester || typeof semester !== 'string' || semester.trim() === '') {
     errors.push({ field: 'semester', code: 'SEMESTER_REQUIRED', message: 'Học kỳ là bắt buộc.' });
   }
-  if (!type || !['foundation_project', 'interdisciplinary_project'].includes(type)) {
-    errors.push({ field: 'type', code: 'PERIOD_TYPE_INVALID', message: 'Loại đợt đồ án phải là foundation_project hoặc interdisciplinary_project.' });
-  }
 
-  // 2. Group Size boundary checks
-  const min = parseInt(minGroupSize, 10);
-  const max = parseInt(maxGroupSize, 10);
-  if (isNaN(min) || min < 1) {
-    errors.push({ field: 'minGroupSize', code: 'MIN_GROUP_SIZE_INVALID', message: 'Số lượng thành viên tối thiểu phải lớn hơn hoặc bằng 1.' });
-  }
-  if (isNaN(max) || max < min) {
-    errors.push({ field: 'maxGroupSize', code: 'MAX_GROUP_SIZE_INVALID', message: 'Số lượng thành viên tối đa phải lớn hơn hoặc bằng số lượng tối thiểu.' });
+  const isOfferingFlow = courseCode !== undefined || coordinatorLecturerId !== undefined || projectType !== undefined;
+
+  if (isOfferingFlow) {
+    if (!courseCode || typeof courseCode !== 'string' || courseCode.trim() === '') {
+      errors.push({ field: 'courseCode', code: 'COURSE_CODE_REQUIRED', message: 'Mã học phần là bắt buộc.' });
+    }
+    if (!courseName || typeof courseName !== 'string' || courseName.trim() === '') {
+      errors.push({ field: 'courseName', code: 'COURSE_NAME_REQUIRED', message: 'Tên học phần là bắt buộc.' });
+    }
+    if (!coordinatorLecturerId || !mongoose.Types.ObjectId.isValid(coordinatorLecturerId)) {
+      errors.push({ field: 'coordinatorLecturerId', code: 'COORDINATOR_LECTURER_ID_REQUIRED', message: 'Giảng viên phụ trách học phần không hợp lệ.' });
+    }
+    if (allowIndividual === false && allowGroup === false) {
+      errors.push({ field: 'allowIndividual', code: 'INDIVIDUAL_AND_GROUP_DISABLED', message: 'Học phần phải cho phép ít nhất làm cá nhân hoặc làm nhóm.' });
+    }
+    if (allowGroup !== false) {
+      const minG = groupMinSize !== undefined ? parseInt(groupMinSize, 10) : 2;
+      const maxG = groupMaxSize !== undefined ? parseInt(groupMaxSize, 10) : 5;
+      if (isNaN(minG) || minG < 2) {
+        errors.push({ field: 'groupMinSize', code: 'GROUP_MIN_SIZE_INVALID', message: 'Số lượng thành viên tối thiểu của nhóm phải lớn hơn hoặc bằng 2.' });
+      }
+      if (isNaN(maxG) || maxG < minG) {
+        errors.push({ field: 'groupMaxSize', code: 'GROUP_MAX_SIZE_INVALID', message: 'Số lượng thành viên tối đa phải lớn hơn hoặc bằng số lượng tối thiểu.' });
+      }
+    }
+  } else {
+    if (!type || !['foundation_project', 'interdisciplinary_project'].includes(type)) {
+      errors.push({ field: 'type', code: 'PERIOD_TYPE_INVALID', message: 'Loại đợt đồ án phải là foundation_project hoặc interdisciplinary_project.' });
+    }
+    const min = parseInt(minGroupSize, 10);
+    const max = parseInt(maxGroupSize, 10);
+    if (isNaN(min) || min < 1) {
+      errors.push({ field: 'minGroupSize', code: 'MIN_GROUP_SIZE_INVALID', message: 'Số lượng thành viên tối thiểu phải lớn hơn hoặc bằng 1.' });
+    }
+    if (isNaN(max) || max < min) {
+      errors.push({ field: 'maxGroupSize', code: 'MAX_GROUP_SIZE_INVALID', message: 'Số lượng thành viên tối đa phải lớn hơn hoặc bằng số lượng tối thiểu.' });
+    }
   }
 
   // 3. Scoring Formulas presence and validity checks
@@ -64,7 +102,6 @@ const validatePeriodCreate = (req, res, next) => {
   if (!scoringFormula || typeof scoringFormula !== 'object') {
     errors.push({ field: 'scoringFormula', code: 'SCORING_FORMULA_REQUIRED', message: 'Công thức tính điểm là bắt buộc.' });
   } else {
-    // e.g. { supervisor: 0.3, reviewer: 0.2, committee: 0.5 }
     const weights = Object.values(scoringFormula);
     const sum = weights.reduce((acc, val) => acc + parseFloat(val || 0), 0);
     if (Math.abs(sum - 1.0) > 0.001) {
@@ -79,12 +116,19 @@ const validatePeriodCreate = (req, res, next) => {
     topicChangeDeadline: new Date(topicChangeDeadline),
     projectStart: new Date(projectStart),
     projectEnd: new Date(projectEnd),
-    preDefenseSubmissionDeadline: new Date(preDefenseSubmissionDeadline),
-    defenseStart: new Date(defenseStart),
-    defenseEnd: new Date(defenseEnd),
-    postDefenseRevisionDeadline: new Date(postDefenseRevisionDeadline),
-    archiveDeadline: new Date(archiveDeadline),
   };
+
+  if (isOfferingFlow) {
+    if (finalSubmissionDeadline) dates.finalSubmissionDeadline = new Date(finalSubmissionDeadline);
+    if (gradingStart) dates.gradingStart = new Date(gradingStart);
+    if (gradingEnd) dates.gradingEnd = new Date(gradingEnd);
+  } else {
+    if (preDefenseSubmissionDeadline) dates.preDefenseSubmissionDeadline = new Date(preDefenseSubmissionDeadline);
+    if (defenseStart) dates.defenseStart = new Date(defenseStart);
+    if (defenseEnd) dates.defenseEnd = new Date(defenseEnd);
+    if (postDefenseRevisionDeadline) dates.postDefenseRevisionDeadline = new Date(postDefenseRevisionDeadline);
+    if (archiveDeadline) dates.archiveDeadline = new Date(archiveDeadline);
+  }
 
   // Check if any date is invalid
   for (const [key, value] of Object.entries(dates)) {
@@ -107,20 +151,33 @@ const validatePeriodCreate = (req, res, next) => {
     if (dates.projectStart >= dates.projectEnd) {
       errors.push({ field: 'projectEnd', code: 'PROJECT_END_BEFORE_START', message: 'Thời gian kết thúc đồ án phải sau thời gian bắt đầu thực hiện.' });
     }
-    if (dates.projectEnd < dates.preDefenseSubmissionDeadline) {
-      errors.push({ field: 'preDefenseSubmissionDeadline', code: 'PRE_DEFENSE_DEADLINE_AFTER_PROJECT_END', message: 'Hạn nộp hồ sơ trước bảo vệ phải diễn ra trước khi kết thúc đợt đồ án.' });
-    }
-    if (dates.preDefenseSubmissionDeadline >= dates.defenseStart) {
-      errors.push({ field: 'defenseStart', code: 'DEFENSE_START_BEFORE_SUBMISSION_DEADLINE', message: 'Thời gian bắt đầu bảo vệ phải diễn ra sau hạn nộp hồ sơ trước bảo vệ.' });
-    }
-    if (dates.defenseStart >= dates.defenseEnd) {
-      errors.push({ field: 'defenseEnd', code: 'DEFENSE_END_BEFORE_START', message: 'Thời gian kết thúc bảo vệ phải sau thời gian bắt đầu bảo vệ.' });
-    }
-    if (dates.defenseEnd >= dates.postDefenseRevisionDeadline) {
-      errors.push({ field: 'postDefenseRevisionDeadline', code: 'REVISION_DEADLINE_BEFORE_DEFENSE_END', message: 'Hạn sửa đổi báo cáo sau bảo vệ phải sau khi kết thúc bảo vệ.' });
-    }
-    if (dates.postDefenseRevisionDeadline >= dates.archiveDeadline) {
-      errors.push({ field: 'archiveDeadline', code: 'ARCHIVE_DEADLINE_BEFORE_REVISION_END', message: 'Hạn nộp báo cáo lưu trữ phải sau hạn sửa đổi báo cáo sau bảo vệ.' });
+    
+    if (isOfferingFlow) {
+      if (dates.finalSubmissionDeadline && dates.projectEnd < dates.finalSubmissionDeadline) {
+        errors.push({ field: 'finalSubmissionDeadline', code: 'FINAL_SUBMISSION_DEADLINE_AFTER_PROJECT_END', message: 'Hạn nộp báo cáo cuối cùng phải diễn ra trước khi kết thúc đợt đồ án.' });
+      }
+      if (dates.finalSubmissionDeadline && dates.gradingStart && dates.finalSubmissionDeadline >= dates.gradingStart) {
+        errors.push({ field: 'gradingStart', code: 'GRADING_START_BEFORE_SUBMISSION_DEADLINE', message: 'Thời gian bắt đầu chấm điểm phải diễn ra sau hạn nộp báo cáo.' });
+      }
+      if (dates.gradingStart && dates.gradingEnd && dates.gradingStart >= dates.gradingEnd) {
+        errors.push({ field: 'gradingEnd', code: 'GRADING_END_BEFORE_START', message: 'Thời gian kết thúc chấm điểm phải sau thời gian bắt đầu chấm điểm.' });
+      }
+    } else {
+      if (dates.preDefenseSubmissionDeadline && dates.projectEnd < dates.preDefenseSubmissionDeadline) {
+        errors.push({ field: 'preDefenseSubmissionDeadline', code: 'PRE_DEFENSE_DEADLINE_AFTER_PROJECT_END', message: 'Hạn nộp hồ sơ trước bảo vệ phải diễn ra trước khi kết thúc đợt đồ án.' });
+      }
+      if (dates.preDefenseSubmissionDeadline && dates.defenseStart && dates.preDefenseSubmissionDeadline >= dates.defenseStart) {
+        errors.push({ field: 'defenseStart', code: 'DEFENSE_START_BEFORE_SUBMISSION_DEADLINE', message: 'Thời gian bắt đầu bảo vệ phải diễn ra sau hạn nộp hồ sơ trước bảo vệ.' });
+      }
+      if (dates.defenseStart && dates.defenseEnd && dates.defenseStart >= dates.defenseEnd) {
+        errors.push({ field: 'defenseEnd', code: 'DEFENSE_END_BEFORE_START', message: 'Thời gian kết thúc bảo vệ phải sau thời gian bắt đầu bảo vệ.' });
+      }
+      if (dates.defenseEnd && dates.postDefenseRevisionDeadline && dates.defenseEnd >= dates.postDefenseRevisionDeadline) {
+        errors.push({ field: 'postDefenseRevisionDeadline', code: 'REVISION_DEADLINE_BEFORE_DEFENSE_END', message: 'Hạn sửa đổi báo cáo sau bảo vệ phải sau khi kết thúc bảo vệ.' });
+      }
+      if (dates.postDefenseRevisionDeadline && dates.archiveDeadline && dates.postDefenseRevisionDeadline >= dates.archiveDeadline) {
+        errors.push({ field: 'archiveDeadline', code: 'ARCHIVE_DEADLINE_BEFORE_REVISION_END', message: 'Hạn nộp báo cáo lưu trữ phải sau hạn sửa đổi báo cáo sau bảo vệ.' });
+      }
     }
   }
 
@@ -137,7 +194,7 @@ const validatePeriodCreate = (req, res, next) => {
 
 const validatePeriodUpdate = (req, res, next) => {
   // Supports partial updates but ensures updated dates are correct
-  const { minGroupSize, maxGroupSize, scoringFormula, rubricId } = req.body;
+  const { minGroupSize, maxGroupSize, scoringFormula, rubricId, groupMinSize, groupMaxSize } = req.body;
   const errors = [];
 
   if (rubricId !== undefined && rubricId !== null && rubricId !== '') {
@@ -155,6 +212,18 @@ const validatePeriodUpdate = (req, res, next) => {
     }
     if (max !== undefined && isNaN(max)) {
       errors.push({ field: 'maxGroupSize', code: 'MAX_GROUP_SIZE_INVALID', message: 'Số lượng tối đa không hợp lệ.' });
+    }
+  }
+
+  if (groupMinSize !== undefined || groupMaxSize !== undefined) {
+    const min = groupMinSize !== undefined ? parseInt(groupMinSize, 10) : undefined;
+    const max = groupMaxSize !== undefined ? parseInt(groupMaxSize, 10) : undefined;
+    
+    if (min !== undefined && (isNaN(min) || min < 2)) {
+      errors.push({ field: 'groupMinSize', code: 'GROUP_MIN_SIZE_INVALID', message: 'Số lượng tối thiểu phải lớn hơn hoặc bằng 2.' });
+    }
+    if (max !== undefined && isNaN(max)) {
+      errors.push({ field: 'groupMaxSize', code: 'GROUP_MAX_SIZE_INVALID', message: 'Số lượng tối đa không hợp lệ.' });
     }
   }
 

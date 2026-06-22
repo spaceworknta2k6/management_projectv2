@@ -86,7 +86,7 @@ export default function PublicScoreVerificationPage() {
 
         <Card className={css.card}>
           <div className={css.header}>
-            <div className={css.university}>TRƯỜNG ĐẠI HỌC BÁCH KHOA HÀ NỘI</div>
+            <div className={css.university}>TRƯỜNG ĐẠI HỌC PHENIKAA</div>
             <h1 className={css.title}>Xác Thực Phiếu Điểm Đồ Án</h1>
           </div>
 
@@ -114,7 +114,7 @@ export default function PublicScoreVerificationPage() {
               <div className={css.infoVal}>{period.name || 'N/A'}</div>
             </div>
             <div className={css.spanFull}>
-              <div className={css.infoLabel}>Đề tài đồ án tốt nghiệp</div>
+              <div className={css.infoLabel}>Đề tài đồ án</div>
               <div className={css.infoVal}>{topic.title || 'N/A'}</div>
             </div>
             <div>
@@ -125,7 +125,7 @@ export default function PublicScoreVerificationPage() {
               <div className={css.infoLabel}>Vai trò chấm điểm</div>
               <div className={css.infoVal}>
                 {sheet.rubricRole === 'SUPERVISOR' && 'Giảng viên hướng dẫn'}
-                {sheet.rubricRole === 'REVIEWER' && 'Giảng viên phản biện'}
+                {sheet.rubricRole === 'REVIEWER' && 'Giảng viên chấm 2'}
                 {sheet.rubricRole === 'COMMITTEE_MEMBER' && `Thành viên Hội đồng (${sheet.graderRole})`}
               </div>
             </div>

@@ -6,28 +6,36 @@ import api from '@/services/api';
 import { useToast } from '@/components/ui/Toast';
 
 const DEFAULT_FORM_STATE = {
-  name: 'Đợt Đồ án Tốt nghiệp Kỳ 20252',
+  name: 'Học phần Đồ án Cơ sở ngành Kỳ 20252',
   schoolYear: '2025-2026',
   semester: '2',
   type: 'foundation_project',
-  minGroupSize: '1',
-  maxGroupSize: '3',
+  courseCode: 'IT3000',
+  courseName: 'Đồ án cơ sở ngành',
+  projectType: 'foundation',
+  coordinatorLecturerId: '',
+  allowIndividual: true,
+  allowGroup: true,
+  groupMinSize: '2',
+  groupMaxSize: '5',
+  minGroupSize: '2',
+  maxGroupSize: '5',
   rubricId: '',
   rubricVersion: 'v1.0',
-  supervisorWeight: '0.3',
-  reviewerWeight: '0.2',
-  committeeWeight: '0.5',
+  supervisorWeight: '0.5',
+  reviewerWeight: '0.5',
+  committeeWeight: '0.0',
   // Timelines
   registrationStart: '2026-06-05T08:00',
   registrationEnd: '2026-06-15T18:00',
   topicChangeDeadline: '2026-06-20T18:00',
   projectStart: '2026-06-25T08:00',
   projectEnd: '2026-09-15T18:00',
-  preDefenseSubmissionDeadline: '2026-09-01T18:00',
-  defenseStart: '2026-09-05T08:00',
-  defenseEnd: '2026-09-10T18:00',
-  postDefenseRevisionDeadline: '2026-09-20T18:00',
-  archiveDeadline: '2026-09-30T18:00',
+  preDefenseSubmissionDeadline: '',
+  defenseStart: '',
+  defenseEnd: '',
+  postDefenseRevisionDeadline: '',
+  archiveDeadline: '',
 };
 
 export function usePeriods() {
@@ -35,6 +43,7 @@ export function usePeriods() {
   const toast = useToast();
   const [periods, setPeriods] = useState([]);
   const [rubrics, setRubrics] = useState([]);
+  const [lecturers, setLecturers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState(null);
@@ -65,13 +74,21 @@ export function usePeriods() {
       schoolYear: period.schoolYear || '',
       semester: period.semester || '',
       type: period.type || 'foundation_project',
-      minGroupSize: String(period.minGroupSize || 1),
-      maxGroupSize: String(period.maxGroupSize || 3),
+      courseCode: period.courseCode || '',
+      courseName: period.courseName || '',
+      projectType: period.projectType || 'foundation',
+      coordinatorLecturerId: period.coordinatorLecturerId?._id || period.coordinatorLecturerId || '',
+      allowIndividual: period.allowIndividual !== false,
+      allowGroup: period.allowGroup !== false,
+      groupMinSize: String(period.groupMinSize ?? 2),
+      groupMaxSize: String(period.groupMaxSize ?? 5),
+      minGroupSize: String(period.groupMinSize ?? 2),
+      maxGroupSize: String(period.groupMaxSize ?? 5),
       rubricId: period.rubricId?._id || period.rubricId || '',
       rubricVersion: period.rubricVersion || '',
-      supervisorWeight: String(period.scoringFormula?.supervisor ?? 0.3),
-      reviewerWeight: String(period.scoringFormula?.reviewer ?? 0.2),
-      committeeWeight: String(period.scoringFormula?.committee ?? 0.5),
+      supervisorWeight: String(period.scoringFormula?.supervisor ?? 0.5),
+      reviewerWeight: String(period.scoringFormula?.reviewer ?? 0.5),
+      committeeWeight: String(period.scoringFormula?.committee ?? 0.0),
       registrationStart: toDateTimeLocal(period.registrationStart),
       registrationEnd: toDateTimeLocal(period.registrationEnd),
       topicChangeDeadline: toDateTimeLocal(period.topicChangeDeadline),
@@ -94,8 +111,10 @@ export function usePeriods() {
       setPeriods(res.data || []);
       const rubricsRes = await api.get('/rubrics', token);
       setRubrics(rubricsRes.data || []);
+      const lecturersRes = await api.get('/auth/lecturers', token);
+      setLecturers(lecturersRes.data || []);
     } catch (err) {
-      toast.error(err.message || 'Không thể tải danh sách đợt đồ án');
+      toast.error(err.message || 'Không thể tải danh sách học phần đồ án');
     } finally {
       setLoading(false);
     }
@@ -120,11 +139,58 @@ export function usePeriods() {
     setSubmitting(true);
     setFormErrors({});
 
+    const requiredFields = [
+      { name: 'name', label: 'Tên học phần đồ án' },
+      { name: 'schoolYear', label: 'Năm học' },
+      { name: 'semester', label: 'Học kỳ' },
+      { name: 'courseCode', label: 'Mã học phần' },
+      { name: 'courseName', label: 'Tên học phần' },
+      { name: 'rubricId', label: 'Tiêu chí chấm' },
+      { name: 'supervisorWeight', label: 'Trọng số GVHD' },
+      { name: 'reviewerWeight', label: 'Trọng số GV Chấm 2' },
+      { name: 'registrationStart', label: 'Bắt đầu đăng ký đề tài' },
+      { name: 'registrationEnd', label: 'Kết thúc đăng ký đề tài' },
+      { name: 'topicChangeDeadline', label: 'Hạn đổi đề tài' },
+      { name: 'projectStart', label: 'Bắt đầu thực hiện' },
+      { name: 'projectEnd', label: 'Kết thúc thực hiện' },
+    ];
+
+    const errors = {};
+    for (const f of requiredFields) {
+      if (form[f.name] === undefined || form[f.name] === null || !String(form[f.name]).trim()) {
+        errors[f.name] = `${f.label} là bắt buộc.`;
+      }
+    }
+
+    const isIndiv = form.allowIndividual === true || form.allowIndividual === 'true';
+    const isGroup = form.allowGroup === true || form.allowGroup === 'true';
+
+    if (!isIndiv && !isGroup) {
+      errors.allowIndividual = 'Phải chọn ít nhất một hình thức làm đồ án (cá nhân hoặc nhóm).';
+    }
+
+    if (isGroup) {
+      const minSz = parseInt(form.groupMinSize || 2, 10);
+      const maxSz = parseInt(form.groupMaxSize || 5, 10);
+      if (isNaN(minSz) || minSz < 2) {
+        errors.groupMinSize = 'Số thành viên tối thiểu của nhóm phải từ 2 trở lên.';
+      }
+      if (isNaN(maxSz) || maxSz < minSz) {
+        errors.groupMaxSize = 'Số thành viên tối đa phải lớn hơn hoặc bằng số thành viên tối thiểu.';
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc.');
+      setSubmitting(false);
+      return;
+    }
+
     const sup = parseFloat(form.supervisorWeight || 0);
     const rev = parseFloat(form.reviewerWeight || 0);
-    const com = parseFloat(form.committeeWeight || 0);
-    if (Math.abs(sup + rev + com - 1.0) > 0.001) {
-      toast.error('Tổng trọng số điểm thành phần phải bằng 1.0 (100%).');
+    if (Math.abs(sup + rev - 1.0) > 0.001) {
+      toast.error('Tổng trọng số điểm thành phần (GVHD + GV Chấm 2) phải bằng 1.0 (100%).');
       setSubmitting(false);
       return;
     }
@@ -134,34 +200,42 @@ export function usePeriods() {
       schoolYear: form.schoolYear,
       semester: form.semester,
       type: form.type,
-      minGroupSize: parseInt(form.minGroupSize, 10),
-      maxGroupSize: parseInt(form.maxGroupSize, 10),
+      courseCode: form.courseCode,
+      courseName: form.courseName,
+      projectType: form.projectType || (form.type === 'interdisciplinary_project' ? 'interdisciplinary' : 'foundation'),
+      coordinatorLecturerId: form.coordinatorLecturerId || undefined,
+      allowIndividual: isIndiv,
+      allowGroup: isGroup,
+      groupMinSize: isGroup ? parseInt(form.groupMinSize, 10) : 2,
+      groupMaxSize: isGroup ? parseInt(form.groupMaxSize, 10) : 5,
+      minGroupSize: isGroup ? parseInt(form.groupMinSize, 10) : 2, // legacy
+      maxGroupSize: isGroup ? parseInt(form.groupMaxSize, 10) : 5, // legacy
       rubricId: form.rubricId || undefined,
       rubricVersion: form.rubricVersion || '1.0',
       scoringFormula: {
         supervisor: sup,
         reviewer: rev,
-        committee: com,
+        committee: 0.0,
       },
       registrationStart: new Date(form.registrationStart).toISOString(),
       registrationEnd: new Date(form.registrationEnd).toISOString(),
       topicChangeDeadline: new Date(form.topicChangeDeadline).toISOString(),
       projectStart: new Date(form.projectStart).toISOString(),
       projectEnd: new Date(form.projectEnd).toISOString(),
-      preDefenseSubmissionDeadline: new Date(form.preDefenseSubmissionDeadline).toISOString(),
-      defenseStart: new Date(form.defenseStart).toISOString(),
-      defenseEnd: new Date(form.defenseEnd).toISOString(),
-      postDefenseRevisionDeadline: new Date(form.postDefenseRevisionDeadline).toISOString(),
-      archiveDeadline: new Date(form.archiveDeadline).toISOString(),
+      preDefenseSubmissionDeadline: form.preDefenseSubmissionDeadline ? new Date(form.preDefenseSubmissionDeadline).toISOString() : undefined,
+      defenseStart: form.defenseStart ? new Date(form.defenseStart).toISOString() : undefined,
+      defenseEnd: form.defenseEnd ? new Date(form.defenseEnd).toISOString() : undefined,
+      postDefenseRevisionDeadline: form.postDefenseRevisionDeadline ? new Date(form.postDefenseRevisionDeadline).toISOString() : undefined,
+      archiveDeadline: form.archiveDeadline ? new Date(form.archiveDeadline).toISOString() : undefined,
     };
 
     try {
       if (editingPeriod) {
         await api.patch(`/periods/${editingPeriod._id}`, payload, token);
-        toast.success('Đã cập nhật đợt đồ án thành công!');
+        toast.success('Đã cập nhật học phần đồ án thành công!');
       } else {
         await api.post('/periods', payload, token);
-        toast.success('Đã khởi tạo đợt đồ án mới thành công!');
+        toast.success('Đã khởi tạo học phần đồ án mới thành công!');
       }
       setShowModal(false);
       setEditingPeriod(null);
@@ -173,9 +247,9 @@ export function usePeriods() {
           errorsMap[errObj.field] = errObj.message;
         });
         setFormErrors(errorsMap);
-        toast.error('Vui lòng kiểm tra lại các mốc thời gian và thông tin đợt đồ án.');
+        toast.error('Vui lòng kiểm tra lại các mốc thời gian và thông tin học phần.');
       } else {
-        toast.error(err.message || 'Lỗi khi tạo mới đợt đồ án');
+        toast.error(err.message || 'Lỗi khi tạo mới học phần đồ án');
       }
     } finally {
       setSubmitting(false);
@@ -187,11 +261,14 @@ export function usePeriods() {
       let endpoint = `/periods/${id}`;
       if (action === 'open-registration') endpoint += '/open-registration';
       else if (action === 'start') endpoint += '/start';
+      else if (action === 'start-grading') endpoint += '/start-grading';
+      else if (action === 'publish-results') endpoint += '/publish-results';
+      else if (action === 'open-appeal') endpoint += '/open-appeal';
       else if (action === 'lock-results') endpoint += '/lock-results';
       else if (action === 'archive') endpoint += '/archive';
 
       await api.post(endpoint, {}, token);
-      toast.success('Cập nhật trạng thái đợt đồ án thành công!');
+      toast.success('Cập nhật trạng thái học phần đồ án thành công!');
       fetchPeriods();
     } catch (err) {
       toast.error(err.message || 'Không thể cập nhật trạng thái');
@@ -202,11 +279,11 @@ export function usePeriods() {
     setDeleting(true);
     try {
       await api.delete(`/periods/${period._id}`, token);
-      toast.success('Đã xóa đợt đồ án thành công.');
+      toast.success('Đã xóa học phần đồ án thành công.');
       setPeriodToDelete(null);
       fetchPeriods();
     } catch (err) {
-      toast.error(err.message || 'Không thể xóa đợt đồ án');
+      toast.error(err.message || 'Không thể xóa học phần đồ án');
     } finally {
       setDeleting(false);
     }
@@ -215,6 +292,7 @@ export function usePeriods() {
   return {
     periods,
     rubrics,
+    lecturers,
     loading,
     showModal,
     setShowModal,

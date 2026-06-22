@@ -8,16 +8,18 @@ const validateScoreSheetSubmit = (req, res, next) => {
     errors.push({ field: 'projectId', code: 'PROJECT_ID_INVALID', message: 'Mã dự án (projectId) không hợp lệ.' });
   }
 
-  if (!groupId || !mongoose.Types.ObjectId.isValid(groupId)) {
-    errors.push({ field: 'groupId', code: 'GROUP_ID_INVALID', message: 'Mã nhóm (groupId) không hợp lệ.' });
+  if (groupId !== undefined && groupId !== null && groupId !== '') {
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      errors.push({ field: 'groupId', code: 'GROUP_ID_INVALID', message: 'Mã nhóm (groupId) không hợp lệ.' });
+    }
   }
 
   if (!periodId || !mongoose.Types.ObjectId.isValid(periodId)) {
     errors.push({ field: 'periodId', code: 'PERIOD_ID_INVALID', message: 'Mã đợt đồ án (periodId) không hợp lệ.' });
   }
 
-  if (!rubricRole || !['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER'].includes(rubricRole)) {
-    errors.push({ field: 'rubricRole', code: 'RUBRIC_ROLE_INVALID', message: 'Vai trò rubric phải là một trong: SUPERVISOR, REVIEWER, COMMITTEE_MEMBER.' });
+  if (!rubricRole || !['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER', 'SECOND_MARKER'].includes(rubricRole)) {
+    errors.push({ field: 'rubricRole', code: 'RUBRIC_ROLE_INVALID', message: 'Vai trò rubric phải là một trong: SUPERVISOR, REVIEWER, COMMITTEE_MEMBER, SECOND_MARKER.' });
   }
 
   if (!targetType || !['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER', 'NON_DEFENSE_MARKER', 'RECHECK'].includes(targetType)) {

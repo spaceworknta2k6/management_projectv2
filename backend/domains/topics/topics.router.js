@@ -12,17 +12,23 @@ router.use(protect);
 
 // Student/authenticated endpoints
 router.post('/', topicsValidator.validateTopicPropose, topicsController.proposeTopic);
+router.post('/lecturer', requireRole(['LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN']), topicsValidator.validateTopicPropose, topicsController.createLecturerTopic);
+router.post('/:id/register', topicsController.registerTopic);
 router.put('/:id', topicsValidator.validateTopicUpdate, topicsController.updateTopic);
 router.get('/', topicsController.getTopics);
 router.get('/:id', topicsController.getTopicById);
 router.post('/:id/change-requests', topicChangeRequestsValidator.validateCreate, topicChangeRequestsController.createChangeRequest);
 router.get('/:id/change-requests', topicChangeRequestsController.getTopicRequests);
 
-// Staff restricted administrative actions
-router.use(requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']));
+// Shared approval actions (checked at service layer)
 router.post('/:id/approve', topicsController.approveTopic);
 router.post('/:id/reject', topicsController.rejectTopic);
 router.post('/:id/request-revision', topicsController.requestRevision);
+
+// Staff restricted administrative actions
+router.use(requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']));
+router.post('/:id/publish', topicsController.publishTopic);
+router.post('/:id/unpublish', topicsController.unpublishTopic);
 router.post('/:id/assign-supervisor', topicsController.assignSupervisor);
 router.post('/:id/cancel', topicsController.cancelTopic);
 

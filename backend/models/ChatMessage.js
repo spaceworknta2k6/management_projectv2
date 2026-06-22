@@ -90,4 +90,10 @@ ChatMessageSchema.pre('validate', function () {
 
 ChatMessageSchema.index({ roomId: 1, createdAt: -1, isDeleted: 1 });
 
+ChatMessageSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
+
 module.exports = mongoose.model('ChatMessage', ChatMessageSchema);

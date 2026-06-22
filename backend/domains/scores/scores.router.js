@@ -20,6 +20,7 @@ router.post('/final-grades/aggregate/:projectId', requireRole(['FACULTY_STAFF', 
 router.get('/final-grades/:id', scoresController.getFinalGrade);
 router.get('/final-grades/project/:projectId', scoresController.getFinalGradeByProjectId);
 router.post('/final-grades/:id/publish', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), scoresController.publishFinalGrade);
+router.post('/final-grades/publish-by-period/:periodId', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), scoresController.publishFinalGradesByPeriod);
 router.post('/final-grades/:id/lock', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), scoresController.lockFinalGrade);
 router.post('/final-grades/:id/resolve-variance', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), scoresController.resolveVariance);
 

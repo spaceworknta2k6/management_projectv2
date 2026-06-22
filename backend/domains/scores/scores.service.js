@@ -18,7 +18,7 @@ const assertScoreSheetPermission = async (project, rubricRole, user) => {
   const reviewerId = project.reviewerId?.toString();
 
   if (rubricRole === 'SUPERVISOR' && supervisorId === lecturerId) return;
-  if (rubricRole === 'REVIEWER' && reviewerId === lecturerId) return;
+  if ((rubricRole === 'REVIEWER' || rubricRole === 'SECOND_MARKER') && reviewerId === lecturerId) return;
 
   if (rubricRole === 'COMMITTEE_MEMBER') {
     const session = await DefenseSession.findOne({ projectId: project._id, isDeleted: { $ne: true } });
@@ -51,7 +51,9 @@ const submitScoreSheet = async (data, user) => {
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
-  if (project.groupId.toString() !== groupId.toString() || project.periodId.toString() !== periodId.toString()) {
+  
+  const isGroup = project.ownerType === 'group';
+  if ((isGroup && project.groupId?.toString() !== groupId?.toString()) || project.periodId.toString() !== periodId.toString()) {
     throw { status: 400, message: 'Thông tin projectId, groupId và periodId không khớp.' };
   }
   await assertScoreSheetPermission(project, rubricRole, user);
@@ -136,7 +138,7 @@ const submitScoreSheet = async (data, user) => {
     if (!graderRole) {
       if (rubricRole === 'SUPERVISOR') {
         graderRole = 'SUPERVISOR';
-      } else if (rubricRole === 'REVIEWER') {
+      } else if (rubricRole === 'REVIEWER' || rubricRole === 'SECOND_MARKER') {
         graderRole = 'REVIEWER';
       } else if (rubricRole === 'COMMITTEE_MEMBER') {
         const session = await DefenseSession.findOne({ projectId, isDeleted: { $ne: true } });
@@ -170,7 +172,7 @@ const submitScoreSheet = async (data, user) => {
       ownerType: owner?.ownerType,
       ownerId: owner?.ownerId,
       studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
-      groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : groupId,
+      groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : undefined,
       periodId,
       graderId,
       graderRole,
@@ -320,22 +322,17 @@ const aggregateFinalGrade = async (projectId, user) => {
   const sheets = await ScoreSheet.find({ projectId });
   
   const supervisorSheet = sheets.find(s => s.rubricRole === 'SUPERVISOR');
-  const reviewerSheet = sheets.find(s => s.rubricRole === 'REVIEWER');
-  const committeeSheets = sheets.filter(s => s.rubricRole === 'COMMITTEE_MEMBER');
+  const reviewerSheet = sheets.find(s => s.rubricRole === 'REVIEWER' || s.rubricRole === 'SECOND_MARKER');
 
   if (!supervisorSheet) {
     throw { status: 400, message: 'Chưa có phiếu chấm điểm của Giảng viên hướng dẫn.' };
   }
   if (!reviewerSheet) {
-    throw { status: 400, message: 'Chưa có phiếu chấm điểm của Giảng viên phản biện.' };
-  }
-  if (committeeSheets.length === 0) {
-    throw { status: 400, message: 'Chưa có phiếu chấm điểm của các thành viên Hội đồng chấm.' };
+    throw { status: 400, message: 'Chưa có phiếu chấm điểm của Giảng viên chấm thứ hai.' };
   }
 
-  // Ensure all sheets are locked
-  const unlockedSheet = sheets.find(s => !s.lockedAt);
-  if (unlockedSheet) {
+  // Ensure supervisor and reviewer sheets are locked
+  if (!supervisorSheet.lockedAt || !reviewerSheet.lockedAt) {
     throw { status: 400, message: 'Chưa thể tổng hợp điểm do còn phiếu chấm chưa được khóa.' };
   }
 
@@ -343,21 +340,26 @@ const aggregateFinalGrade = async (projectId, user) => {
   const supervisorRaw = supervisorSheet.rawTotal;
   const reviewerRaw = reviewerSheet.rawTotal;
   
-  const committeeRawSum = committeeSheets.reduce((sum, s) => sum + s.rawTotal, 0);
-  const committeeRawAvg = committeeRawSum / committeeSheets.length;
-
-  // Fetch scoring formula from period (default to standard: SV: 30%, RV: 20%, Committee: 50%)
-  let fSupervisor = 0.3;
-  let fReviewer = 0.2;
-  let fCommittee = 0.5;
+  // Fetch scoring formula from period (default to 50% supervisor, 50% reviewer/second marker)
+  let fSupervisor = 0.5;
+  let fReviewer = 0.5;
 
   if (period.scoringFormula) {
-    fSupervisor = period.scoringFormula.get('supervisor') !== undefined ? period.scoringFormula.get('supervisor') : 0.3;
-    fReviewer = period.scoringFormula.get('reviewer') !== undefined ? period.scoringFormula.get('reviewer') : 0.2;
-    fCommittee = period.scoringFormula.get('committee') !== undefined ? period.scoringFormula.get('committee') : 0.5;
+    const hasSupervisor = period.scoringFormula.get('supervisor') !== undefined;
+    const hasReviewer = period.scoringFormula.get('reviewer') !== undefined;
+    const hasSecondMarker = period.scoringFormula.get('secondMarker') !== undefined;
+    
+    if (hasSupervisor) {
+      fSupervisor = period.scoringFormula.get('supervisor');
+    }
+    if (hasSecondMarker) {
+      fReviewer = period.scoringFormula.get('secondMarker');
+    } else if (hasReviewer) {
+      fReviewer = period.scoringFormula.get('reviewer');
+    }
   }
 
-  const finalScoreRaw = (supervisorRaw * fSupervisor) + (reviewerRaw * fReviewer) + (committeeRawAvg * fCommittee);
+  const finalScoreRaw = (supervisorRaw * fSupervisor) + (reviewerRaw * fReviewer);
 
   // Single rounding step at the very end to prevent compounding precision loss
   const finalScore = Math.round(finalScoreRaw * 10) / 10;
@@ -377,22 +379,9 @@ const aggregateFinalGrade = async (projectId, user) => {
     });
   }
 
-  if (committeeSheets.length > 1) {
-    const rawScores = committeeSheets.map(s => s.rawTotal);
-    const maxScore = Math.max(...rawScores);
-    const minScore = Math.min(...rawScores);
-    if ((maxScore - minScore) >= threshold) {
-      varianceFlags.push({
-        type: 'committee_member_variance',
-        maxDifference: maxScore - minScore
-      });
-    }
-  }
-
   const componentScores = {
     supervisor: supervisorRaw,
-    reviewer: reviewerRaw,
-    committee: committeeRawAvg
+    reviewer: reviewerRaw
   };
 
   const existingGrade = await FinalGrade.findOne({ projectId });
@@ -405,6 +394,7 @@ const aggregateFinalGrade = async (projectId, user) => {
     existingGrade.passStatus = passStatus;
     existingGrade.varianceFlags = varianceFlags;
     existingGrade.formulaVersion = period.rubricVersion || '1.0';
+    existingGrade.evaluationMode = 'non_defense';
     grade = await existingGrade.save();
   } else {
     const owner = resolveProjectOwner(project);
@@ -415,7 +405,7 @@ const aggregateFinalGrade = async (projectId, user) => {
       studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
       groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : undefined,
       periodId: project.periodId,
-      evaluationMode: 'defense',
+      evaluationMode: 'non_defense',
       componentScores,
       finalScore,
       letterGrade,
@@ -435,6 +425,11 @@ const getFinalGrade = async (id, user = {}) => {
     throw { status: 404, message: 'Điểm tổng kết không tồn tại.' };
   }
   await assertProjectAccess(grade.projectId, user);
+
+  if (user.studentId && !grade.publishedAt) {
+    throw { status: 403, message: 'Điểm số của dự án này chưa được công bố.' };
+  }
+
   return grade;
 };
 
@@ -444,6 +439,11 @@ const getFinalGradeByProjectId = async (projectId, user = {}) => {
     throw { status: 404, message: 'Điểm tổng kết không tồn tại.' };
   }
   await assertProjectAccess(grade.projectId, user);
+
+  if (user.studentId && !grade.publishedAt) {
+    throw { status: 403, message: 'Điểm số của dự án này chưa được công bố.' };
+  }
+
   return grade;
 };
 
@@ -624,6 +624,51 @@ const getPublicScoreSheetVerify = async (id) => {
   };
 };
 
+const publishFinalGradesByPeriod = async (periodId, userId) => {
+  const grades = await FinalGrade.find({ periodId });
+  if (!grades || grades.length === 0) {
+    return { publishedCount: 0, totalCount: 0, message: 'Không tìm thấy điểm tổng kết nào cần công bố.' };
+  }
+
+  let publishedCount = 0;
+  for (const grade of grades) {
+    const activeVariance = grade.varianceFlags?.find(f => !f.resolvedAt);
+    if (!activeVariance) {
+      if (!grade.publishedAt) {
+        grade.publishedAt = new Date();
+        await grade.save();
+
+        const project = await Project.findById(grade.projectId);
+        if (project) {
+          project.status = 'finalized';
+          await project.save();
+        }
+        publishedCount++;
+      }
+    }
+  }
+
+  // Check if all project grades in this period are published, then update the ProjectPeriod status to results_published
+  const totalGradesCount = await FinalGrade.countDocuments({ periodId });
+  const publishedGradesCount = await FinalGrade.countDocuments({ periodId, publishedAt: { $exists: true, $ne: null } });
+  
+  if (totalGradesCount > 0 && totalGradesCount === publishedGradesCount) {
+    const period = await ProjectPeriod.findById(periodId);
+    if (period && period.status !== 'results_published' && period.status !== 'result_locked') {
+      period.status = 'results_published';
+      period.resultPublishedAt = new Date();
+      await period.save();
+    }
+  }
+
+  return {
+    success: true,
+    publishedCount,
+    totalCount: grades.length,
+    message: `Đã công bố thành công ${publishedCount}/${grades.length} điểm tổng kết.`,
+  };
+};
+
 module.exports = {
   submitScoreSheet,
   getScoreSheets,
@@ -637,4 +682,5 @@ module.exports = {
   lockFinalGrade,
   resolveVariance,
   getPublicScoreSheetVerify,
+  publishFinalGradesByPeriod,
 };

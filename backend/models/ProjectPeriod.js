@@ -27,7 +27,51 @@ const ProjectPeriodSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: ['foundation_project', 'interdisciplinary_project'],
-    required: true,
+    required: false,
+  },
+  courseCode: {
+    type: String,
+    required: false,
+    trim: true,
+  },
+  courseName: {
+    type: String,
+    required: false,
+    trim: true,
+  },
+  projectType: {
+    type: String,
+    enum: ['foundation', 'interdisciplinary'],
+    required: false,
+  },
+  programId: {
+    type: String,
+    required: false,
+  },
+  programName: {
+    type: String,
+    required: false,
+  },
+  coordinatorLecturerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Lecturer',
+    required: false,
+  },
+  allowIndividual: {
+    type: Boolean,
+    default: true,
+  },
+  allowGroup: {
+    type: Boolean,
+    default: true,
+  },
+  groupMinSize: {
+    type: Number,
+    default: 2,
+  },
+  groupMaxSize: {
+    type: Number,
+    default: 5,
   },
   registrationStart: {
     type: Date,
@@ -47,23 +91,47 @@ const ProjectPeriodSchema = new mongoose.Schema({
   },
   preDefenseSubmissionDeadline: {
     type: Date,
-    required: true,
+    required: false,
   },
   defenseStart: {
     type: Date,
-    required: true,
+    required: false,
   },
   defenseEnd: {
     type: Date,
-    required: true,
+    required: false,
   },
   postDefenseRevisionDeadline: {
     type: Date,
-    required: true,
+    required: false,
   },
   archiveDeadline: {
     type: Date,
-    required: true,
+    required: false,
+  },
+  finalSubmissionDeadline: {
+    type: Date,
+    required: false,
+  },
+  gradingStart: {
+    type: Date,
+    required: false,
+  },
+  gradingEnd: {
+    type: Date,
+    required: false,
+  },
+  appealDaysAfterPublish: {
+    type: Number,
+    default: 7,
+  },
+  appealProcessingDays: {
+    type: Number,
+    default: 7,
+  },
+  resultPublishedAt: {
+    type: Date,
+    required: false,
   },
   minGroupSize: {
     type: Number,
@@ -82,12 +150,12 @@ const ProjectPeriodSchema = new mongoose.Schema({
   varianceThreshold: {
     type: Number,
     required: true,
-    default: 2.0, // Difference limit in score criteria
+    default: 2.0,
   },
   passScore: {
     type: Number,
     required: true,
-    default: 5.0, // Out of 10
+    default: 5.0,
   },
   rubricVersion: {
     type: String,
@@ -100,11 +168,11 @@ const ProjectPeriodSchema = new mongoose.Schema({
   scoringFormula: {
     type: mongoose.Schema.Types.Map,
     of: Number,
-    required: true, // e.g. { supervisor: 0.3, reviewer: 0.2, committee: 0.5 }
+    required: true,
   },
   status: {
     type: String,
-    enum: ['draft', 'registration_open', 'topic_review', 'in_progress', 'defense', 'scoring', 'result_locked', 'archived'],
+    enum: ['draft', 'registration_open', 'topic_review', 'in_progress', 'defense', 'scoring', 'grading', 'results_published', 'appeal_open', 'result_locked', 'archived', 'cancelled'],
     default: 'draft',
   },
   lockedAt: {
@@ -131,6 +199,12 @@ const ProjectPeriodSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+});
+
+ProjectPeriodSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
 });
 
 module.exports = mongoose.model('ProjectPeriod', ProjectPeriodSchema);

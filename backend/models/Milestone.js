@@ -89,4 +89,10 @@ const MilestoneSchema = new mongoose.Schema({
   timestamps: true,
 });
 
+MilestoneSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
+
 module.exports = mongoose.model('Milestone', MilestoneSchema);

@@ -255,19 +255,40 @@ const proposeTopic = async (topicData, studentId) => {
   return topic;
 };
 
-const reviewTopic = async (topicId, action, actorUserId, note = '') => {
+const reviewTopic = async (topicId, action, user, note = '') => {
   const topic = await ProjectTopic.findById(topicId);
   if (!topic) {
     throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
   }
 
   const fromStatus = topic.status;
-  let toStatus = '';
+  
+  // Verify permissions
+  const roles = user.roles || [];
+  const isStaff = roles.some(r => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(r));
+  let isAuthorizedLecturer = false;
 
+  if (roles.includes('LECTURER') && user.lecturerId) {
+    const period = await ProjectPeriod.findById(topic.periodId);
+    const isCoordinator = period && period.coordinatorLecturerId && period.coordinatorLecturerId.toString() === user.lecturerId.toString();
+    const isProposedSupervisor = topic.proposedSupervisorId && topic.proposedSupervisorId.toString() === user.lecturerId.toString();
+    const isProposedLecturer = topic.proposedByLecturerId && topic.proposedByLecturerId.toString() === user.lecturerId.toString();
+
+    if (isCoordinator || isProposedSupervisor || isProposedLecturer) {
+      isAuthorizedLecturer = true;
+    }
+  }
+
+  if (!isStaff && !isAuthorizedLecturer) {
+    throw { status: 403, message: 'Bạn không có quyền duyệt chuyên môn đề tài này.' };
+  }
+
+  let toStatus = '';
   if (action === 'approve') {
     toStatus = 'approved';
-    topic.approvedBy = actorUserId;
+    topic.approvedBy = user._id;
     topic.approvedAt = new Date();
+    topic.approvedByLecturerId = user.lecturerId || undefined;
   } else if (action === 'request-revision') {
     toStatus = 'needs_revision';
   } else if (action === 'reject') {
@@ -283,8 +304,8 @@ const reviewTopic = async (topicId, action, actorUserId, note = '') => {
     entityId: topic._id,
     fromStatus,
     toStatus,
-    actorId: actorUserId,
-    actorRoles: ['FACULTY_STAFF'],
+    actorId: user._id,
+    actorRoles: isStaff ? ['FACULTY_STAFF'] : ['LECTURER'],
     action: `REVIEW_TOPIC_${action.toUpperCase()}`,
     reason: note || `Xét duyệt đề tài với kết quả [${toStatus}]`,
   });
@@ -295,12 +316,13 @@ const reviewTopic = async (topicId, action, actorUserId, note = '') => {
     const actionLabel = action === 'approve' ? 'phê duyệt' : action === 'request-revision' ? 'yêu cầu chỉnh sửa' : 'từ chối';
     const notifyType = action === 'approve' ? 'TOPIC_APPROVED' : action === 'request-revision' ? 'TOPIC_REVISION_REQUESTED' : 'TOPIC_REJECTED';
     
+    const reviewerName = user.fullName || 'Giảng viên';
     for (const studentUserId of studentUserIds) {
       await notificationsService.createNotification({
         recipientId: studentUserId,
         type: notifyType,
         title: `Đề tài đồ án đã được ${actionLabel}`,
-        body: `Đề tài "${topic.title}" của bạn đã được ${actionLabel} bởi giáo vụ.${note ? ` Lý do/Ghi chú: "${note}"` : ''}`,
+        body: `Đề tài "${topic.title}" của bạn đã được ${actionLabel} bởi ${reviewerName}.${note ? ` Lý do/Ghi chú: "${note}"` : ''}`,
         entityType: 'ProjectTopic',
         entityId: topic._id,
         actionUrl: `/dashboard/topics`,
@@ -593,6 +615,247 @@ const cancelTopic = async (topicId, actorUserId, actorRoles = ['FACULTY_STAFF'])
   };
 };
 
+const createLecturerTopic = async (topicData, lecturerId, userId) => {
+  const { periodId } = topicData;
+  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
+  if (!period) {
+    throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
+  }
+
+  const requiredStrings = {
+    title: 'Ten de tai',
+    summary: 'Tom tat de tai',
+    objectives: 'Muc tieu de tai',
+    scope: 'Pham vi de tai',
+    expectedResult: 'San pham dau ra du kien',
+    plan: 'Ke hoach thuc hien',
+  };
+  for (const [field, label] of Object.entries(requiredStrings)) {
+    const val = topicData[field];
+    if (!val || typeof val !== 'string' || val.trim() === '') {
+      throw { status: 422, message: `${label} là bắt buộc.` };
+    }
+  }
+
+  const topic = new ProjectTopic({
+    periodId,
+    createdByRole: 'lecturer',
+    createdByUserId: userId,
+    proposedByLecturerId: lecturerId,
+    supervisorId: lecturerId,
+    proposedSupervisorId: lecturerId,
+    title: topicData.title.trim(),
+    summary: topicData.summary.trim(),
+    objectives: topicData.objectives.trim(),
+    scope: topicData.scope.trim(),
+    technologies: topicData.technologies || [],
+    expectedResult: topicData.expectedResult.trim(),
+    plan: topicData.plan.trim(),
+    keywords: topicData.keywords || [],
+    capacityMaxStudents: topicData.capacityMaxStudents !== undefined ? parseInt(topicData.capacityMaxStudents, 10) : 1,
+    capacityMaxGroups: topicData.capacityMaxGroups !== undefined ? parseInt(topicData.capacityMaxGroups, 10) : 1,
+    allowedOwnerTypes: topicData.allowedOwnerTypes || ['student', 'group'],
+    allowIndividual: topicData.allowIndividual !== undefined ? topicData.allowIndividual : true,
+    allowGroup: topicData.allowGroup !== undefined ? topicData.allowGroup : true,
+    departmentId: period.departmentId,
+    status: 'approved',
+  });
+
+  await topic.save();
+
+  await logWorkflowEvent({
+    entityId: topic._id,
+    fromStatus: '',
+    toStatus: 'approved',
+    actorId: userId,
+    actorRoles: ['LECTURER'],
+    action: 'CREATE_LECTURER_TOPIC',
+    reason: `Giảng viên đề xuất đề tài: ${topic.title}`,
+  });
+
+  return topic;
+};
+
+const registerExistingTopic = async (topicId, registerData, studentId, actorUserId) => {
+  const topic = await ProjectTopic.findOne({ _id: topicId, isDeleted: { $ne: true } });
+  if (!topic) {
+    throw { status: 404, message: 'Đề tài không tồn tại.' };
+  }
+
+  if (topic.status !== 'published') {
+    throw { status: 400, message: 'Chỉ đề tài đã công khai mới cho phép đăng ký.' };
+  }
+
+  const period = await ProjectPeriod.findOne({ _id: topic.periodId, isDeleted: { $ne: true } });
+  if (!period) {
+    throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
+  }
+
+  const ownerType = registerData.ownerType === 'group' ? 'group' : 'student';
+  let targetGroupId = null;
+  let targetOwnerId = studentId;
+
+  if (ownerType === 'student') {
+    const allowInd = topic.allowIndividual !== undefined ? topic.allowIndividual : period.allowIndividual;
+    if (allowInd === false) {
+      throw { status: 400, message: 'Đề tài hoặc học phần không cho phép đăng ký cá nhân.' };
+    }
+    await assertStudentTopicOwnerAvailable(topic.periodId, studentId);
+  } else {
+    const allowGrp = topic.allowGroup !== undefined ? topic.allowGroup : period.allowGroup;
+    if (allowGrp === false) {
+      throw { status: 400, message: 'Đề tài hoặc học phần không cho phép đăng ký theo nhóm.' };
+    }
+    const group = await resolveGroupTopicOwner(topic.periodId, registerData.groupId, studentId);
+    targetGroupId = group._id;
+    targetOwnerId = group._id;
+  }
+
+  // Capacity check
+  if (ownerType === 'student') {
+    if (topic.currentStudentCount >= topic.capacityMaxStudents) {
+      throw { status: 400, message: 'Đề tài đã đầy số lượng đăng ký tối đa.' };
+    }
+  } else {
+    if (topic.currentGroupCount >= topic.capacityMaxGroups) {
+      throw { status: 400, message: 'Đề tài đã đầy số lượng nhóm đăng ký tối đa.' };
+    }
+  }
+
+  // Increment counters on the original topic
+  if (ownerType === 'student') {
+    topic.currentStudentCount += 1;
+  } else {
+    topic.currentGroupCount += 1;
+    const group = await ProjectGroup.findById(targetGroupId);
+    const acceptedCount = group.members.filter(m => m.status === 'accepted').length;
+    topic.currentStudentCount += acceptedCount;
+  }
+
+  // If capacity is filled, set status to assigned / locked
+  const isStudentFull = topic.currentStudentCount >= topic.capacityMaxStudents;
+  const isGroupFull = topic.currentGroupCount >= topic.capacityMaxGroups;
+  if (isStudentFull || isGroupFull) {
+    topic.status = 'assigned';
+  }
+  await topic.save();
+
+  // Create registered topic cloned from the original
+  const registeredTopic = new ProjectTopic({
+    ...topic.toObject(),
+    _id: new mongoose.Types.ObjectId(),
+    ownerType,
+    ownerId: targetOwnerId,
+    studentId: ownerType === 'student' ? targetOwnerId : undefined,
+    groupId: ownerType === 'group' ? targetGroupId : undefined,
+    status: 'assigned',
+  });
+  await registeredTopic.save();
+
+  // Lock group
+  if (ownerType === 'group') {
+    const group = await ProjectGroup.findOne({ _id: targetGroupId });
+    if (group) {
+      group.status = 'locked';
+      await group.save();
+    }
+  }
+
+  // Spawn project workspace
+  const project = await Project.create({
+    periodId: topic.periodId,
+    ownerType,
+    ownerId: targetOwnerId,
+    studentId: ownerType === 'student' ? targetOwnerId : undefined,
+    groupId: ownerType === 'group' ? targetGroupId : undefined,
+    topicId: registeredTopic._id,
+    supervisorId: topic.supervisorId || topic.proposedSupervisorId,
+    status: 'assigned',
+  });
+
+  // Logs
+  await logWorkflowEvent({
+    entityId: registeredTopic._id,
+    fromStatus: '',
+    toStatus: 'assigned',
+    actorId: actorUserId,
+    actorRoles: ['STUDENT'],
+    action: 'REGISTER_TOPIC',
+    reason: `Đăng ký thành công đề tài: ${topic.title}`,
+  });
+
+  await logWorkflowEvent({
+    entityType: 'Project',
+    entityId: project._id,
+    fromStatus: '',
+    toStatus: 'assigned',
+    actorId: actorUserId,
+    actorRoles: ['STUDENT'],
+    action: 'SPAWN_PROJECT_BY_REGISTRATION',
+    reason: 'Khởi tạo Workspace từ đăng ký đề tài',
+  });
+
+  return registeredTopic;
+};
+
+const publishTopic = async (topicId, actorUserId) => {
+  const topic = await ProjectTopic.findById(topicId);
+  if (!topic) {
+    throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
+  }
+
+  if (topic.status !== 'approved') {
+    throw { status: 400, message: 'Chỉ đề tài đã được duyệt chuyên môn mới được phép công khai.' };
+  }
+
+  const fromStatus = topic.status;
+  topic.status = 'published';
+  topic.publishedByStaffId = actorUserId;
+  topic.publishedAt = new Date();
+  await topic.save();
+
+  await logWorkflowEvent({
+    entityId: topic._id,
+    fromStatus,
+    toStatus: 'published',
+    actorId: actorUserId,
+    actorRoles: ['FACULTY_STAFF'],
+    action: 'PUBLISH_TOPIC',
+    reason: `Công khai đề tài: ${topic.title}`,
+  });
+
+  return topic;
+};
+
+const unpublishTopic = async (topicId, actorUserId) => {
+  const topic = await ProjectTopic.findById(topicId);
+  if (!topic) {
+    throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
+  }
+
+  if (topic.status !== 'published') {
+    throw { status: 400, message: 'Chỉ đề tài đang công khai mới được gỡ.' };
+  }
+
+  const fromStatus = topic.status;
+  topic.status = 'approved';
+  topic.publishedByStaffId = undefined;
+  topic.publishedAt = undefined;
+  await topic.save();
+
+  await logWorkflowEvent({
+    entityId: topic._id,
+    fromStatus,
+    toStatus: 'approved',
+    actorId: actorUserId,
+    actorRoles: ['FACULTY_STAFF'],
+    action: 'UNPUBLISH_TOPIC',
+    reason: `Gỡ công khai đề tài: ${topic.title}`,
+  });
+
+  return topic;
+};
+
 module.exports = {
   proposeTopic,
   updateTopic,
@@ -601,4 +864,8 @@ module.exports = {
   cancelTopic,
   getTopicsByPeriod,
   getTopicById,
+  createLecturerTopic,
+  registerExistingTopic,
+  publishTopic,
+  unpublishTopic,
 };

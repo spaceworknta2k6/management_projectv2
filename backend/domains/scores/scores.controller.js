@@ -163,6 +163,19 @@ const getPublicScoreSheetVerify = async (req, res, next) => {
   }
 };
 
+const publishFinalGradesByPeriod = async (req, res, next) => {
+  try {
+    const result = await scoresService.publishFinalGradesByPeriod(req.params.periodId, req.user._id);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   submitScoreSheet,
   getScoreSheets,
@@ -176,4 +189,5 @@ module.exports = {
   lockFinalGrade,
   resolveVariance,
   getPublicScoreSheetVerify,
+  publishFinalGradesByPeriod,
 };

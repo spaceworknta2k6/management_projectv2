@@ -53,7 +53,7 @@ const FinalGradeSchema = new mongoose.Schema({
   evaluationMode: {
     type: String,
     enum: ['defense', 'non_defense', 'recheck'],
-    default: 'defense',
+    default: 'non_defense',
   },
   componentScores: {
     type: mongoose.Schema.Types.Map,

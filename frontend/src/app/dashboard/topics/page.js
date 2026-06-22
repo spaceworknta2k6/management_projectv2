@@ -126,8 +126,26 @@ export default function TopicsPage() {
     handleSelectSuggestedTopic,
     handleCheckDuplicate,
     handleOverrideSubmit,
+    handleRegisterTopic,
+    handlePublishTopic,
+    handleUnpublishTopic,
     filteredTopics,
   } = useTopics(initialQuery.tab);
+
+  const onRegisterTopic = async (topicId, ownerType) => {
+    let groupId = undefined;
+    if (ownerType === 'group') {
+      const topicItem = visibleTopics.find((t) => t._id === topicId);
+      const pId = topicItem?.periodId?._id || topicItem?.periodId;
+      const matchedGroup = groups.find((g) => (g.periodId?._id || g.periodId) === pId);
+      if (!matchedGroup) {
+        toast.error('Bạn chưa tham gia nhóm nào được xác nhận trong học phần này.');
+        return;
+      }
+      groupId = matchedGroup._id;
+    }
+    await handleRegisterTopic(topicId, ownerType, groupId);
+  };
 
   const visibleTopics = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -322,9 +340,14 @@ export default function TopicsPage() {
               variant="secondary"
               size="sm"
               onClick={handleExportExcel}
+              className={css.buttonGap}
             >
               <FileText size={16} />
               Xuất Excel
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setShowProposeModal(true)}>
+              <Plus size={16} />
+              Tạo đề tài
             </Button>
           </div>
         )}
@@ -371,6 +394,9 @@ export default function TopicsPage() {
               aiCheckingId={aiCheckingId}
               aiResults={aiResults}
               setShowOverrideModal={setShowOverrideModal}
+              onRegisterTopic={onRegisterTopic}
+              onPublishTopic={handlePublishTopic}
+              onUnpublishTopic={handleUnpublishTopic}
             />
           ))}
           <Pagination
@@ -397,9 +423,22 @@ export default function TopicsPage() {
           onClose={() => {
             setShowProposeModal(false);
             setEditingTopicId(null);
-            setForm((prev) => ({ ...prev, ownerType: 'student', groupId: '', title: '', summary: '' }));
+            setForm((prev) => ({
+              ...prev,
+              ownerType: 'student',
+              groupId: '',
+              title: '',
+              summary: '',
+              allowIndividual: true,
+              allowGroup: true,
+              groupMinSize: '2',
+              groupMaxSize: '5',
+              capacityMaxStudents: '1',
+              capacityMaxGroups: '1',
+            }));
           }}
           submitting={submitting}
+          isLecturerOrStaff={isLecturer || isStaff}
         />
       )}
 

@@ -44,7 +44,11 @@ const runIntegrationTests = async () => {
 
       // Find or create Project Period
       let period = await ProjectPeriod.findOne({ name: 'Đợt Đồ Án Tốt Nghiệp Kỳ 2025.2' });
-      if (!period) {
+      if (period) {
+        period.topicChangeDeadline = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+        period.projectEnd = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000);
+        await period.save();
+      } else {
         period = await ProjectPeriod.create({
           name: 'Đợt Đồ Án Tốt Nghiệp Kỳ 2025.2',
           schoolYear: '2025-2026',
@@ -52,16 +56,16 @@ const runIntegrationTests = async () => {
           type: 'foundation_project',
           facultyId: supervisorLecturer.facultyId,
           departmentId: supervisorLecturer.departmentId,
-          registrationStart: new Date('2026-06-01'),
-          registrationEnd: new Date('2026-06-15'),
-          topicChangeDeadline: new Date('2026-06-20'),
-          projectStart: new Date('2026-06-25'),
-          projectEnd: new Date('2026-10-31'),
-          preDefenseSubmissionDeadline: new Date('2026-10-15'),
-          defenseStart: new Date('2026-11-05'),
-          defenseEnd: new Date('2026-11-15'),
-          postDefenseRevisionDeadline: new Date('2026-11-20'),
-          archiveDeadline: new Date('2026-11-30'),
+          registrationStart: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+          registrationEnd: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+          topicChangeDeadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+          projectStart: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
+          projectEnd: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000),
+          preDefenseSubmissionDeadline: new Date(Date.now() + 100 * 24 * 60 * 60 * 1000),
+          defenseStart: new Date(Date.now() + 110 * 24 * 60 * 60 * 1000),
+          defenseEnd: new Date(Date.now() + 115 * 24 * 60 * 60 * 1000),
+          postDefenseRevisionDeadline: new Date(Date.now() + 118 * 24 * 60 * 60 * 1000),
+          archiveDeadline: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000),
           minGroupSize: 1,
           maxGroupSize: 3,
           rubricVersion: 'v1.0-IT-HUST',

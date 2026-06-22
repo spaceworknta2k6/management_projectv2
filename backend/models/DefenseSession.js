@@ -131,4 +131,10 @@ DefenseSessionSchema.pre('validate', function () {
   if (!this.studentId && this.ownerType === 'student' && this.ownerId) this.studentId = this.ownerId;
 });
 
+DefenseSessionSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
+
 module.exports = mongoose.model('DefenseSession', DefenseSessionSchema);

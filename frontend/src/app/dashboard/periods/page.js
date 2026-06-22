@@ -14,6 +14,7 @@ export default function PeriodsPage() {
   const {
     periods,
     rubrics,
+    lecturers,
     loading,
     showModal,
     setShowModal,
@@ -41,10 +42,10 @@ export default function PeriodsPage() {
         <div>
           <h1 className={`text-display ${css.s2}`}>
             <CalendarBlank size={28} className={css.s3} />
-            Quản lý Đợt đồ án
+            Quản lý Học phần Đồ án
           </h1>
           <p className={css.s4}>
-            Cấu hình thời gian, mốc bảo vệ và công thức tính điểm của đợt đồ án
+            Cấu hình thời gian, quy định nhóm/cá nhân và công thức tính điểm của học phần đồ án
           </p>
         </div>
         <div className={css.s5}>
@@ -54,7 +55,7 @@ export default function PeriodsPage() {
           </Button>
           <Button variant="primary" size="sm" onClick={openCreateModal}>
             <Plus size={16} />
-            Khởi tạo đợt mới
+            Khởi tạo học phần mới
           </Button>
         </div>
       </div>
@@ -67,7 +68,7 @@ export default function PeriodsPage() {
       ) : periods.length === 0 ? (
         <Card>
           <div className={css.s7}>
-            Chưa có đợt đồ án nào được định cấu hình trên hệ thống. Hãy nhấp &quot;Khởi tạo đợt mới&quot; để bắt đầu.
+            Chưa có học phần đồ án nào được định cấu hình trên hệ thống. Hãy nhấp &quot;Khởi tạo học phần mới&quot; để bắt đầu.
           </div>
         </Card>
       ) : (
@@ -98,13 +99,14 @@ export default function PeriodsPage() {
           }}
           submitting={submitting}
           rubrics={rubrics}
+          lecturers={lecturers}
         />
       )}
 
       <ConfirmDialog
         open={Boolean(periodToDelete)}
-        title="Xóa đợt đồ án"
-        message={periodToDelete ? `Bạn có chắc chắn muốn xóa đợt đồ án "${periodToDelete.name}"?` : ''}
+        title="Xóa học phần đồ án"
+        message={periodToDelete ? `Bạn có chắc chắn muốn xóa học phần đồ án "${periodToDelete.name}"?` : ''}
         confirmLabel="Xóa"
         loading={deleting}
         onCancel={() => setPeriodToDelete(null)}

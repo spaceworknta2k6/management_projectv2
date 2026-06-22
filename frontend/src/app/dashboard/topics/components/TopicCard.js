@@ -22,6 +22,9 @@ export default function TopicCard({
   aiCheckingId,
   aiResults,
   setShowOverrideModal,
+  onRegisterTopic,
+  onPublishTopic,
+  onUnpublishTopic,
 }) {
   const mappedStatus = (topic.status === 'submitted' || topic.status === 'ai_checked') ? 'pending_review' : topic.status;
   const statusInfo = getStatus(mappedStatus);
@@ -29,10 +32,14 @@ export default function TopicCard({
   const canCancelTopic = isStaff && !['cancelled', 'completed'].includes(topic.status);
   const isAwaitingSupervisorAssignment = topic.status === 'approved';
 
+  const proposerText = topic.createdByRole === 'lecturer'
+    ? `Giảng viên: ${topic.proposedByLecturerId?.userId?.fullName || 'Giảng viên'}`
+    : `Sinh viên đề xuất: ${topic.proposedByStudentId?.userId?.fullName || 'Sinh viên'}`;
+
   return (
     <Card
       title={topic.title}
-      subtitle={`Sinh viên đề xuất: ${topic.proposedByStudentId?.userId?.fullName || 'Giáo vụ'} | Học kỳ: ${topic.periodId?.semester || '—'}`}
+      subtitle={`${proposerText} | Học kỳ: ${topic.periodId?.semester || '—'}`}
       actions={
         <div className={css.s9}>
           <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
@@ -55,9 +62,37 @@ export default function TopicCard({
           )}
 
           {isStaff && topic.status === 'approved' && (
-            <Button variant="primary" size="sm" onClick={() => handleAssignSupervisorClick(topic)}>
-              <Check size={14} /> Phân công GVHD
+            <>
+              {onPublishTopic && (
+                <Button variant="primary" size="sm" onClick={() => onPublishTopic(topic._id)}>
+                  Công khai đề tài
+                </Button>
+              )}
+              <Button variant="primary" size="sm" onClick={() => handleAssignSupervisorClick(topic)}>
+                <Check size={14} /> Phân công GVHD
+              </Button>
+            </>
+          )}
+
+          {isStaff && topic.status === 'published' && onUnpublishTopic && (
+            <Button variant="secondary" size="sm" onClick={() => onUnpublishTopic(topic._id)}>
+              Hủy công khai
             </Button>
+          )}
+
+          {isStudent && topic.status === 'published' && topic.createdByRole === 'lecturer' && onRegisterTopic && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {topic.allowIndividual && (
+                <Button variant="primary" size="sm" onClick={() => onRegisterTopic(topic._id, 'student')}>
+                  Đăng ký cá nhân
+                </Button>
+              )}
+              {topic.allowGroup && (
+                <Button variant="primary" size="sm" onClick={() => onRegisterTopic(topic._id, 'group')}>
+                  Đăng ký nhóm
+                </Button>
+              )}
+            </div>
           )}
 
           {isStudent && topic.status === 'needs_revision' && topic.proposedByStudentId?._id?.toString() === user?.studentId?.toString() && (
@@ -77,6 +112,17 @@ export default function TopicCard({
       <div className={css.s10}>
         <p className={css.s11}>Tóm tắt đề tài:</p>
         <p className={css.s12}>{topic.summary || 'Không có tóm tắt chi tiết.'}</p>
+
+        {topic.createdByRole === 'lecturer' && (
+          <div style={{ marginTop: '12px', padding: '10px', backgroundColor: 'var(--bg-card-nested, #f8fafc)', borderRadius: '6px', fontSize: '13px', display: 'flex', flexWrap: 'wrap', gap: '16px', border: '1px solid var(--border)' }}>
+            {topic.allowIndividual && (
+              <span>Cá nhân: <strong>{topic.currentStudentCount || 0} / {topic.capacityMaxStudents || 0} SV</strong></span>
+            )}
+            {topic.allowGroup && (
+              <span>Nhóm: <strong>{topic.currentGroupCount || 0} / {topic.capacityMaxGroups || 0} nhóm</strong> {topic.minGroupSize && `(${topic.minGroupSize}-${topic.maxGroupSize} SV/nhóm)`}</span>
+            )}
+          </div>
+        )}
 
         {isAwaitingSupervisorAssignment && (
           <div className={css.assignmentNotice}>

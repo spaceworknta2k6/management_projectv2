@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import useAuthStore from '@/store/auth.store';
+import usePeriodStore from '@/store/period.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -12,7 +13,7 @@ import Badge from '@/components/ui/Badge';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { formatDate } from '@/lib/utils';
+import { formatDate, hasAnyRole } from '@/lib/utils';
 import { ClipboardText, ArrowsClockwise, CheckCircle, Calculator, MagnifyingGlass, FileText, Printer, LockKey } from '@phosphor-icons/react';
 import { exportToCSV } from '@/lib/export';
 import css from './page.module.css';
@@ -31,11 +32,6 @@ const DEFAULT_SCORE_RUBRIC = {
       { criteriaCode: 'C1', criteriaName: 'Mức độ đáp ứng mục tiêu và yêu cầu đề tài', maxScore: 10, weight: 0.4 },
       { criteriaCode: 'C2', criteriaName: 'Chất lượng kỹ thuật và nội dung báo cáo', maxScore: 10, weight: 0.4 },
       { criteriaCode: 'C3', criteriaName: 'Khả năng phân tích, phản biện và trả lời câu hỏi', maxScore: 10, weight: 0.2 },
-    ],
-    COMMITTEE_MEMBER: [
-      { criteriaCode: 'C1', criteriaName: 'Chất lượng sản phẩm/kết quả thực hiện', maxScore: 10, weight: 0.4 },
-      { criteriaCode: 'C2', criteriaName: 'Chất lượng báo cáo đồ án', maxScore: 10, weight: 0.3 },
-      { criteriaCode: 'C3', criteriaName: 'Trình bày và trả lời câu hỏi bảo vệ', maxScore: 10, weight: 0.3 },
     ],
   },
 };
@@ -79,18 +75,19 @@ export default function ScoresPage() {
   const [searchInput, setSearchInput] = useState(initialQuery.search);
   const [search, setSearch] = useState(initialQuery.search);
 
-  const [sessions, setSessions] = useState([]);
+  const { periods, selectedPeriodId, setSelectedPeriodId, fetchPeriods } = usePeriodStore();
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
-  // Selected session to score
-  const [selectedSession, setSelectedSession] = useState(null);
+  // Selected project to score
+  const [selectedProject, setSelectedProject] = useState(null);
 
   // Dynamic Rubric States
   const [loadingRubric, setLoadingRubric] = useState(false);
   const [activeRubric, setActiveRubric] = useState(null);
-  const [selectedRole, setSelectedRole] = useState('COMMITTEE_MEMBER');
+  const [selectedRole, setSelectedRole] = useState('SUPERVISOR');
   const [availableRoles, setAvailableRoles] = useState([]);
   const [savedSheets, setSavedSheets] = useState([]);
   const [currentSheet, setCurrentSheet] = useState(null);
@@ -104,21 +101,53 @@ export default function ScoresPage() {
   // Print Data State
   const [printData, setPrintData] = useState(null);
 
+  // Variance Resolution modal/inline state
+  const [resolvingGradeId, setResolvingGradeId] = useState(null);
+  const [resolutionComment, setResolutionComment] = useState('');
+  const [resolvingVariance, setResolvingVariance] = useState(false);
+  const [publishingAll, setPublishingAll] = useState(false);
+
+  const isStaffUser = useMemo(() => hasAnyRole(user, ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']), [user]);
+
   const fetchData = useCallback(async () => {
+    if (!selectedPeriodId) return;
     try {
       setLoading(true);
-      const res = await api.get('/defense-sessions', token);
-      setSessions(res.data || []);
+      const res = await api.get(`/projects?periodId=${selectedPeriodId}`, token);
+      const list = res.data || [];
+      
+      const detailed = await Promise.all(
+        list.map(async (project) => {
+          const [sheetsRes, gradeRes] = await Promise.all([
+            api.get(`/scores/score-sheets?projectId=${project._id}`, token).catch(() => ({ data: [] })),
+            api.get(`/scores/final-grades/project/${project._id}`, token).catch(() => ({ data: null })),
+          ]);
+          return {
+            ...project,
+            sheets: sheetsRes.data || [],
+            finalGrade: gradeRes.data || null,
+          };
+        })
+      );
+      setProjects(detailed);
     } catch (err) {
-      toast.error('Lỗi khi tải danh sách dự án cần chấm');
+      toast.error('Lỗi khi tải danh sách đồ án cần chấm');
     } finally {
       setLoading(false);
     }
-  }, [toast, token]);
+  }, [selectedPeriodId, token, toast]);
 
   useEffect(() => {
-    if (token) fetchData();
-  }, [fetchData, token]);
+    if (token) {
+      fetchPeriods(token);
+    }
+  }, [token, fetchPeriods]);
+
+  useEffect(() => {
+    if (token && selectedPeriodId) {
+      fetchData();
+    }
+  }, [fetchData, token, selectedPeriodId]);
 
   const loadFormForRole = useCallback((role, rubric, sheetsList) => {
     const existingSheet = sheetsList.find(s => s.rubricRole === role);
@@ -150,17 +179,17 @@ export default function ScoresPage() {
     }
   }, []);
 
-  const handleOpenScoreModal = async (session) => {
-    setSelectedSession(session);
+  const handleOpenScoreModal = async (project) => {
+    setSelectedProject(project);
     setLoadingRubric(true);
     setShowModal(true);
 
-    const projectId = getEntityId(session.projectId);
-    const periodId = getEntityId(session.committeeId?.periodId) || getEntityId(session.projectId?.periodId);
+    const projectId = project._id;
+    const periodId = project.periodId?._id || project.periodId;
 
     try {
       if (!periodId) {
-        throw new Error('Phiên bảo vệ chưa có thông tin đợt đồ án.');
+        throw new Error('Đồ án chưa có cấu hình học phần.');
       }
 
       // 1. Fetch period to get the linked active Rubric
@@ -170,8 +199,8 @@ export default function ScoresPage() {
 
       // Determine grader available roles
       const roles = [];
-      const supervisorId = getEntityId(session.projectId?.supervisorId);
-      const reviewerId = getEntityId(session.projectId?.reviewerId);
+      const supervisorId = getEntityId(project.supervisorId);
+      const reviewerId = getEntityId(project.reviewerId);
       const lecturerId = user?.lecturerId;
 
       if (supervisorId && supervisorId.toString() === lecturerId?.toString()) {
@@ -180,28 +209,32 @@ export default function ScoresPage() {
       if (reviewerId && reviewerId.toString() === lecturerId?.toString()) {
         roles.push('REVIEWER');
       }
-      roles.push('COMMITTEE_MEMBER');
+      
+      if (roles.length === 0) {
+        roles.push('SUPERVISOR', 'REVIEWER');
+      }
       setAvailableRoles(roles);
 
-      const defaultRole = roles[0] || 'COMMITTEE_MEMBER';
+      const defaultRole = roles[0] || 'SUPERVISOR';
       setSelectedRole(defaultRole);
 
-      // 2. Fetch existing score sheets for this project by this lecturer
-      const sheetsRes = await api.get(`/scores/score-sheets?projectId=${projectId}&graderId=${lecturerId}`, token);
+      // 2. Fetch score sheets
+      const graderQuery = user?.lecturerId ? `&graderId=${user.lecturerId}` : '';
+      const sheetsRes = await api.get(`/scores/score-sheets?projectId=${projectId}${graderQuery}`, token);
       const sheets = sheetsRes.data || [];
       setSavedSheets(sheets);
 
       loadFormForRole(defaultRole, rubric, sheets);
       if (!periodRes.data?.rubricId) {
-        toast.warning?.('Đợt đồ án này chưa cấu hình tiêu chí chấm. Hệ thống đang dùng bộ tiêu chí mặc định.');
+        toast.warning?.('Học phần này chưa cấu hình tiêu chí chấm. Hệ thống đang dùng bộ tiêu chí mặc định.');
       }
     } catch (err) {
       setActiveRubric(DEFAULT_SCORE_RUBRIC);
-      setAvailableRoles(['COMMITTEE_MEMBER']);
-      setSelectedRole('COMMITTEE_MEMBER');
+      setAvailableRoles(['SUPERVISOR', 'REVIEWER']);
+      setSelectedRole('SUPERVISOR');
       setSavedSheets([]);
       setCurrentSheet(null);
-      loadFormForRole('COMMITTEE_MEMBER', DEFAULT_SCORE_RUBRIC, []);
+      loadFormForRole('SUPERVISOR', DEFAULT_SCORE_RUBRIC, []);
       toast.error(err.message || 'Lỗi khi tải cấu hình tiêu chí chấm điểm');
     } finally {
       setLoadingRubric(false);
@@ -226,11 +259,11 @@ export default function ScoresPage() {
 
   const handleSubmitScore = async (e) => {
     e.preventDefault();
-    if (!selectedSession || !selectedSession.projectId) return;
+    if (!selectedProject) return;
 
-    const projectId = getEntityId(selectedSession.projectId);
-    const groupId = getEntityId(selectedSession.groupId);
-    const periodId = getEntityId(selectedSession.committeeId?.periodId) || getEntityId(selectedSession.projectId?.periodId);
+    const projectId = selectedProject._id;
+    const groupId = selectedProject.groupId?._id || selectedProject.groupId || undefined;
+    const periodId = selectedProject.periodId?._id || selectedProject.periodId;
 
     // Local validation
     for (const c of form.criteriaScores) {
@@ -257,9 +290,9 @@ export default function ScoresPage() {
       await api.post('/scores/score-sheets', payload, token);
       toast.success('Đã lưu phiếu điểm thành công');
       
-      // Reload sheets
       const lecturerId = user?.lecturerId;
-      const sheetsRes = await api.get(`/scores/score-sheets?projectId=${projectId}&graderId=${lecturerId}`, token);
+      const graderQuery = lecturerId ? `&graderId=${lecturerId}` : '';
+      const sheetsRes = await api.get(`/scores/score-sheets?projectId=${projectId}${graderQuery}`, token);
       const sheets = sheetsRes.data || [];
       setSavedSheets(sheets);
 
@@ -286,9 +319,10 @@ export default function ScoresPage() {
       await api.post(`/scores/score-sheets/${currentSheet._id}/lock`, {}, token);
       toast.success('Đã khóa phiếu điểm thành công!');
 
-      const projectId = getEntityId(selectedSession.projectId);
+      const projectId = selectedProject._id;
       const lecturerId = user?.lecturerId;
-      const sheetsRes = await api.get(`/scores/score-sheets?projectId=${projectId}&graderId=${lecturerId}`, token);
+      const graderQuery = lecturerId ? `&graderId=${lecturerId}` : '';
+      const sheetsRes = await api.get(`/scores/score-sheets?projectId=${projectId}${graderQuery}`, token);
       const sheets = sheetsRes.data || [];
       setSavedSheets(sheets);
 
@@ -319,21 +353,64 @@ export default function ScoresPage() {
     }
   };
 
-  const visibleSessions = useMemo(() => {
+  const handleBulkPublish = async () => {
+    if (!selectedPeriodId) return;
+    try {
+      setPublishingAll(true);
+      const res = await api.post(`/scores/final-grades/publish-by-period/${selectedPeriodId}`, {}, token);
+      toast.success(res.message || 'Đã công bố điểm cho toàn bộ đồ án trong học phần.');
+      fetchData();
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi công bố điểm');
+    } finally {
+      setPublishingAll(false);
+    }
+  };
+
+  const handleOpenResolveVarianceModal = (grade) => {
+    setResolvingGradeId(grade._id);
+    setResolutionComment('');
+  };
+
+  const handleResolveVarianceSubmit = async (e) => {
+    e.preventDefault();
+    if (!resolvingGradeId || !resolutionComment.trim()) {
+      toast.error('Vui lòng nhập phương án giải quyết.');
+      return;
+    }
+    try {
+      setResolvingVariance(true);
+      await api.post(`/scores/final-grades/${resolvingGradeId}/resolve-variance`, {
+        flagType: 'supervisor_reviewer_variance',
+        resolution: resolutionComment.trim(),
+      }, token);
+      toast.success('Đã xử lý cờ chênh lệch điểm thành công!');
+      setResolvingGradeId(null);
+      fetchData();
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi xử lý chênh lệch điểm');
+    } finally {
+      setResolvingVariance(false);
+    }
+  };
+
+  const visibleProjects = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return sessions;
-    return sessions.filter((s) => {
+    if (!keyword) return projects;
+    return projects.filter((p) => {
       const values = [
-        s.projectId?.topicId?.title,
-        s.committeeId?.name,
-        s.groupId?.name,
+        p.topicId?.title,
+        p.groupId?.name,
+        p.studentId?.userId?.fullName,
+        p.supervisorId?.userId?.fullName,
+        p.reviewerId?.userId?.fullName,
       ];
       return values.some((v) => String(v || '').toLowerCase().includes(keyword));
     });
-  }, [sessions, search]);
+  }, [projects, search]);
 
-  const totalPages = Math.max(1, Math.ceil(visibleSessions.length / pageSize));
-  const pagedSessions = visibleSessions.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages = Math.max(1, Math.ceil(visibleProjects.length / pageSize));
+  const pagedProjects = visibleProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -369,24 +446,32 @@ export default function ScoresPage() {
 
   const handleExportExcel = () => {
     const headers = [
-      'Mã Ca Bảo Vệ',
-      'Đề Tài Đồ Án',
-      'Nhóm Thực Hiện',
-      'Ca Số',
-      'Hội Đồng Chấm',
-      'Ngày Bảo Vệ',
+      'Tên Đề Tài',
+      'Nhóm / Sinh viên',
+      'GV Hướng Dẫn',
+      'Điểm GVHD',
+      'GV Chấm 2',
+      'Điểm GV Chấm 2',
+      'Điểm Tổng kết',
+      'Trạng Thái',
     ];
 
-    const data = visibleSessions.map((session) => [
-      session._id,
-      session.projectId?.topicId?.title || 'Đồ án',
-      session.groupId?.name || 'Nhóm',
-      `Ca ${session.orderNumber}`,
-      session.committeeId?.name || 'Không xác định',
-      formatDate(session.defenseDate).split(' ')[0],
-    ]);
+    const data = visibleProjects.map((p) => {
+      const supervisorSheet = p.sheets.find(s => s.rubricRole === 'SUPERVISOR');
+      const reviewerSheet = p.sheets.find(s => s.rubricRole === 'REVIEWER' || s.rubricRole === 'SECOND_MARKER');
+      return [
+        p.topicId?.title || 'Chưa đăng ký đề tài',
+        p.groupId?.name || p.studentId?.userId?.fullName || 'Sinh viên',
+        p.supervisorId?.userId?.fullName || 'Chưa phân công',
+        supervisorSheet ? supervisorSheet.roundedTotal : 'Chưa chấm',
+        p.reviewerId?.userId?.fullName || 'Chưa phân công',
+        reviewerSheet ? reviewerSheet.roundedTotal : 'Chưa chấm',
+        p.finalGrade ? `${p.finalGrade.finalScore} (${p.finalGrade.letterGrade})` : 'Chưa có',
+        p.finalGrade?.publishedAt ? 'Đã công bố' : 'Chưa công bố',
+      ];
+    });
 
-    exportToCSV(data, headers, `Danh_sach_ca_cham_diem_Karl_${new Date().toISOString().slice(0, 10)}`);
+    exportToCSV(data, headers, `Bảng_điểm_đồ_án_Karl_${new Date().toISOString().slice(0, 10)}`);
   };
 
   const printSubject = printData?.verificationSubject || {};
@@ -396,7 +481,7 @@ export default function ScoresPage() {
   return (
     <div>
       <div className={css.screenArea}>
-        {loading ? (
+        {loading && periods.length === 0 ? (
           <div className={css.s1}><Spinner size="lg" /></div>
         ) : (
           <>
@@ -404,15 +489,20 @@ export default function ScoresPage() {
             <div>
               <h1 className={`text-display ${css.s3}`}>
                 <ClipboardText size={28} className={css.s4} />
-                Chấm điểm Đồ án
+                Chấm điểm & Kết quả học phần
               </h1>
               <p className={css.s5}>
-                Nhập điểm đánh giá dành cho Giảng viên (Hội đồng, Phản biện, Hướng dẫn)
+                Nhập điểm đánh giá dành cho Giảng viên hướng dẫn & Giảng viên chấm 2
               </p>
             </div>
             
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <Button variant="secondary" size="sm" onClick={handleExportExcel}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {isStaffUser && selectedPeriodId && (
+                <Button variant="primary" size="sm" onClick={handleBulkPublish} loading={publishingAll} className={css.buttonGap}>
+                  Công bố kết quả
+                </Button>
+              )}
+              <Button variant="secondary" size="sm" onClick={handleExportExcel} className={css.buttonGap}>
                 <FileText size={16} />
                 Xuất Excel
               </Button>
@@ -420,61 +510,212 @@ export default function ScoresPage() {
             </div>
           </div>
 
-          <div className="no-print">
-            <FilterCard
-              searchInput={searchInput}
-              setSearchInput={setSearchInput}
-              onSearch={handleSearchSubmit}
-              onReset={handleResetSearch}
-              placeholder="Tìm theo tên đề tài, hội đồng, nhóm..."
-            />
+          <div className="no-print" style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: '240px', flex: '1' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', marginBottom: '6px', color: 'var(--text-secondary)' }}>Học phần đồ án</label>
+              <select
+                value={selectedPeriodId}
+                onChange={(e) => setSelectedPeriodId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  backgroundColor: 'var(--bg-surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                  fontSize: '14px',
+                  height: '42px'
+                }}
+              >
+                <option value="">Chọn học phần</option>
+                {periods.map((p) => (
+                  <option key={p._id} value={p._id}>
+                    {p.name} ({p.courseCode})
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div style={{ flex: '2', minWidth: '300px', marginTop: '22px' }}>
+              <FilterCard
+                searchInput={searchInput}
+                setSearchInput={setSearchInput}
+                onSearch={handleSearchSubmit}
+                onReset={handleResetSearch}
+                placeholder="Tìm theo tên đề tài, nhóm, sinh viên, giảng viên..."
+              />
+            </div>
           </div>
 
-          <div className={`${css.s6} no-print`}>
-            {pagedSessions.map((session) => (
-              <Card key={session._id} className={css.s7}>
-                <div className={css.s8}>
-                  <div>
-                    <h3 className={css.s9}>
-                      {session.projectId?.topicId?.title || 'Đồ án'}
-                    </h3>
-                    <div className={css.s10}>
-                      Hội đồng: {session.committeeId?.name || 'Không xác định'}
-                    </div>
-                  </div>
-                  <Badge variant="neutral">Ca {session.orderNumber}</Badge>
-                </div>
+          {loading ? (
+            <div className={css.s1}><Spinner size="lg" /></div>
+          ) : (
+            <div className="no-print">
+              {isStaffUser ? (
+                <div style={{ overflowX: 'auto', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: 'var(--bg-card-nested, #f8fafc)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                        <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Tên đề tài</th>
+                        <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Nhóm / Sinh viên</th>
+                        <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Điểm GVHD</th>
+                        <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Điểm GV Chấm 2</th>
+                        <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Điểm Tổng kết</th>
+                        <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Trạng thái</th>
+                        <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Chênh lệch</th>
+                        <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)', width: '120px' }}>Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedProjects.map((p) => {
+                        const supervisorSheet = p.sheets.find(s => s.rubricRole === 'SUPERVISOR');
+                        const reviewerSheet = p.sheets.find(s => s.rubricRole === 'REVIEWER' || s.rubricRole === 'SECOND_MARKER');
+                        const activeVariance = p.finalGrade?.varianceFlags?.find(f => !f.resolvedAt);
 
-                <div className={css.s11}>
-                  <div><strong>Nhóm SV:</strong> {session.groupId?.name || 'Nhóm'}</div>
-                  <div className={css.s12}><strong>Bảo vệ:</strong> {formatDate(session.defenseDate).split(' ')[0]}</div>
+                        return (
+                          <tr key={p._id} style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.2s' }}>
+                            <td style={{ padding: '12px 16px', fontWeight: '500', color: 'var(--text-primary)' }}>{p.topicId?.title || 'Chưa đăng ký đề tài'}</td>
+                            <td style={{ padding: '12px 16px', color: 'var(--text-secondary)' }}>{p.groupId?.name || p.studentId?.userId?.fullName || 'Sinh viên'}</td>
+                            <td style={{ padding: '12px 16px' }}>
+                              {supervisorSheet ? (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <strong>{supervisorSheet.roundedTotal}</strong>
+                                  <Badge variant={supervisorSheet.lockedAt ? 'success' : 'neutral'}>
+                                    {supervisorSheet.lockedAt ? 'Đã khóa' : 'Nháp'}
+                                  </Badge>
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>Chưa chấm</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              {reviewerSheet ? (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <strong>{reviewerSheet.roundedTotal}</strong>
+                                  <Badge variant={reviewerSheet.lockedAt ? 'success' : 'neutral'}>
+                                    {reviewerSheet.lockedAt ? 'Đã khóa' : 'Nháp'}
+                                  </Badge>
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>Chưa chấm</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '12px 16px', fontSize: '14px' }}>
+                              {p.finalGrade ? (
+                                <strong>{p.finalGrade.finalScore} ({p.finalGrade.letterGrade})</strong>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              {p.finalGrade?.publishedAt ? (
+                                <Badge variant="success">Đã công bố</Badge>
+                              ) : p.finalGrade ? (
+                                <Badge variant="warning">Chờ công bố</Badge>
+                              ) : (
+                                <Badge variant="neutral">Chưa có điểm</Badge>
+                              )}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              {activeVariance ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                                  <Badge variant="error">Chênh lệch lớn ({activeVariance.maxDifference}đ)</Badge>
+                                  <Button size="xs" variant="outline" onClick={() => handleOpenResolveVarianceModal(p.finalGrade)}>
+                                    Giải quyết
+                                  </Button>
+                                </div>
+                              ) : p.finalGrade?.varianceFlags?.some(f => f.resolvedAt) ? (
+                                <Badge variant="success">Đã giải quyết</Badge>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <Button size="xs" variant="primary" onClick={() => handleOpenScoreModal(p)}>
+                                Nhập điểm
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                
-                <div className={css.s13}>
-                  <Button size="sm" variant="primary" icon={<CheckCircle />} onClick={() => handleOpenScoreModal(session)}>
-                    Nhập phiếu điểm
-                  </Button>
-                </div>
-              </Card>
-            ))}
+              ) : (
+                <div className={css.s6}>
+                  {pagedProjects.map((p) => {
+                    const supervisorSheet = p.sheets.find(s => s.rubricRole === 'SUPERVISOR');
+                    const reviewerSheet = p.sheets.find(s => s.rubricRole === 'REVIEWER' || s.rubricRole === 'SECOND_MARKER');
+                    
+                    return (
+                      <Card key={p._id} className={css.s7}>
+                        <div className={css.s8}>
+                          <div>
+                            <h3 className={css.s9}>
+                              {p.topicId?.title || 'Đồ án'}
+                            </h3>
+                          </div>
+                        </div>
 
-            {visibleSessions.length === 0 && (
-              <div className={css.s14}>
-                {search ? `Không tìm thấy kết quả cho "${search}".` : 'Bạn không có lịch bảo vệ nào cần chấm điểm'}
-              </div>
-            )}
-          </div>
-          <div className="no-print">
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              pageSize={pageSize}
-              pageSizeOptions={PAGE_SIZE_OPTIONS}
-              onPageChange={setCurrentPage}
-              onPageSizeChange={handlePageSizeChange}
-              totalItems={visibleSessions.length}
-            />
-          </div>
+                        <div className={css.s11}>
+                          <div><strong>Hình thức:</strong> {p.ownerType === 'group' ? `Nhóm: ${p.groupId?.name}` : `Cá nhân: ${p.studentId?.userId?.fullName}`}</div>
+                          <div className={css.s12}>
+                            <strong>GVHD:</strong> {p.supervisorId?.userId?.fullName || 'Chưa phân công'}{' '}
+                            {supervisorSheet ? (
+                              <Badge variant={supervisorSheet.lockedAt ? 'success' : 'neutral'}>
+                                {supervisorSheet.roundedTotal}đ
+                              </Badge>
+                            ) : (
+                              <Badge variant="warning">Chưa chấm</Badge>
+                            )}
+                          </div>
+                          <div className={css.s12}>
+                            <strong>GV Chấm 2:</strong> {p.reviewerId?.userId?.fullName || 'Chưa phân công'}{' '}
+                            {reviewerSheet ? (
+                              <Badge variant={reviewerSheet.lockedAt ? 'success' : 'neutral'}>
+                                {reviewerSheet.roundedTotal}đ
+                              </Badge>
+                            ) : (
+                              <Badge variant="warning">Chưa chấm</Badge>
+                            )}
+                          </div>
+                          {p.finalGrade && (
+                            <div className={css.s12}>
+                              <strong>Điểm tổng kết:</strong> {p.finalGrade.finalScore} ({p.finalGrade.letterGrade}){' '}
+                              {p.finalGrade.publishedAt ? <Badge variant="success">Đã công bố</Badge> : <Badge variant="warning">Chờ công bố</Badge>}
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className={css.s13}>
+                          <Button size="sm" variant="primary" icon={<CheckCircle />} onClick={() => handleOpenScoreModal(p)}>
+                            Nhập phiếu điểm
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+
+              {visibleProjects.length === 0 && (
+                <div className={css.s14}>
+                  {search ? `Không tìm thấy kết quả cho "${search}".` : 'Không có đồ án nào cần chấm điểm trong học phần này.'}
+                </div>
+              )}
+
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={handlePageSizeChange}
+                totalItems={visibleProjects.length}
+              />
+            </div>
+          )}
 
           {/* Modal Chấm Điểm */}
           {showModal && (
@@ -487,8 +728,8 @@ export default function ScoresPage() {
                 
                 <div className={css.s19}>
                   <div className={css.s20}>
-                    <strong>Đề tài:</strong> {selectedSession?.projectId?.topicId?.title}<br/>
-                    <strong>Nhóm:</strong> {selectedSession?.groupId?.name}
+                    <strong>Đề tài:</strong> {selectedProject?.topicId?.title}<br/>
+                    <strong>Hình thức:</strong> {selectedProject?.ownerType === 'group' ? `Nhóm: ${selectedProject?.groupId?.name}` : `Cá nhân: ${selectedProject?.studentId?.userId?.fullName}`}
                   </div>
 
                   {loadingRubric ? (
@@ -497,7 +738,7 @@ export default function ScoresPage() {
                     <>
                       {availableRoles.length > 1 && (
                         <div style={{ marginBottom: '16px' }}>
-                          <label className={css.s31}>Châm điểm với vai trò:</label>
+                          <label className={css.s31}>Chấm điểm với vai trò:</label>
                           <select
                             value={selectedRole}
                             onChange={(e) => handleRoleChange(e.target.value)}
@@ -512,8 +753,7 @@ export default function ScoresPage() {
                             }}
                           >
                             {availableRoles.includes('SUPERVISOR') && <option value="SUPERVISOR">Giảng viên hướng dẫn</option>}
-                            {availableRoles.includes('REVIEWER') && <option value="REVIEWER">Giảng viên phản biện</option>}
-                            {availableRoles.includes('COMMITTEE_MEMBER') && <option value="COMMITTEE_MEMBER">Thành viên Hội đồng</option>}
+                            {availableRoles.includes('REVIEWER') && <option value="REVIEWER">Giảng viên chấm 2</option>}
                           </select>
                         </div>
                       )}
@@ -533,17 +773,16 @@ export default function ScoresPage() {
                                 <div className={css.s26}>Tối đa: {c.maxScore} điểm (Trọng số: {c.weight})</div>
                               </div>
                               <div className={css.s27}>
-                                <Input
-                                  type="number"
-                                  step="0.1"
-                                  min="0"
-                                  max={c.maxScore}
-                                  value={c.score}
-                                  onChange={(e) => handleScoreChange(index, e.target.value)}
-                                  disabled={Boolean(currentSheet?.lockedAt)}
-                                  required
-                                  className={css.s33}
-                                />
+                                  <Input
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    max={c.maxScore}
+                                    value={c.score}
+                                    onChange={(e) => handleScoreChange(index, e.target.value)}
+                                    disabled={Boolean(currentSheet?.lockedAt)}
+                                    className={css.s33}
+                                  />
                               </div>
                             </div>
                           ))}
@@ -577,22 +816,57 @@ export default function ScoresPage() {
                 <div className={css.s32}>
                   <Button variant="ghost" onClick={() => setShowModal(false)} type="button">Đóng</Button>
                   
-                  {currentSheet && !currentSheet.lockedAt && (
+                  {currentSheet && !currentSheet.lockedAt && !isStaffUser && (
                     <Button variant="secondary" onClick={handleLockScoreSheet} isLoading={submitting} type="button" icon={<LockKey />}>
                       Khóa Điểm
                     </Button>
                   )}
 
-                  {!currentSheet?.lockedAt ? (
+                  {!currentSheet?.lockedAt && !isStaffUser ? (
                     <Button variant="primary" type="submit" form="score-form" isLoading={submitting}>
                       {currentSheet ? 'Cập Nhật Điểm' : 'Nộp Phiếu Điểm'}
                     </Button>
                   ) : (
-                    <Button variant="secondary" onClick={handlePrintScoreSheet} icon={<Printer />} type="button">
-                      In Phiếu Điểm
-                    </Button>
+                    currentSheet?.lockedAt && (
+                      <Button variant="secondary" onClick={handlePrintScoreSheet} icon={<Printer />} type="button">
+                        In Phiếu Điểm
+                      </Button>
+                    )
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal giải quyết chênh lệch */}
+          {resolvingGradeId && (
+            <div className={css.resolveModal}>
+              <div className={css.resolveModalContent}>
+                <div className={css.s17}>
+                  <h3 className={css.s18}>Giải quyết chênh lệch điểm</h3>
+                  <button onClick={() => setResolvingGradeId(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-muted)' }}>&times;</button>
+                </div>
+                <form onSubmit={handleResolveVarianceSubmit}>
+                  <div style={{ padding: '20px' }}>
+                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                      Điểm chấm giữa Giảng viên hướng dẫn và Giảng viên chấm 2 có sự chênh lệch lớn (vượt ngưỡng quy định). Giáo vụ cần đưa ra phương án giải quyết để chốt điểm tổng kết.
+                    </p>
+                    <textarea
+                      value={resolutionComment}
+                      onChange={(e) => setResolutionComment(e.target.value)}
+                      placeholder="Mô tả phương án giải quyết (ví dụ: Chốt điểm trung bình cộng 8.6; Giữ nguyên kết quả thống nhất...)"
+                      rows="4"
+                      required
+                      className={css.s34}
+                    />
+                  </div>
+                  <div className={css.s32}>
+                    <Button variant="ghost" onClick={() => setResolvingGradeId(null)} type="button">Đóng</Button>
+                    <Button variant="primary" type="submit" loading={resolvingVariance}>
+                      Lưu phương án
+                    </Button>
+                  </div>
+                </form>
               </div>
             </div>
           )}
@@ -604,13 +878,12 @@ export default function ScoresPage() {
       {printData && (
         <div className={css.printArea}>
           <div className={css.printHeader}>
-            <div style={{ fontSize: '13px', fontWeight: '500' }}>TRƯỜNG ĐẠI HỌC BÁCH KHOA HÀ NỘI</div>
+            <div style={{ fontSize: '13px', fontWeight: '500' }}>TRƯỜNG ĐẠI HỌC PHENIKAA</div>
             <div style={{ fontSize: '14px', fontWeight: 'bold' }}>KHOA CÔNG NGHỆ THÔNG TIN</div>
-            <div className={css.printTitle}>PHIẾU CHẤM ĐIỂM ĐỒ ÁN TỐT NGHIỆP</div>
+            <div className={css.printTitle}>PHIẾU CHẤM ĐIỂM ĐỒ ÁN HỌC PHẦN</div>
             <div style={{ fontStyle: 'italic', marginTop: '4px', fontSize: '13px' }}>
               Vai trò đánh giá: {
-                printData.sheet?.rubricRole === 'SUPERVISOR' ? 'Giảng viên hướng dẫn' :
-                printData.sheet?.rubricRole === 'REVIEWER' ? 'Giảng viên phản biện' : 'Thành viên Hội đồng'
+                printData.sheet?.rubricRole === 'SUPERVISOR' ? 'Giảng viên hướng dẫn' : 'Giảng viên chấm 2'
               }
             </div>
           </div>
@@ -622,10 +895,10 @@ export default function ScoresPage() {
             {printSubject.ownerType === 'group' && (
               <div><strong>Nhóm sinh viên:</strong> {printSubject.groupName || printSubject.displayName || 'N/A'}</div>
             )}
-            <div><strong>Đợt đồ án:</strong> {printData.sheet?.periodId?.name || 'N/A'}</div>
+            <div><strong>Học phần đồ án:</strong> {printData.sheet?.periodId?.name || 'N/A'}</div>
             <div style={{ gridColumn: 'span 2' }}><strong>Đề tài đồ án:</strong> {printData.sheet?.projectId?.topicId?.title || 'N/A'}</div>
             <div><strong>Giảng viên chấm điểm:</strong> {printData.sheet?.graderId?.userId?.fullName || 'N/A'}</div>
-            <div><strong>Vai trò cụ thể:</strong> {printData.sheet?.graderRole || 'N/A'}</div>
+            <div><strong>Vai trò cụ thể:</strong> {printData.sheet?.graderRole === 'SUPERVISOR' ? 'Giảng viên hướng dẫn' : 'Giảng viên chấm 2'}</div>
           </div>
 
           <table className={css.printTable}>

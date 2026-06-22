@@ -24,7 +24,6 @@ export default function OverrideModal({
               onChange={(e) => setOverrideComment(e.target.value)}
               placeholder="Nhập lý do chi tiết từ Giáo vụ để lưu trữ nhật ký hệ thống (ví dụ: Hai đề tài sử dụng hai kiến trúc nghiệp vụ khác nhau hoàn toàn)..."
               rows={4}
-              required
               className={css.s72}
             />
           </div>

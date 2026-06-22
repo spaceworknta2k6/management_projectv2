@@ -165,6 +165,75 @@ const archivePeriod = async (req, res, next) => {
   }
 };
 
+const startGrading = async (req, res, next) => {
+  try {
+    const period = await periodsService.transitionStatus(
+      req.params.id,
+      'grading',
+      'START_GRADING',
+      req.user._id,
+      req.user.roles,
+      'Mở đợt chấm điểm đồ án'
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Học phần đồ án đã chuyển sang giai đoạn chấm điểm!',
+      data: period,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
+const publishResults = async (req, res, next) => {
+  try {
+    const period = await periodsService.transitionStatus(
+      req.params.id,
+      'results_published',
+      'PUBLISH_RESULTS',
+      req.user._id,
+      req.user.roles,
+      'Công bố điểm số đồ án'
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Kết quả điểm số đã được công bố cho sinh viên!',
+      data: period,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
+const openAppeal = async (req, res, next) => {
+  try {
+    const period = await periodsService.transitionStatus(
+      req.params.id,
+      'appeal_open',
+      'OPEN_APPEAL',
+      req.user._id,
+      req.user.roles,
+      'Mở nhận khiếu nại phúc khảo'
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Cổng nhận khiếu nại phúc khảo đã được mở!',
+      data: period,
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
+
 module.exports = {
   createPeriod,
   getPeriods,
@@ -173,6 +242,9 @@ module.exports = {
   deletePeriod,
   openRegistration,
   startPeriod,
+  startGrading,
+  publishResults,
+  openAppeal,
   lockResults,
   archivePeriod,
 };

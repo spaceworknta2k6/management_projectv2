@@ -120,9 +120,30 @@ export default function CommitteesPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!form.periodId) {
+      toast.error('Vui lòng chọn đợt đồ án');
+      return;
+    }
+    if (!form.name || !form.name.trim()) {
+      toast.error('Vui lòng nhập tên hội đồng');
+      return;
+    }
     if (form.members.length < 3) {
       toast.error('Hội đồng phải có ít nhất 3 thành viên');
       return;
+    }
+    
+    for (let i = 0; i < form.members.length; i++) {
+      const member = form.members[i];
+      if (!member.lecturerId) {
+        toast.error(`Vui lòng chọn giảng viên cho thành viên thứ ${i + 1}`);
+        return;
+      }
+      if (!member.role) {
+        toast.error(`Vui lòng chọn vai trò cho thành viên thứ ${i + 1}`);
+        return;
+      }
     }
     
     // Check duplicates
@@ -456,7 +477,7 @@ export default function CommitteesPage() {
                   <label className={css.s28}>Thuộc Đợt đồ án *</label>
                   <select
                     value={form.periodId}
-                    onChange={(e) => setForm({...form, periodId: e.target.value})} required className={css.s39}
+                    onChange={(e) => setForm({...form, periodId: e.target.value})} className={css.s39}
                   >
                     <option value="">-- Chọn đợt đồ án --</option>
                     {periods.map(p => (
@@ -470,7 +491,6 @@ export default function CommitteesPage() {
                   placeholder="Ví dụ: Hội đồng HĐ-01, Hội đồng KHMT-01..."
                   value={form.name}
                   onChange={(e) => setForm({...form, name: e.target.value})}
-                  required
                 />
                 
                 <div className={css.s29}>
@@ -494,7 +514,7 @@ export default function CommitteesPage() {
                           <div className={css.s35}>
                             <select
                               value={member.lecturerId}
-                              onChange={(e) => handleMemberChange(index, 'lecturerId', e.target.value)} required className={css.s40}
+                              onChange={(e) => handleMemberChange(index, 'lecturerId', e.target.value)} className={css.s40}
                             >
                               <option value="">-- Chọn Giảng viên --</option>
                               {lecturers.map(l => (
@@ -507,7 +527,7 @@ export default function CommitteesPage() {
                           <div className={css.s36}>
                             <select
                               value={member.role}
-                              onChange={(e) => handleMemberChange(index, 'role', e.target.value)} required className={css.s41}
+                              onChange={(e) => handleMemberChange(index, 'role', e.target.value)} className={css.s41}
                             >
                               <option value="COMMITTEE_CHAIR">Chủ tịch</option>
                               <option value="COMMITTEE_SECRETARY">Thư ký</option>
@@ -516,12 +536,12 @@ export default function CommitteesPage() {
                             </select>
                           </div>
                           <Button 
-                            variant="outline" 
-                            type="button"
-                            className={css.s37}
-                            onClick={() => handleRemoveMember(index)}
-                            icon={<Trash />}
-                          />
+                              variant="outline" 
+                              type="button"
+                              className={css.s37}
+                              onClick={() => handleRemoveMember(index)}
+                              icon={<Trash />}
+                            />
                         </div>
                       ))}
                     </div>

@@ -187,6 +187,42 @@ export default function DefensesPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.projectId) {
+      toast.error('Vui lòng chọn dự án cần bảo vệ.');
+      return;
+    }
+    if (!form.committeeId) {
+      toast.error('Vui lòng chọn hội đồng đánh giá.');
+      return;
+    }
+    if (!form.mode) {
+      toast.error('Vui lòng chọn hình thức bảo vệ.');
+      return;
+    }
+    if (!form.orderNumber || form.orderNumber < 1) {
+      toast.error('Vui lòng nhập số thứ tự bảo vệ hợp lệ.');
+      return;
+    }
+    if (form.mode === 'offline' && (!form.room || !form.room.trim())) {
+      toast.error('Vui lòng nhập phòng bảo vệ.');
+      return;
+    }
+    if (form.mode === 'online' && (!form.meetingUrl || !form.meetingUrl.trim())) {
+      toast.error('Vui lòng nhập link phòng họp trực tuyến.');
+      return;
+    }
+    if (!form.defenseDate) {
+      toast.error('Vui lòng chọn ngày bảo vệ.');
+      return;
+    }
+    if (!form.startTime) {
+      toast.error('Vui lòng nhập giờ bắt đầu.');
+      return;
+    }
+    if (!form.endTime) {
+      toast.error('Vui lòng nhập giờ kết thúc.');
+      return;
+    }
     if (validationResult.success === false) {
       toast.error(validationResult.message || 'Lịch bảo vệ không hợp lệ theo quy chế.');
       return;
@@ -737,7 +773,7 @@ export default function DefensesPage() {
                   <label className={css.s26}>Dự án cần bảo vệ *</label>
                   <select
                     value={form.projectId}
-                    onChange={(e) => setForm({...form, projectId: e.target.value})} required className={css.s38}
+                    onChange={(e) => setForm({...form, projectId: e.target.value})} className={css.s38}
                   >
                     <option value="">-- Chọn Dự án --</option>
                     {projects.map(p => (
@@ -750,7 +786,7 @@ export default function DefensesPage() {
                   <label className={css.s27}>Hội đồng đánh giá *</label>
                   <select
                     value={form.committeeId}
-                    onChange={(e) => setForm({...form, committeeId: e.target.value})} required className={css.s39}
+                    onChange={(e) => setForm({...form, committeeId: e.target.value})} className={css.s39}
                   >
                     <option value="">-- Chọn Hội đồng --</option>
                     {committees.map(c => (
@@ -766,7 +802,7 @@ export default function DefensesPage() {
                     <label className={css.s30}>Hình thức *</label>
                     <select
                       value={form.mode}
-                      onChange={(e) => setForm({...form, mode: e.target.value})} required className={css.s40}
+                      onChange={(e) => setForm({...form, mode: e.target.value})} className={css.s40}
                     >
                       <option value="offline">Trực tiếp (Offline)</option>
                       <option value="online">Trực tuyến (Online)</option>
@@ -779,7 +815,6 @@ export default function DefensesPage() {
                       min="1"
                       value={form.orderNumber}
                       onChange={(e) => setForm({...form, orderNumber: Number(e.target.value)})}
-                      required
                     />
                   </div>
                 </div>
@@ -790,7 +825,6 @@ export default function DefensesPage() {
                     placeholder="VD: D9-204"
                     value={form.room}
                     onChange={(e) => setForm({...form, room: e.target.value})}
-                    required
                   />
                 ) : (
                   <Input
@@ -798,7 +832,6 @@ export default function DefensesPage() {
                     placeholder="https://teams.microsoft.com/..."
                     value={form.meetingUrl}
                     onChange={(e) => setForm({...form, meetingUrl: e.target.value})}
-                    required
                   />
                 )}
 
@@ -809,7 +842,6 @@ export default function DefensesPage() {
                       type="date"
                       value={form.defenseDate}
                       onChange={(e) => setForm({...form, defenseDate: e.target.value})}
-                      required
                     />
                   </div>
                   <div>
@@ -818,7 +850,6 @@ export default function DefensesPage() {
                       type="time"
                       value={form.startTime}
                       onChange={(e) => setForm({...form, startTime: e.target.value})}
-                      required
                     />
                   </div>
                   <div>
@@ -827,7 +858,6 @@ export default function DefensesPage() {
                       type="time"
                       value={form.endTime}
                       onChange={(e) => setForm({...form, endTime: e.target.value})}
-                      required
                     />
                   </div>
                 </div>

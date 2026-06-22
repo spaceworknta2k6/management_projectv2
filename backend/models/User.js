@@ -46,6 +46,13 @@ const UserSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
 }, {
   timestamps: true,
 });
@@ -55,5 +62,11 @@ UserSchema.index(
   { email: 1 },
   { unique: true, partialFilterExpression: { isDeleted: false } }
 );
+
+UserSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
 
 module.exports = mongoose.model('User', UserSchema);

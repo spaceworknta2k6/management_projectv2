@@ -126,4 +126,10 @@ SubmissionPackageSchema.index(
   { unique: true, partialFilterExpression: { isDeleted: false } }
 );
 
+SubmissionPackageSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
+
 module.exports = mongoose.model('SubmissionPackage', SubmissionPackageSchema);

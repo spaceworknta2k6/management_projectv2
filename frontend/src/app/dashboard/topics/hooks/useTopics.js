@@ -41,6 +41,13 @@ export function useTopics(initialActiveTab = 'all') {
     title: '',
     summary: '',
     periodId: '',
+    // fields for lecturer topic creation
+    allowIndividual: true,
+    allowGroup: true,
+    groupMinSize: '2',
+    groupMaxSize: '5',
+    capacityMaxStudents: '1',
+    capacityMaxGroups: '1',
   });
   const [submitting, setSubmitting] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState(null);
@@ -83,35 +90,69 @@ export function useTopics(initialActiveTab = 'all') {
   const handleSubmitTopic = async (e) => {
     e.preventDefault();
     if (!form.title.trim() || !form.periodId || !form.summary.trim()) {
-      toast.error('Vui lòng nhập đầy đủ đợt đồ án, tên đề tài và tóm tắt nội dung.');
-      return;
-    }
-
-    if (form.ownerType === 'group' && !form.groupId) {
-      toast.error('Vui long chon nhom khi dang ky de tai theo nhom.');
+      toast.error('Vui lòng nhập đầy đủ đợt học phần, tên đề tài và tóm tắt nội dung.');
       return;
     }
 
     setSubmitting(true);
     try {
-      const payload = {
-        title: form.title.trim(),
-        summary: form.summary.trim(),
-        periodId: form.periodId,
-        ownerType: form.ownerType,
-        ...(form.ownerType === 'group' ? { groupId: form.groupId } : {}),
-      };
-
-      if (editingTopicId) {
-        await api.put(`/topics/${editingTopicId}`, payload, token);
-        toast.success('Cập nhật đề tài thành công! Chờ Giáo vụ duyệt lại.');
+      let res;
+      if (isLecturer || isStaff) {
+        const payload = {
+          title: form.title.trim(),
+          summary: form.summary.trim(),
+          periodId: form.periodId,
+          allowIndividual: form.allowIndividual === true || form.allowIndividual === 'true',
+          allowGroup: form.allowGroup === true || form.allowGroup === 'true',
+          groupMinSize: parseInt(form.groupMinSize || 2, 10),
+          groupMaxSize: parseInt(form.groupMaxSize || 5, 10),
+          capacityMaxStudents: parseInt(form.capacityMaxStudents || 1, 10),
+          capacityMaxGroups: parseInt(form.capacityMaxGroups || 1, 10),
+        };
+        if (editingTopicId) {
+          res = await api.put(`/topics/${editingTopicId}`, payload, token);
+          toast.success('Cập nhật đề tài thành công!');
+        } else {
+          res = await api.post('/topics/lecturer', payload, token);
+          toast.success('Khởi tạo đề tài giảng viên thành công!');
+        }
       } else {
-        await api.post('/topics', payload, token);
-        toast.success('Đề xuất đề tài thành công! Chờ Giáo vụ duyệt.');
+        if (form.ownerType === 'group' && !form.groupId) {
+          toast.error('Vui lòng chọn nhóm khi đăng ký đề tài theo nhóm.');
+          setSubmitting(false);
+          return;
+        }
+        const payload = {
+          title: form.title.trim(),
+          summary: form.summary.trim(),
+          periodId: form.periodId,
+          ownerType: form.ownerType,
+          ...(form.ownerType === 'group' ? { groupId: form.groupId } : {}),
+        };
+        if (editingTopicId) {
+          res = await api.put(`/topics/${editingTopicId}`, payload, token);
+          toast.success('Cập nhật đề xuất đề tài thành công!');
+        } else {
+          res = await api.post('/topics', payload, token);
+          toast.success('Đề xuất đề tài thành công! Chờ duyệt chuyên môn.');
+        }
       }
+
       setShowProposeModal(false);
       setEditingTopicId(null);
-      setForm((prev) => ({ ...prev, ownerType: 'student', groupId: '', title: '', summary: '' }));
+      setForm((prev) => ({
+        ...prev,
+        ownerType: 'student',
+        groupId: '',
+        title: '',
+        summary: '',
+        allowIndividual: true,
+        allowGroup: true,
+        groupMinSize: '2',
+        groupMaxSize: '5',
+        capacityMaxStudents: '1',
+        capacityMaxGroups: '1',
+      }));
       loadData();
     } catch (err) {
       if (err.errors?.[0]?.message) {
@@ -132,6 +173,12 @@ export function useTopics(initialActiveTab = 'all') {
       title: t.title,
       summary: t.summary || '',
       periodId: t.periodId?._id || t.periodId || '',
+      allowIndividual: t.allowIndividual !== false,
+      allowGroup: t.allowGroup !== false,
+      groupMinSize: String(t.groupMinSize ?? 2),
+      groupMaxSize: String(t.groupMaxSize ?? 5),
+      capacityMaxStudents: String(t.capacityMaxStudents ?? 1),
+      capacityMaxGroups: String(t.capacityMaxGroups ?? 1),
     });
     setShowProposeModal(true);
   };
@@ -256,7 +303,11 @@ export function useTopics(initialActiveTab = 'all') {
   // Submit manual override
   const handleOverrideSubmit = async (e) => {
     e.preventDefault();
-    if (!showOverrideModal || !overrideComment.trim()) return;
+    if (!overrideComment || !overrideComment.trim()) {
+      toast.error('Vui lòng nhập lý do ghi đè.');
+      return;
+    }
+    if (!showOverrideModal) return;
 
     setOverriding(true);
     try {
@@ -274,6 +325,42 @@ export function useTopics(initialActiveTab = 'all') {
       toast.error(err.message || 'Lỗi khi áp dụng ghi đè');
     } finally {
       setOverriding(false);
+    }
+  };
+
+  const handleRegisterTopic = async (topicId, ownerType, groupId) => {
+    try {
+      const payload = {
+        ownerType,
+        ...(ownerType === 'group' ? { groupId } : {}),
+      };
+      await api.post(`/topics/${topicId}/register`, payload, token);
+      toast.success('Đăng ký đề tài thành công!');
+      loadData();
+      return true;
+    } catch (err) {
+      handleApiError(err, toast);
+      return false;
+    }
+  };
+
+  const handlePublishTopic = async (id) => {
+    try {
+      await api.post(`/topics/${id}/publish`, {}, token);
+      toast.success('Đã công khai đề tài thành công!');
+      loadData();
+    } catch (err) {
+      handleApiError(err, toast);
+    }
+  };
+
+  const handleUnpublishTopic = async (id) => {
+    try {
+      await api.post(`/topics/${id}/unpublish`, {}, token);
+      toast.success('Đã rút đề tài khỏi danh sách công khai.');
+      loadData();
+    } catch (err) {
+      handleApiError(err, toast);
     }
   };
 
@@ -341,6 +428,9 @@ export function useTopics(initialActiveTab = 'all') {
     handleSelectSuggestedTopic,
     handleCheckDuplicate,
     handleOverrideSubmit,
+    handleRegisterTopic,
+    handlePublishTopic,
+    handleUnpublishTopic,
     filteredTopics,
   };
 }

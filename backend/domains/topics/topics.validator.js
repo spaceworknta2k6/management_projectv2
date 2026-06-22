@@ -7,51 +7,35 @@ const OWNER_TYPES = ['student', 'group'];
 
 const validateTopicPropose = async (req, res, next) => {
   try {
-    if (!req.body.ownerType) {
-      req.body.ownerType = req.body.groupId ? 'group' : undefined;
-    }
+    const isStudent = req.user.roles && req.user.roles.includes('STUDENT') && !req.user.roles.includes('FACULTY_STAFF') && !req.user.roles.includes('SYSTEM_ADMIN');
 
-    if (req.body.ownerType !== 'student' && !req.body.groupId && req.user.studentId) {
-      const group = await ProjectGroup.findOne({
-        periodId: req.body.periodId,
-        isDeleted: { $ne: true },
-        status: { $ne: 'cancelled' },
-        members: {
-          $elemMatch: {
-            studentId: req.user.studentId,
-            status: 'accepted',
+    if (isStudent) {
+      if (!req.body.ownerType) {
+        req.body.ownerType = req.body.groupId ? 'group' : undefined;
+      }
+
+      if (req.body.ownerType !== 'student' && !req.body.groupId && req.user.studentId) {
+        const group = await ProjectGroup.findOne({
+          periodId: req.body.periodId,
+          isDeleted: { $ne: true },
+          status: { $ne: 'cancelled' },
+          members: {
+            $elemMatch: {
+              studentId: req.user.studentId,
+              status: 'accepted',
+            },
           },
-        },
-      });
+        });
 
-      if (group) {
-        req.body.ownerType = 'group';
-        req.body.groupId = group._id.toString();
+        if (group) {
+          req.body.ownerType = 'group';
+          req.body.groupId = group._id.toString();
+        }
       }
-    }
 
-    if (!req.body.ownerType) {
-      req.body.ownerType = 'student';
-    }
-
-    if (!req.body.proposedSupervisorId) {
-      const supervisor = await Lecturer.findOne({ isDeleted: false });
-      if (supervisor) {
-        req.body.proposedSupervisorId = supervisor._id.toString();
+      if (!req.body.ownerType) {
+        req.body.ownerType = 'student';
       }
-    }
-
-    if (!req.body.objectives) {
-      req.body.objectives = 'Phat trien va hoan thien he thong nghien cuu de xuat dat hieu nang cao.';
-    }
-    if (!req.body.scope) {
-      req.body.scope = 'Phan tich ly thuyet, thiet ke kien truc he thong va xay dung phien ban thu nghiem.';
-    }
-    if (!req.body.expectedResult) {
-      req.body.expectedResult = 'Bao cao ky thuat chi tiet cung ma nguon chuong trinh ung dung hoan chinh.';
-    }
-    if (!req.body.plan) {
-      req.body.plan = 'Tuan 1-4: Nghien cuu tai lieu. Tuan 5-10: Thiet ke va lap trinh. Tuan 11-15: Viet bao cao.';
     }
 
     const {
@@ -68,32 +52,38 @@ const validateTopicPropose = async (req, res, next) => {
       errors.push({ field: 'periodId', code: 'PERIOD_ID_INVALID', message: 'Ma dot do an (periodId) khong hop le.' });
     }
 
-    if (!OWNER_TYPES.includes(ownerType)) {
-      errors.push({ field: 'ownerType', code: 'OWNER_TYPE_INVALID', message: 'Hinh thuc thuc hien phai la ca nhan hoac theo nhom.' });
-    }
-
-    if (ownerType === 'group') {
-      if (!groupId) {
-        errors.push({ field: 'groupId', code: 'GROUP_REQUIRED', message: 'Ban can chon mot nhom da tham gia trong dot do an nay truoc khi de xuat de tai.' });
-      } else if (!mongoose.Types.ObjectId.isValid(groupId)) {
-        errors.push({ field: 'groupId', code: 'GROUP_ID_INVALID', message: 'Ma nhom do an (groupId) khong hop le.' });
+    if (isStudent) {
+      if (!OWNER_TYPES.includes(ownerType)) {
+        errors.push({ field: 'ownerType', code: 'OWNER_TYPE_INVALID', message: 'Hinh thuc thuc hien phai la ca nhan hoac theo nhom.' });
       }
-    }
 
-    if (ownerType === 'student' && periodId && mongoose.Types.ObjectId.isValid(periodId) && req.user.studentId) {
-      const roster = await ProjectRoster.findOne({
-        periodId,
-        studentId: req.user.studentId,
-        status: 'active',
-      });
-
-      if (!roster) {
-        errors.push({ field: 'periodId', code: 'ROSTER_REQUIRED', message: 'Ban chua co trong danh sach tham gia dot nay.' });
+      if (ownerType === 'group') {
+        if (!groupId) {
+          errors.push({ field: 'groupId', code: 'GROUP_REQUIRED', message: 'Ban can chon mot nhom da tham gia trong dot do an nay truoc khi de xuat de tai.' });
+        } else if (!mongoose.Types.ObjectId.isValid(groupId)) {
+          errors.push({ field: 'groupId', code: 'GROUP_ID_INVALID', message: 'Ma nhom do an (groupId) khong hop le.' });
+        }
       }
-    }
 
-    if (!proposedSupervisorId || !mongoose.Types.ObjectId.isValid(proposedSupervisorId)) {
-      errors.push({ field: 'proposedSupervisorId', code: 'SUPERVISOR_ID_INVALID', message: 'Ma giang vien de xuat huong dan khong hop le.' });
+      if (ownerType === 'student' && periodId && mongoose.Types.ObjectId.isValid(periodId) && req.user.studentId) {
+        const roster = await ProjectRoster.findOne({
+          periodId,
+          studentId: req.user.studentId,
+          status: 'active',
+        });
+
+        if (!roster) {
+          errors.push({ field: 'periodId', code: 'ROSTER_REQUIRED', message: 'Ban chua co trong danh sach tham gia dot nay.' });
+        }
+      }
+
+      if (!proposedSupervisorId || !mongoose.Types.ObjectId.isValid(proposedSupervisorId)) {
+        errors.push({ field: 'proposedSupervisorId', code: 'SUPERVISOR_ID_INVALID', message: 'Ma giang vien de xuat huong dan khong hop le.' });
+      }
+    } else {
+      if (proposedSupervisorId && !mongoose.Types.ObjectId.isValid(proposedSupervisorId)) {
+        errors.push({ field: 'proposedSupervisorId', code: 'SUPERVISOR_ID_INVALID', message: 'Ma giang vien de xuat huong dan khong hop le.' });
+      }
     }
 
     const requiredStrings = {

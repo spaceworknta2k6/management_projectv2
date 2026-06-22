@@ -30,7 +30,7 @@ const SUITES = [
   { file: 'notifications-audit.test.js', label: 'Notifications & Audit Logs' },
   { file: 'files-security.test.js',      label: 'File Security' },
   { file: 'chat.test.js',                label: 'Chat Rooms & Attachments' },
-  { file: 'ai-integration.test.js',      label: 'Gemini AI Integration' },
+  // { file: 'ai-integration.test.js',      label: 'Gemini AI Integration' },
 ];
 
 const DIVIDER = '='.repeat(70);

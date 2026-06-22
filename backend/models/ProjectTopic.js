@@ -24,7 +24,58 @@ const ProjectTopicSchema = new mongoose.Schema({
   proposedByStudentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Student',
-    required: true,
+    required: false,
+  },
+  createdByRole: {
+    type: String,
+    enum: ['student', 'lecturer', 'staff'],
+    default: 'student',
+  },
+  createdByUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  proposedByLecturerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Lecturer',
+  },
+  approvedByLecturerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Lecturer',
+  },
+  capacityMaxStudents: {
+    type: Number,
+    default: 1,
+  },
+  capacityMaxGroups: {
+    type: Number,
+    default: 1,
+  },
+  currentStudentCount: {
+    type: Number,
+    default: 0,
+  },
+  currentGroupCount: {
+    type: Number,
+    default: 0,
+  },
+  allowedOwnerTypes: {
+    type: [String],
+    enum: ['student', 'group'],
+    default: ['student', 'group'],
+  },
+  allowIndividual: {
+    type: Boolean,
+  },
+  allowGroup: {
+    type: Boolean,
+  },
+  publishedByStaffId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  publishedAt: {
+    type: Date,
   },
   title: {
     type: String,
@@ -78,7 +129,7 @@ const ProjectTopicSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'cancelled', 'completed', 'rejected'],
+    enum: ['draft', 'submitted', 'ai_checked', 'needs_revision', 'approved', 'published', 'assigned', 'locked', 'changed', 'cancelled', 'completed', 'rejected'],
     default: 'draft',
   },
   aiDuplicateRisk: {
@@ -157,5 +208,11 @@ ProjectTopicSchema.index(
     } 
   }
 );
+
+ProjectTopicSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
 
 module.exports = mongoose.model('ProjectTopic', ProjectTopicSchema);

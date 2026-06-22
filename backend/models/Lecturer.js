@@ -53,8 +53,21 @@ const LecturerSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
 }, {
   timestamps: true,
+});
+
+LecturerSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
 });
 
 module.exports = mongoose.model('Lecturer', LecturerSchema);

@@ -39,6 +39,11 @@ const createGroup = async (periodId, name, studentId) => {
     throw { status: 400, message: 'Chỉ có thể lập nhóm khi đợt đồ án đang mở cổng đăng ký.' };
   }
 
+  // Enforce allowGroup rule
+  if (period.allowGroup === false) {
+    throw { status: 400, message: 'Học phần này không cho phép thực hiện theo nhóm.' };
+  }
+
   // Verify the student is in the ProjectRoster active
   const rosterEntry = await ProjectRoster.findOne({ periodId, studentId, status: 'active' });
   if (!rosterEntry) {
@@ -131,9 +136,10 @@ const inviteMember = async (groupId, invitedStudentId, leaderStudentId) => {
   }
 
   // Check current total size limits (accepted + invited members count)
+  const maxLimit = period.groupMaxSize !== undefined ? period.groupMaxSize : period.maxGroupSize;
   const activeCount = group.members.filter(m => m.status === 'accepted' || m.status === 'invited').length;
-  if (activeCount >= period.maxGroupSize) {
-    throw { status: 400, message: `Số lượng thành viên (bao gồm cả lời mời) vượt quá giới hạn tối đa (${period.maxGroupSize}) của đợt đồ án.` };
+  if (activeCount >= maxLimit) {
+    throw { status: 400, message: `Số lượng thành viên (bao gồm cả lời mời) vượt quá giới hạn tối đa (${maxLimit}) của học phần.` };
   }
 
   // Check if member already in this group
@@ -239,10 +245,14 @@ const confirmGroup = async (groupId, leaderStudentId) => {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
 
-  // Check if total accepted members meets minGroupSize
+  // Check if total accepted members meets groupMinSize
+  const minLimit = period.groupMinSize !== undefined ? period.groupMinSize : period.minGroupSize;
   const acceptedCount = group.members.filter(m => m.status === 'accepted').length;
-  if (acceptedCount < period.minGroupSize) {
-    throw { status: 400, message: `Số lượng thành viên chính thức (${acceptedCount}) chưa đạt yêu cầu tối thiểu (${period.minGroupSize}) của đợt đồ án.` };
+  if (acceptedCount < minLimit) {
+    throw { status: 400, message: `Số lượng thành viên chính thức (${acceptedCount}) chưa đạt yêu cầu tối thiểu (${minLimit}) của học phần.` };
+  }
+  if (acceptedCount < 2) {
+    throw { status: 400, message: 'Nhóm phải có ít nhất 2 thành viên chính thức mới được xác nhận.' };
   }
 
   group.status = 'confirmed';

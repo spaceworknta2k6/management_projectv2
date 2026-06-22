@@ -30,7 +30,6 @@ export default function CreateMilestoneModal({
             name="title"
             value={newMilestone.title}
             onChange={(e) => setNewMilestone((p) => ({ ...p, title: e.target.value }))}
-            required
           />
 
           <div className={css.s61}>
@@ -49,7 +48,6 @@ export default function CreateMilestoneModal({
             type="datetime-local"
             value={newMilestone.deadline}
             onChange={(e) => setNewMilestone((p) => ({ ...p, deadline: e.target.value }))}
-            required
           />
 
           <div className={css.s63}>

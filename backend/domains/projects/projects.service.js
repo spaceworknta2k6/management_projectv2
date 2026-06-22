@@ -151,6 +151,10 @@ const assignReviewer = async (projectId, reviewerId, actorUserId) => {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
 
+  if (project.supervisorId.toString() === reviewerId.toString()) {
+    throw { status: 400, message: 'Giảng viên chấm 2 không được trùng với giảng viên hướng dẫn.' };
+  }
+
   const reviewer = await Lecturer.findById(reviewerId);
   if (!reviewer) {
     throw { status: 404, message: 'Giảng viên phản biện được chỉ định không tồn tại.' };

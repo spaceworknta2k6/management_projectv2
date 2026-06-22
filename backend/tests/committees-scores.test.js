@@ -115,12 +115,14 @@ const runIntegrationTests = async () => {
           maxGroupSize: 3,
           rubricVersion: 'v1.0-IT-HUST',
           scoringFormula: {
-            supervisor: 0.3,
-            reviewer: 0.2,
-            committee: 0.5
+            supervisor: 0.5,
+            reviewer: 0.5
           },
           status: 'in_progress',
         });
+      } else {
+        period.scoringFormula = { supervisor: 0.5, reviewer: 0.5 };
+        await period.save();
       }
 
       // Clean up previous runs
@@ -588,7 +590,6 @@ const runIntegrationTests = async () => {
       console.log('Aggregated Final Grade Outcomes:');
       console.log('- Supervisor score:', aggResult.data.componentScores.supervisor);
       console.log('- Reviewer score:', aggResult.data.componentScores.reviewer);
-      console.log('- Committee avg score:', aggResult.data.componentScores.committee);
       console.log('- Final Score (Calculated & Rounded):', aggResult.data.finalScore);
       console.log('- Letter Grade (HUST standards):', aggResult.data.letterGrade);
       console.log('- Pass status:', aggResult.data.passStatus);
@@ -596,11 +597,10 @@ const runIntegrationTests = async () => {
       // Verify rounding-free formula logic:
       // supervisorRaw = 9.0
       // reviewerRaw = 8.2
-      // committeeRawAvg = (9.0 + 8.2 + 9.4) / 3 = 8.866666...
-      // finalScoreRaw = (9.0 * 0.3) + (8.2 * 0.2) + (8.866666... * 0.5) = 2.7 + 1.64 + 4.43333... = 8.77333...
-      // Rounded final score should be 8.8
-      if (aggResult.data.finalScore !== 8.8) {
-        throw new Error(`❌ Final Score Math is incorrect! Expected 8.8, but got: ${aggResult.data.finalScore}`);
+      // finalScoreRaw = (9.0 * 0.5) + (8.2 * 0.5) = 4.5 + 4.1 = 8.6
+      // Rounded final score should be 8.6
+      if (aggResult.data.finalScore !== 8.6) {
+        throw new Error(`❌ Final Score Math is incorrect! Expected 8.6, but got: ${aggResult.data.finalScore}`);
       }
       if (aggResult.data.letterGrade !== 'A') {
         throw new Error(`❌ Letter Grade is incorrect! Expected A, but got: ${aggResult.data.letterGrade}`);

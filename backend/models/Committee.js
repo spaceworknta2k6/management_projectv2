@@ -73,4 +73,10 @@ const CommitteeSchema = new mongoose.Schema({
   timestamps: true,
 });
 
+CommitteeSchema.pre(/^find/, function () {
+  if (!this.getOptions().includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
+
 module.exports = mongoose.model('Committee', CommitteeSchema);

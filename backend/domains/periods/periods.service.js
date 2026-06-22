@@ -148,9 +148,12 @@ const transitionStatus = async (id, toStatus, action, actorId, actorRoles = ['FA
     'draft': ['registration_open', 'cancelled'],
     'registration_open': ['topic_review', 'in_progress', 'cancelled'],
     'topic_review': ['in_progress', 'cancelled'],
-    'in_progress': ['defense', 'cancelled'],
+    'in_progress': ['defense', 'grading', 'cancelled'],
     'defense': ['scoring', 'result_locked'],
     'scoring': ['result_locked'],
+    'grading': ['results_published', 'result_locked', 'cancelled'],
+    'results_published': ['appeal_open', 'result_locked', 'cancelled'],
+    'appeal_open': ['result_locked', 'cancelled'],
     'result_locked': ['archived'],
     'archived': [],
   };

@@ -219,6 +219,11 @@ export default function GroupsPage() {
 
   const handleConfirm = async () => {
     if (!myGroup) return;
+    const acceptedMembersCount = myGroup.members?.filter(m => m.status === 'accepted').length || 0;
+    if (acceptedMembersCount < 2) {
+      toast.warning('Không thể chốt nhóm: Nhóm đồ án phải có ít nhất 2 thành viên đã xác nhận tham gia.');
+      return;
+    }
     try {
       await api.post(`/groups/${myGroup._id}/confirm`, {}, token);
       toast.success('Xác nhận chốt danh sách thành viên nhóm thành công!');

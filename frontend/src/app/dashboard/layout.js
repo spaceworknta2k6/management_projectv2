@@ -90,7 +90,7 @@ function RealtimeNotificationHandler() {
 /* ─── Navigation Items ──────────────────────────────────────────────── */
 const NAV_ITEMS = [
   { href: '/dashboard',            label: 'Tổng quan',     icon: House,            roles: null },
-  { href: '/dashboard/periods',    label: 'Đợt đồ án',    icon: CalendarBlank,    roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
+  { href: '/dashboard/periods',    label: 'Học phần đồ án',    icon: CalendarBlank,    roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/rubrics',    label: 'Tiêu chí đánh giá', icon: FileText,        roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/rosters',    label: 'Danh sách sinh viên', icon: Users,            roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/groups',     label: 'Nhóm',          icon: Users,            roles: ['STUDENT', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
@@ -99,8 +99,8 @@ const NAV_ITEMS = [
   { href: '/dashboard/projects',   label: 'Dự án',         icon: FolderSimple,     roles: null },
   { href: '/dashboard/submissions',label: 'Nộp bài',       icon: FileText,         roles: ['STUDENT', 'LECTURER', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/extensions', label: 'Gia hạn',       icon: Clock,            roles: ['STUDENT', 'LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
-  { href: '/dashboard/committees', label: 'Hội đồng',      icon: Gavel,            roles: ['LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
-  { href: '/dashboard/defenses',   label: 'Bảo vệ',        icon: Sword,            roles: null },
+  // { href: '/dashboard/committees', label: 'Hội đồng',      icon: Gavel,            roles: ['LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
+  // { href: '/dashboard/defenses',   label: 'Bảo vệ',        icon: Sword,            roles: null },
   { href: '/dashboard/scores',     label: 'Điểm số',       icon: ChartBar,         roles: ['LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/notifications', label: 'Thông báo',  icon: Bell,             roles: null },
   { href: '/dashboard/chat',      label: 'Chat',          icon: ChatsCircle,      roles: null },

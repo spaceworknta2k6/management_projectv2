@@ -46,6 +46,9 @@ docs/
 UI_test/
 
 # Các file tài liệu cá nhân
-helper/
 .agents/
+reports/
+tools/
 AGENTS.md
+nghiepvu.md
+suacode.md

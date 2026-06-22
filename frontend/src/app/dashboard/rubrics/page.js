@@ -23,7 +23,7 @@ const INITIAL_FORM_STATE = {
   criteria: {
     SUPERVISOR: [...DEFAULT_CRITERIA],
     REVIEWER: [...DEFAULT_CRITERIA],
-    COMMITTEE_MEMBER: [...DEFAULT_CRITERIA],
+    COMMITTEE_MEMBER: [],
   }
 };
 
@@ -146,24 +146,28 @@ export default function RubricsPage() {
       errors.version = 'Phiên bản là bắt buộc.';
     }
 
-    const roles = ['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER'];
-    roles.forEach((role) => {
+    const requiredRoles = ['SUPERVISOR', 'REVIEWER'];
+    requiredRoles.forEach((role) => {
       const criteriaList = form.criteria[role];
       if (!criteriaList || criteriaList.length === 0) {
         errors[role] = 'Vai trò này phải có ít nhất một tiêu chí chấm.';
-      } else {
-        criteriaList.forEach((c, idx) => {
-          if (!c.criteriaName || c.criteriaName.trim() === '') {
-            errors[`${role}_${idx}_criteriaName`] = 'Tên tiêu chí không được để trống.';
-          }
-          if (c.maxScore === undefined || c.maxScore === '' || isNaN(c.maxScore) || c.maxScore <= 0) {
-            errors[`${role}_${idx}_maxScore`] = 'Điểm tối đa phải là số dương.';
-          }
-          if (c.weight === undefined || c.weight === '' || isNaN(c.weight) || c.weight < 0) {
-            errors[`${role}_${idx}_weight`] = 'Trọng số không âm.';
-          }
-        });
       }
+    });
+
+    const allRoles = ['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER'];
+    allRoles.forEach((role) => {
+      const criteriaList = form.criteria[role] || [];
+      criteriaList.forEach((c, idx) => {
+        if (!c.criteriaName || c.criteriaName.trim() === '') {
+          errors[`${role}_${idx}_criteriaName`] = 'Tên tiêu chí không được để trống.';
+        }
+        if (c.maxScore === undefined || c.maxScore === '' || isNaN(c.maxScore) || c.maxScore <= 0) {
+          errors[`${role}_${idx}_maxScore`] = 'Điểm tối đa phải là số dương.';
+        }
+        if (c.weight === undefined || c.weight === '' || isNaN(c.weight) || c.weight < 0) {
+          errors[`${role}_${idx}_weight`] = 'Trọng số không âm.';
+        }
+      });
     });
 
     setFormErrors(errors);
@@ -335,7 +339,7 @@ export default function RubricsPage() {
                 </div>
                 <div className={css.criteriaSummary}>
                   <span className={css.criteriaBadge}>GVHD: {r.criteria?.SUPERVISOR?.length || 0} TC</span>
-                  <span className={css.criteriaBadge}>GVPB: {r.criteria?.REVIEWER?.length || 0} TC</span>
+                  <span className={css.criteriaBadge}>GV Chấm 2: {r.criteria?.REVIEWER?.length || 0} TC</span>
                   <span className={css.criteriaBadge}>Hội đồng: {r.criteria?.COMMITTEE_MEMBER?.length || 0} TC</span>
                 </div>
               </div>
@@ -383,7 +387,6 @@ export default function RubricsPage() {
                       value={form.name}
                       onChange={handleChange}
                       error={formErrors.name}
-                      required
                     />
                   </div>
                   <div>
@@ -394,7 +397,6 @@ export default function RubricsPage() {
                       value={form.version}
                       onChange={handleChange}
                       error={formErrors.version}
-                      required
                     />
                   </div>
                   <div className={css.spanFull}>
@@ -423,8 +425,8 @@ export default function RubricsPage() {
                 </div>
 
                 {renderCriteriaConfigSection('SUPERVISOR', 'Tiêu chí Giảng viên hướng dẫn')}
-                {renderCriteriaConfigSection('REVIEWER', 'Tiêu chí Giảng viên phản biện')}
-                {renderCriteriaConfigSection('COMMITTEE_MEMBER', 'Tiêu chí Hội đồng')}
+                {renderCriteriaConfigSection('REVIEWER', 'Tiêu chí Giảng viên chấm 2')}
+                {renderCriteriaConfigSection('COMMITTEE_MEMBER', 'Tiêu chí Hội đồng (Tùy chọn)')}
               </div>
 
               <div className={css.modalFooter}>
