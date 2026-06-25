@@ -324,34 +324,26 @@ export default function ProjectsPage() {
       </div>
 
       {/* Period Selection and Filter bar */}
-      <div className="no-print" style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: '240px', flex: '1' }}>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', marginBottom: '6px', color: 'var(--text-secondary)' }}>Học phần đồ án</label>
-          <select
-            value={selectedPeriodId}
-            onChange={(e) => setSelectedPeriodId(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px',
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-primary)',
-              outline: 'none',
-              fontSize: '14px',
-              height: '42px'
-            }}
-          >
-            <option value="">Chọn học phần</option>
-            {periods.map((p) => (
-              <option key={p._id} value={p._id}>
-                {p.name} ({p.courseCode})
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className={`no-print ${css.filterContainer}`}>
+        <Card className={css.periodCard} noPadding>
+          <div className={css.periodCardContent}>
+            <label className={css.periodLabel}>Học phần đồ án</label>
+            <select
+              value={selectedPeriodId}
+              onChange={(e) => setSelectedPeriodId(e.target.value)}
+              className={css.periodSelect}
+            >
+              <option value="">Chọn học phần</option>
+              {periods.map((p) => (
+                <option key={p._id} value={p._id}>
+                  {p.name} ({p.courseCode})
+                </option>
+              ))}
+            </select>
+          </div>
+        </Card>
         
-        <div style={{ flex: '2', minWidth: '300px', marginTop: '22px' }}>
+        <div className={css.searchWrapper}>
           <FilterCard
             searchInput={searchInput}
             setSearchInput={setSearchInput}
@@ -361,6 +353,7 @@ export default function ProjectsPage() {
           />
         </div>
       </div>
+
 
       {loading ? (
         <div className={css.s5}>

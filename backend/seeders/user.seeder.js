@@ -1,6 +1,6 @@
 const path = require('path');
-// Load environment variables from backend/.env (adjusted for seeders subfolder)
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
+// Load environment variables dynamically
+require('../config/env').loadEnv();
 
 const connectDB = require('../config/db');
 const mongoose = require('mongoose');

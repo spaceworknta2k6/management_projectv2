@@ -3,7 +3,6 @@ const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
 const Milestone = require('../../models/Milestone');
 const SubmissionPackage = require('../../models/SubmissionPackage');
-const DefenseSession = require('../../models/DefenseSession');
 const Student = require('../../models/Student');
 const WorkflowEvent = require('../../models/WorkflowEvent');
 const { assertOwnerAccess, resolveProjectOwner } = require('../../utils/project-owner');
@@ -215,14 +214,7 @@ const applyApprovedExtension = async (request) => {
     return;
   }
 
-  if (request.targetType === 'defense_session') {
-    const session = await DefenseSession.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
-    if (session) {
-      session.defenseDate = request.requestedTo;
-      session.status = 'rescheduled';
-      await session.save();
-    }
-  }
+
 };
 
 const facultyDecide = async (requestId, status, note, actorUserId, actorRoles = []) => {

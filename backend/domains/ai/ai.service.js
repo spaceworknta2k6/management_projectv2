@@ -319,14 +319,6 @@ const analyzeReportFeedback = async (submissionId, user) => {
   if (!package) throw { status: 404, message: "Gói hồ sơ nộp không tồn tại." };
 
   let projectId = package.ownerType === "project" ? package.ownerId : null;
-  if (package.ownerType === "defense") {
-    const DefenseSession = require("../../models/DefenseSession");
-    const defense = await DefenseSession.findOne({
-      _id: package.ownerId,
-      isDeleted: { $ne: true },
-    });
-    if (defense) projectId = defense.projectId;
-  }
 
   const project = await Project.findById(projectId).populate("topicId");
   if (!project) throw { status: 404, message: "Dự án không tồn tại." };

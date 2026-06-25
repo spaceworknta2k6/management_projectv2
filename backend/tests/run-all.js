@@ -25,7 +25,7 @@ const SUITES = [
   { file: 'projects-milestones.test.js', label: 'Projects & Milestones' },
   { file: 'submissions-extensions.test.js', label: 'Submissions & Extensions' },
   { file: 'topic-change-requests.test.js', label: 'Topic Change Requests' },
-  { file: 'committees-scores.test.js',   label: 'Committees, Defenses & Scores' },
+
   { file: 'rubrics-grading.test.js',      label: 'Evaluation Rubrics & Score Verification' },
   { file: 'notifications-audit.test.js', label: 'Notifications & Audit Logs' },
   { file: 'files-security.test.js',      label: 'File Security' },

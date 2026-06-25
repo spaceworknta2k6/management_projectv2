@@ -19,8 +19,6 @@ try {
   const TopicChangeRequest = require('../models/TopicChangeRequest');
   const ExtensionRequest = require('../models/ExtensionRequest');
   const SubmissionPackage = require('../models/SubmissionPackage');
-  const Committee = require('../models/Committee');
-  const DefenseSession = require('../models/DefenseSession');
   const ScoreSheet = require('../models/ScoreSheet');
   const FinalGrade = require('../models/FinalGrade');
   const FileAsset = require('../models/FileAsset');

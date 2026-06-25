@@ -11,37 +11,33 @@ const hasAnyRole = (user, allowedRoles) => {
   return roles.some((role) => allowedRoles.includes(role));
 };
 
-const checkCommitteeOrStaff = async (req, res, next) => {
+const checkProjectLecturerOrStaff = async (req, res, next) => {
   if (hasAnyRole(req.user, ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF'])) {
     return next();
   }
   try {
     const { id } = req.params; // projectId
-    const DefenseSession = require('../../models/DefenseSession');
-    const Committee = require('../../models/Committee');
-
-    const session = await DefenseSession.findOne({ projectId: id, isDeleted: { $ne: true } });
-    if (!session) {
-      return res.status(404).json({ success: false, message: 'Dự án chưa được xếp lịch bảo vệ.' });
-    }
-
-    const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
-    if (!committee) {
-      return res.status(404).json({ success: false, message: 'Hội đồng chấm không tồn tại.' });
+    const Project = require('../../models/Project');
+    const project = await Project.findById(id);
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Dự án không tồn tại.' });
     }
 
     if (!req.user.lecturerId) {
       return res.status(403).json({ success: false, message: 'Yêu cầu tài khoản Giảng viên để truy cập câu hỏi bảo vệ.' });
     }
 
-    const isMember = committee.members.some(m => m.lecturerId.toString() === req.user.lecturerId.toString());
-    if (isMember) {
+    const lecturerId = req.user.lecturerId.toString();
+    const isSupervisor = project.supervisorId && project.supervisorId.toString() === lecturerId;
+    const isReviewer = project.reviewerId && project.reviewerId.toString() === lecturerId;
+
+    if (isSupervisor || isReviewer) {
       return next();
     }
 
     return res.status(403).json({
       success: false,
-      message: 'Quyền truy cập bị từ chối: Chỉ thành viên Hội đồng chấm hoặc Giáo vụ mới được truy cập câu hỏi bảo vệ.'
+      message: 'Quyền truy cập bị từ chối: Chỉ Giảng viên hướng dẫn, Giảng viên chấm độc lập hoặc Giáo vụ mới được truy cập câu hỏi bảo vệ.'
     });
   } catch (error) {
     next(error);
@@ -61,6 +57,6 @@ router.post('/submissions/:id/report-feedback', aiLimiter, requireRole(['STUDENT
 router.post('/milestones/:milestoneId/files/:fileId/analyze', aiLimiter, requireRole(['STUDENT', 'LECTURER', 'SYSTEM_ADMIN', 'FACULTY_STAFF']), aiController.analyzeMilestoneReport);
 
 // Committee only for defense questions
-router.post('/projects/:id/defense-questions', aiLimiter, checkCommitteeOrStaff, aiValidator.validateProjectId, aiController.suggestDefenseQuestions);
+router.post('/projects/:id/defense-questions', aiLimiter, checkProjectLecturerOrStaff, aiValidator.validateProjectId, aiController.suggestDefenseQuestions);
 
 module.exports = router;

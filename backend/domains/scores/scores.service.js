@@ -2,8 +2,6 @@ const ScoreSheet = require('../../models/ScoreSheet');
 const FinalGrade = require('../../models/FinalGrade');
 const Project = require('../../models/Project');
 const ProjectPeriod = require('../../models/ProjectPeriod');
-const DefenseSession = require('../../models/DefenseSession');
-const Committee = require('../../models/Committee');
 const EvaluationRubric = require('../../models/EvaluationRubric');
 const { assertProjectAccess, canAccessProject, isStaff } = require('../../utils/access-control');
 const { resolveProjectOwner } = require('../../utils/project-owner');
@@ -20,15 +18,7 @@ const assertScoreSheetPermission = async (project, rubricRole, user) => {
   if (rubricRole === 'SUPERVISOR' && supervisorId === lecturerId) return;
   if ((rubricRole === 'REVIEWER' || rubricRole === 'SECOND_MARKER') && reviewerId === lecturerId) return;
 
-  if (rubricRole === 'COMMITTEE_MEMBER') {
-    const session = await DefenseSession.findOne({ projectId: project._id, isDeleted: { $ne: true } });
-    if (session) {
-      const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
-      if (committee?.members.some((member) => member.lecturerId.toString() === lecturerId)) {
-        return;
-      }
-    }
-  }
+
 
   throw { status: 403, message: 'Bạn không được phân công chấm điểm dự án này.' };
 };
@@ -140,20 +130,6 @@ const submitScoreSheet = async (data, user) => {
         graderRole = 'SUPERVISOR';
       } else if (rubricRole === 'REVIEWER' || rubricRole === 'SECOND_MARKER') {
         graderRole = 'REVIEWER';
-      } else if (rubricRole === 'COMMITTEE_MEMBER') {
-        const session = await DefenseSession.findOne({ projectId, isDeleted: { $ne: true } });
-        if (session) {
-          const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
-          if (committee) {
-            const member = committee.members.find(m => m.lecturerId.toString() === graderId.toString());
-            if (member) {
-              graderRole = member.role;
-            }
-          }
-        }
-        if (!graderRole) {
-          graderRole = 'COMMITTEE_MEMBER';
-        }
       }
     }
 

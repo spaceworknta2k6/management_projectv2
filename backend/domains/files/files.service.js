@@ -5,8 +5,6 @@ const mongoose = require('mongoose');
 const FileAsset = require('../../models/FileAsset');
 const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
-const DefenseSession = require('../../models/DefenseSession');
-const Committee = require('../../models/Committee');
 const { getJwtSecret } = require('../../config/jwt');
 
 const PRIVATE_UPLOAD_DIR = path.join(__dirname, '../../uploads/private');
@@ -283,17 +281,7 @@ const checkFileAccess = async (id, user) => {
       return asset;
     }
 
-    // If user is a Committee member
-    if (user.lecturerId) {
-      const session = await DefenseSession.findOne({ projectId: project._id, isDeleted: { $ne: true } });
-      if (session) {
-        const committee = await Committee.findOne({ _id: session.committeeId, isDeleted: { $ne: true } });
-        if (committee) {
-          const isCommitteeMember = committee.members.some(m => m.lecturerId.toString() === user.lecturerId.toString());
-          if (isCommitteeMember) return asset;
-        }
-      }
-    }
+
   }
 
   throw { status: 403, message: 'Quyền truy cập bị từ chối: Bạn không có quyền tải xuống tệp tin này.' };
