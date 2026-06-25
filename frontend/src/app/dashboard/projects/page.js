@@ -7,17 +7,19 @@ import usePeriodStore from '@/store/period.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import Badge from '@/components/ui/Badge';
 import Input from '@/components/ui/Input';
 import FilterCard from '@/components/ui/FilterCard';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { getTechnicalLabel, hasAnyRole } from '@/lib/utils';
+import { hasAnyRole } from '@/lib/utils';
 import { getMemberDisplay, getOwnerDisplay, getOwnerTypeLabel, isStudentProjectOwner } from '@/lib/projectOwner';
-import { FolderSimple, UserCheck, CheckSquare, ArrowsClockwise, ChatsCircle, MagnifyingGlass, FileText } from '@phosphor-icons/react';
+import { FolderSimple, ArrowsClockwise, FileText } from '@phosphor-icons/react';
 import { exportToCSV } from '@/lib/export';
+import ProjectCard from './components/ProjectCard';
+import AssignReviewerModal from './components/AssignReviewerModal';
 import css from './page.module.css';
+
 
 const PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -233,28 +235,6 @@ export default function ProjectsPage() {
     }
   };
 
-  const getProjectStatusBadge = (status) => {
-    switch (status) {
-      case 'assigned':
-        return <Badge variant="info">Mới phân công</Badge>;
-      case 'in_progress':
-        return <Badge variant="warning">Đang thực hiện</Badge>;
-      case 'pre_defense_submitted':
-        return <Badge variant="info">Đã nộp báo cáo</Badge>;
-      case 'supervisor_reviewed':
-        return <Badge variant="success">GVHD đã đánh giá</Badge>;
-      case 'reviewer_reviewed':
-        return <Badge variant="success">GV chấm 2 đã đánh giá</Badge>;
-      case 'defense_eligible':
-        return <Badge variant="success">Sẵn sàng chấm</Badge>;
-      case 'finalized':
-        return <Badge variant="success">Đã hoàn thành</Badge>;
-      case 'cancelled':
-        return <Badge variant="error">Đã hủy</Badge>;
-      default:
-        return <Badge variant="secondary">{getTechnicalLabel(status)}</Badge>;
-    }
-  };
 
   const handleExportExcel = () => {
     const headers = [
@@ -299,7 +279,7 @@ export default function ProjectsPage() {
   return (
     <div>
       {/* Page Header */}
-      <div className={css.s1} >
+      <div className={css.s1}>
         <div>
           <h1 className={`text-display ${css.s2}`}>
             <FolderSimple size={28} className={css.s3} />
@@ -309,7 +289,7 @@ export default function ProjectsPage() {
             Xem thông tin tiến độ, phân công giảng viên chấm 2 và quản lý vòng đời thực hiện đề tài học phần đồ án
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div className={css.headerActions}>
           {!isStudent && (isStaff || isLecturer) && (
             <Button variant="secondary" size="sm" onClick={handleExportExcel}>
               <FileText size={16} />
@@ -367,96 +347,23 @@ export default function ProjectsPage() {
         </Card>
       ) : (
         <div className={css.s7}>
-          {pagedProjects.map((p) => {
-            return (
-              <Card
-                key={p._id}
-                title={p.topicId?.title || 'Đang chờ cập nhật đề tài'}
-                subtitle={`${getOwnerTypeLabel(p)}: ${getOwnerDisplay(p)} | Mã đợt: ${p.periodId?.name || '—'}`}
-                actions={
-                  <div className={css.s8}>
-                    {getProjectStatusBadge(p.status)}
-
-                    {/* Student Start Project Action */}
-                    {!isStaff && !isLecturer && p.status === 'assigned' && (
-                      <Button variant="primary" size="sm" onClick={() => handleStartProject(p._id)}>
-                        Bắt đầu thực hiện
-                      </Button>
-                    )}
-
-                    {/* Staff actions */}
-                    {isStaff && (
-                      <>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            setShowAssignModal(p._id);
-                            setSelectedReviewerId(p.reviewerId?._id || '');
-                          }}
-                        >
-                          <UserCheck size={14} /> Phân công GV chấm 2
-                        </Button>
-
-                        {['ready_for_grading', 'defense_eligible'].includes(p.status) && (
-                          <Button variant="success" size="sm" onClick={() => handleFinalizeProject(p._id)}>
-                            <CheckSquare size={14} /> Chốt hoàn tất
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                }
-              >
-                <div className={css.s9}>
-                  <div>
-                    <p className={css.s10}>Giảng viên hướng dẫn:</p>
-                    <div className={css.lecturerLine}>
-                      <p className={css.s11}>
-                        {p.supervisorId?.userId?.fullName || 'Chưa phân công'} ({p.supervisorId?.userId?.email || '—'})
-                      </p>
-                      {isStudent && p.supervisorId?.userId?._id && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleRequestDirectChat(p.supervisorId.userId._id)}
-                          icon={<ChatsCircle size={14} />}
-                        >
-                          Nhắn tin
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <p className={css.s12}>Giảng viên chấm 2:</p>
-                    <div className={css.lecturerLine}>
-                      <p className={css.s13}>
-                        {p.reviewerId?.userId?.fullName ? (
-                          <span>{p.reviewerId.userId.fullName} ({p.reviewerId.userId.email})</span>
-                        ) : (
-                          <span className={css.s14}>Chưa phân công giảng viên chấm 2</span>
-                        )}
-                      </p>
-                      {isStudent && p.reviewerId?.userId?._id && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleRequestDirectChat(p.reviewerId.userId._id)}
-                          icon={<ChatsCircle size={14} />}
-                        >
-                          Nhắn tin
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div className={css.s15}>
-                    <p className={css.s16}>Tóm tắt đề tài:</p>
-                    <p className={css.s17}>{p.topicId?.summary || 'Không có tóm tắt chi tiết.'}</p>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
+          {pagedProjects.map((p) => (
+            <ProjectCard
+              key={p._id}
+              project={p}
+              user={user}
+              isStaff={isStaff}
+              isLecturer={isLecturer}
+              isStudent={isStudent}
+              onStartProject={handleStartProject}
+              onOpenAssignReviewer={(projId, currentReviewerId) => {
+                setShowAssignModal(projId);
+                setSelectedReviewerId(currentReviewerId);
+              }}
+              onFinalizeProject={handleFinalizeProject}
+              onRequestDirectChat={handleRequestDirectChat}
+            />
+          ))}
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
@@ -470,42 +377,19 @@ export default function ProjectsPage() {
       )}
 
       {/* Assign Reviewer Modal */}
-      {showAssignModal && (
-        <div className={css.s18} >
-          <div className={css.s19} >
-            <div className={css.s20}>
-              <h3 className={css.s21}>
-                Phân công Giảng viên chấm 2
-              </h3>
-              <button
-                onClick={() => setShowAssignModal(null)} className={css.s26} >
-                &times;
-              </button>
-            </div>
-            <form onSubmit={handleAssignReviewer} className={css.s22}>
-              <div className={css.s23}>
-                <label className={css.s24}>Chọn giảng viên chấm 2</label>
-                <select
-                  value={selectedReviewerId}
-                  onChange={(e) => setSelectedReviewerId(e.target.value)}
-                  className={css.s27} >
-                  <option value="">-- Chọn giảng viên --</option>
-                  {lecturers.map((l) => (
-                    <option key={l._id} value={l._id}>
-                      {l.userId?.fullName} ({l.userId?.email})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className={css.s25}>
-                <Button variant="secondary" onClick={() => setShowAssignModal(null)}>Hủy</Button>
-                <Button variant="primary" type="submit" loading={submitting}>Xác nhận phân công</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AssignReviewerModal
+        isOpen={Boolean(showAssignModal)}
+        lecturers={lecturers}
+        selectedReviewerId={selectedReviewerId}
+        setSelectedReviewerId={setSelectedReviewerId}
+        submitting={submitting}
+        onSubmit={handleAssignReviewer}
+        onClose={() => {
+          setShowAssignModal(null);
+          setSelectedReviewerId('');
+        }}
+      />
     </div>
+
   );
 }
