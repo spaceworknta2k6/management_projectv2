@@ -61,6 +61,9 @@ const STATUS_MAP = {
   in_progress: { label: 'Đang diễn ra', variant: 'success' },
   defense: { label: 'Báo cáo/trình bày', variant: 'warning' },
   completed: { label: 'Hoàn thành', variant: 'success' },
+  results_published: { label: 'Đã công bố điểm', variant: 'success' },
+  appeal_open: { label: 'Đang nhận phúc khảo', variant: 'warning' },
+  result_locked: { label: 'Đã khóa điểm', variant: 'neutral' },
   archived: { label: 'Lưu trữ', variant: 'neutral' },
   // Group statuses
   forming: { label: 'Đang thành lập', variant: 'info' },

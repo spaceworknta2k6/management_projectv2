@@ -14,7 +14,7 @@ import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, hasAnyRole } from '@/lib/utils';
-import { ClipboardText, ArrowsClockwise, CheckCircle, Calculator, MagnifyingGlass, FileText, Printer, LockKey } from '@phosphor-icons/react';
+import { ClipboardText, ArrowsClockwise, CheckCircle, Calculator, MagnifyingGlass, FileText, Printer, LockKey, Siren } from '@phosphor-icons/react';
 import { exportToCSV } from '@/lib/export';
 import css from './page.module.css';
 
@@ -107,7 +107,16 @@ export default function ScoresPage() {
   const [resolvingVariance, setResolvingVariance] = useState(false);
   const [publishingAll, setPublishingAll] = useState(false);
 
+  // Phúc khảo state
+  const [showAppealModal, setShowAppealModal] = useState(false);
+  const [appealProject, setAppealProject] = useState(null);
+  const [appealReason, setAppealReason] = useState('');
+  const [submittingAppeal, setSubmittingAppeal] = useState(false);
+  const [myAppeals, setMyAppeals] = useState([]);
+  const [selectedPeriodData, setSelectedPeriodData] = useState(null);
+
   const isStaffUser = useMemo(() => hasAnyRole(user, ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']), [user]);
+  const isStudentUser = useMemo(() => (user?.roles || []).includes('STUDENT'), [user]);
 
   const fetchData = useCallback(async () => {
     if (!selectedPeriodId) return;
@@ -131,8 +140,18 @@ export default function ScoresPage() {
   useEffect(() => {
     if (token && selectedPeriodId) {
       fetchData();
+      // Load period data để check status
+      api.get(`/periods/${selectedPeriodId}`, token)
+        .then(res => setSelectedPeriodData(res.data))
+        .catch(() => {});
+      // Load my appeals nếu là sinh viên
+      if (isStudentUser) {
+        api.get('/appeals/my', token)
+          .then(res => setMyAppeals(res.data || []))
+          .catch(() => {});
+      }
     }
-  }, [fetchData, token, selectedPeriodId]);
+  }, [fetchData, token, selectedPeriodId, isStudentUser]);
 
   const loadFormForRole = useCallback((role, rubric, sheetsList) => {
     const existingSheet = sheetsList.find(s => s.rubricRole === role);
@@ -379,6 +398,32 @@ export default function ScoresPage() {
     }
   };
 
+  const handleOpenAppealModal = (project) => {
+    setAppealProject(project);
+    setAppealReason('');
+    setShowAppealModal(true);
+  };
+
+  const handleSubmitAppeal = async (e) => {
+    e.preventDefault();
+    if (!appealReason.trim() || appealReason.trim().length < 20) {
+      toast.error('Lý do phúc khảo phải có ít nhất 20 ký tự.');
+      return;
+    }
+    try {
+      setSubmittingAppeal(true);
+      await api.post('/appeals', { projectId: appealProject._id, reason: appealReason.trim() }, token);
+      toast.success('Nộp đơn phúc khảo thành công! Vui lòng nộp lệ phí cho nhà trường và chờ giáo vụ phân công.');
+      setShowAppealModal(false);
+      const res = await api.get('/appeals/my', token);
+      setMyAppeals(res.data || []);
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi nộp đơn phúc khảo');
+    } finally {
+      setSubmittingAppeal(false);
+    }
+  };
+
   const visibleProjects = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return projects;
@@ -482,11 +527,6 @@ export default function ScoresPage() {
             </div>
             
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              {isStaffUser && selectedPeriodId && (
-                <Button variant="primary" size="sm" onClick={handleBulkPublish} loading={publishingAll} className={css.buttonGap}>
-                  Công bố kết quả
-                </Button>
-              )}
               <Button variant="secondary" size="sm" onClick={handleExportExcel} className={css.buttonGap}>
                 <FileText size={16} />
                 Xuất Excel
@@ -677,6 +717,20 @@ export default function ScoresPage() {
                           <Button size="sm" variant="primary" icon={<CheckCircle />} onClick={() => handleOpenScoreModal(p)}>
                             Nhập phiếu điểm
                           </Button>
+                          {isStudentUser && selectedPeriodData?.status === 'appeal_open' && p.finalGrade?.publishedAt && (() => {
+                            const existingAppeal = myAppeals.find(a => a.projectId?._id === p._id || a.projectId === p._id);
+                            return existingAppeal ? (
+                              <div style={{ marginTop: '8px' }}>
+                                <Badge variant={existingAppeal.status === 'completed' ? 'success' : existingAppeal.status === 'cancelled' ? 'neutral' : 'warning'}>
+                                  Phúc khảo: {existingAppeal.status === 'pending' ? 'Chờ xử lý' : existingAppeal.status === 'grading' ? 'Đang chấm' : existingAppeal.status === 'completed' ? 'Hoàn tất' : 'Đã rút'}
+                                </Badge>
+                              </div>
+                            ) : (
+                              <Button size="sm" variant="outline" icon={<Siren />} onClick={() => handleOpenAppealModal(p)} style={{ marginTop: '8px' }}>
+                                Nộp đơn phúc khảo
+                              </Button>
+                            );
+                          })()}
                         </div>
                       </Card>
                     );
@@ -858,6 +912,53 @@ export default function ScoresPage() {
           </>
         )}
       </div>
+
+      {/* Modal Nộp Đơn Phúc Khảo */}
+      {showAppealModal && (
+        <div className={css.s15}>
+          <div className={css.s16} style={{ maxWidth: '500px' }}>
+            <div className={css.s17}>
+              <h2 className={css.s18}><Siren size={20} style={{ marginRight: '8px', color: 'var(--warning)' }} />Nộp Đơn Phúc Khảo</h2>
+              <button onClick={() => setShowAppealModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-muted)' }}>&times;</button>
+            </div>
+            <form onSubmit={handleSubmitAppeal}>
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '12px', backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid var(--warning)', borderRadius: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  ⚠️ Sau khi nộp đơn, bạn cần <strong>nộp lệ phí phúc khảo</strong> trực tiếp tại phòng giáo vụ. Giáo vụ sẽ phân công giảng viên chấm lại sau khi xác nhận đã nộp phí.
+                </div>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: 'var(--text-secondary)' }}>Đề tài</div>
+                  <div style={{ fontWeight: '600' }}>{appealProject?.topicId?.title || 'Đồ án'}</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Điểm hiện tại: <strong>{appealProject?.finalGrade?.finalScore} ({appealProject?.finalGrade?.letterGrade})</strong>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                    Lý do phúc khảo <span style={{ color: 'var(--error)' }}>*</span>
+                  </label>
+                  <textarea
+                    value={appealReason}
+                    onChange={e => setAppealReason(e.target.value)}
+                    rows="5"
+                    required
+                    minLength={20}
+                    placeholder="Trình bày lý do bạn muốn phúc khảo điểm (ít nhất 20 ký tự)..."
+                    className={css.s34}
+                  />
+                  <div style={{ fontSize: '12px', color: appealReason.trim().length < 20 ? 'var(--error)' : 'var(--text-muted)', marginTop: '4px' }}>
+                    {appealReason.trim().length}/20 ký tự tối thiểu
+                  </div>
+                </div>
+              </div>
+              <div className={css.s32}>
+                <Button variant="ghost" onClick={() => setShowAppealModal(false)} type="button">Hủy</Button>
+                <Button variant="primary" type="submit" loading={submittingAppeal}>Nộp Đơn</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Printed Scorecard View (hidden on screen, visible only when printing) */}
       {printData && (

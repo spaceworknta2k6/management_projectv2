@@ -18,7 +18,16 @@ const assertScoreSheetPermission = async (project, rubricRole, user) => {
   if (rubricRole === 'SUPERVISOR' && supervisorId === lecturerId) return;
   if ((rubricRole === 'REVIEWER' || rubricRole === 'SECOND_MARKER') && reviewerId === lecturerId) return;
 
-
+  // Cho phép GV được phân công chấm phúc khảo
+  if (rubricRole === 'RECHECK') {
+    const AppealRequest = require('../../models/AppealRequest');
+    const appeal = await AppealRequest.findOne({
+      projectId: project._id,
+      recheckGraderId: user.lecturerId,
+      status: 'grading',
+    });
+    if (appeal) return;
+  }
 
   throw { status: 403, message: 'Bạn không được phân công chấm điểm dự án này.' };
 };
@@ -160,7 +169,27 @@ const submitScoreSheet = async (data, user) => {
       version: 0
     });
 
-    return await sheet.save();
+    const savedSheet = await sheet.save();
+
+    // Tự động link phiếu RECHECK vào AppealRequest
+    if (targetType === 'RECHECK') {
+      try {
+        const appealsService = require('../appeals/appeals.service');
+        const AppealRequest = require('../../models/AppealRequest');
+        const appeal = await AppealRequest.findOne({
+          projectId,
+          recheckGraderId: graderId,
+          status: 'grading',
+        });
+        if (appeal) {
+          await appealsService.linkRecheckScoreSheet(appeal._id, savedSheet._id);
+        }
+      } catch (linkErr) {
+        console.error('Lỗi khi link phiếu RECHECK vào đơn phúc khảo:', linkErr.message);
+      }
+    }
+
+    return savedSheet;
   }
 };
 

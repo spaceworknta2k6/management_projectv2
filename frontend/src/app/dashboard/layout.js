@@ -25,6 +25,7 @@ import {
   Sun,
   Moon,
   Warning,
+  Siren,
 } from '@phosphor-icons/react';
 import useAuthStore from '@/store/auth.store';
 import useThemeStore from '@/store/theme.store';
@@ -102,6 +103,7 @@ const NAV_ITEMS = [
   // { href: '/dashboard/committees', label: 'Hội đồng',      icon: Gavel,            roles: ['LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   // { href: '/dashboard/defenses',   label: 'Bảo vệ',        icon: Sword,            roles: null },
   { href: '/dashboard/scores',     label: 'Điểm số',       icon: ChartBar,         roles: ['LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
+  { href: '/dashboard/appeals',    label: 'Phúc khảo',     icon: Siren,            roles: ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/notifications', label: 'Thông báo',  icon: Bell,             roles: null },
   { href: '/dashboard/chat',      label: 'Chat',          icon: ChatsCircle,      roles: null },
   { href: '/dashboard/audit',      label: 'Nhật ký',       icon: ClockCounterClockwise, roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
