@@ -224,6 +224,8 @@ const buildTopicPayload = ({ topicData, period, studentId, ownerType, ownerId, g
   expectedResult: topicData.expectedResult.trim(),
   plan: topicData.plan.trim(),
   keywords: topicData.keywords || [],
+  academicUnit: topicData.academicUnit || period.academicUnit || 'computer_science',
+  topicDomain: topicData.topicDomain || 'software_development',
   proposedSupervisorId: topicData.proposedSupervisorId,
   departmentId: period.departmentId,
   status: 'submitted',
@@ -641,6 +643,8 @@ const updateTopic = async (topicId, topicData, studentId) => {
   if (topicData.expectedResult) topic.expectedResult = topicData.expectedResult.trim();
   if (topicData.plan) topic.plan = topicData.plan.trim();
   if (topicData.proposedSupervisorId) topic.proposedSupervisorId = topicData.proposedSupervisorId;
+  if (topicData.academicUnit) topic.academicUnit = topicData.academicUnit;
+  if (topicData.topicDomain) topic.topicDomain = topicData.topicDomain;
 
   // Change status back to submitted
   topic.status = 'submitted';
@@ -771,6 +775,8 @@ const createLecturerTopic = async (topicData, lecturerId, userId) => {
     expectedResult: topicData.expectedResult.trim(),
     plan: topicData.plan.trim(),
     keywords: topicData.keywords || [],
+    academicUnit: topicData.academicUnit || period.academicUnit || 'computer_science',
+    topicDomain: topicData.topicDomain || 'software_development',
     capacityMaxStudents: topicData.capacityMaxStudents !== undefined ? parseInt(topicData.capacityMaxStudents, 10) : 1,
     capacityMaxGroups: topicData.capacityMaxGroups !== undefined ? parseInt(topicData.capacityMaxGroups, 10) : 1,
     minGroupSize: topicData.minGroupSize !== undefined ? parseInt(topicData.minGroupSize, 10) : undefined,

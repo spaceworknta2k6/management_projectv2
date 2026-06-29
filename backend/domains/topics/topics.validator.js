@@ -3,6 +3,7 @@ const ProjectGroup = require('../../models/ProjectGroup');
 const ProjectRoster = require('../../models/ProjectRoster');
 const Lecturer = require('../../models/Lecturer');
 const User = require('../../models/User');
+const { ACADEMIC_UNITS, TOPIC_DOMAINS } = require('../../constants/academic-units');
 
 const OWNER_TYPES = ['student', 'group'];
 
@@ -65,12 +66,20 @@ const validateTopicPropose = async (req, res, next) => {
       technologies,
       proposedSupervisorId,
       proposedSupervisorEmail,
+      academicUnit,
+      topicDomain,
     } = req.body;
 
     const errors = [];
 
     if (!periodId || !mongoose.Types.ObjectId.isValid(periodId)) {
       errors.push({ field: 'periodId', code: 'PERIOD_ID_INVALID', message: 'Ma dot do an (periodId) khong hop le.' });
+    }
+    if (academicUnit !== undefined && !ACADEMIC_UNITS.includes(academicUnit)) {
+      errors.push({ field: 'academicUnit', code: 'ACADEMIC_UNIT_INVALID', message: 'Khoa/đơn vị chuyên môn của đề tài không hợp lệ.' });
+    }
+    if (topicDomain !== undefined && !TOPIC_DOMAINS.includes(topicDomain)) {
+      errors.push({ field: 'topicDomain', code: 'TOPIC_DOMAIN_INVALID', message: 'Hướng chuyên môn của đề tài không hợp lệ.' });
     }
 
     if (isStudent) {

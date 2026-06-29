@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ACADEMIC_UNITS } = require('../../constants/academic-units');
 
 const validatePeriodCreate = (req, res, next) => {
   const {
@@ -35,9 +36,13 @@ const validatePeriodCreate = (req, res, next) => {
     finalSubmissionDeadline,
     gradingStart,
     gradingEnd,
+    academicUnit,
   } = req.body;
 
   const errors = [];
+  if (!req.body.academicUnit) {
+    req.body.academicUnit = 'computer_science';
+  }
 
   if (rubricId !== undefined && rubricId !== null && rubricId !== '') {
     if (!mongoose.Types.ObjectId.isValid(rubricId)) {
@@ -54,6 +59,10 @@ const validatePeriodCreate = (req, res, next) => {
   }
   if (!semester || typeof semester !== 'string' || semester.trim() === '') {
     errors.push({ field: 'semester', code: 'SEMESTER_REQUIRED', message: 'Học kỳ là bắt buộc.' });
+  }
+  const effectiveAcademicUnit = req.body.academicUnit;
+  if (!effectiveAcademicUnit || !ACADEMIC_UNITS.includes(effectiveAcademicUnit)) {
+    errors.push({ field: 'academicUnit', code: 'ACADEMIC_UNIT_INVALID', message: 'Khoa/đơn vị chuyên môn phụ trách không hợp lệ.' });
   }
 
   const isOfferingFlow = courseCode !== undefined || coordinatorLecturerId !== undefined || projectType !== undefined;
@@ -194,13 +203,17 @@ const validatePeriodCreate = (req, res, next) => {
 
 const validatePeriodUpdate = (req, res, next) => {
   // Supports partial updates but ensures updated dates are correct
-  const { minGroupSize, maxGroupSize, scoringFormula, rubricId, groupMinSize, groupMaxSize } = req.body;
+  const { minGroupSize, maxGroupSize, scoringFormula, rubricId, groupMinSize, groupMaxSize, academicUnit } = req.body;
   const errors = [];
 
   if (rubricId !== undefined && rubricId !== null && rubricId !== '') {
     if (!mongoose.Types.ObjectId.isValid(rubricId)) {
       errors.push({ field: 'rubricId', code: 'RUBRIC_ID_INVALID', message: 'Mã tiêu chí đánh giá (rubricId) không hợp lệ.' });
     }
+  }
+
+  if (academicUnit !== undefined && !ACADEMIC_UNITS.includes(academicUnit)) {
+    errors.push({ field: 'academicUnit', code: 'ACADEMIC_UNIT_INVALID', message: 'Khoa/đơn vị chuyên môn phụ trách không hợp lệ.' });
   }
 
   if (minGroupSize !== undefined || maxGroupSize !== undefined) {

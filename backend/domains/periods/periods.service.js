@@ -1,6 +1,7 @@
 const ProjectPeriod = require('../../models/ProjectPeriod');
 const WorkflowEvent = require('../../models/WorkflowEvent');
 const Lecturer = require('../../models/Lecturer');
+const { ACADEMIC_UNIT_DEPARTMENT_IDS, IT_FACULTY_ID } = require('../../constants/academic-units');
 
 // Utility helper to create workflow events for audit logs
 const logWorkflowEvent = async ({
@@ -34,6 +35,12 @@ const createPeriod = async (periodData, actorId) => {
       facultyId = facultyId || lecturer.facultyId;
       departmentId = departmentId || lecturer.departmentId;
     }
+  }
+
+  if (!facultyId || !departmentId) {
+    const academicUnit = periodData.academicUnit || 'computer_science';
+    facultyId = facultyId || IT_FACULTY_ID;
+    departmentId = departmentId || ACADEMIC_UNIT_DEPARTMENT_IDS[academicUnit] || ACADEMIC_UNIT_DEPARTMENT_IDS.computer_science;
   }
 
   const period = new ProjectPeriod({

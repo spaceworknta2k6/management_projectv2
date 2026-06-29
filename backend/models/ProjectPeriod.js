@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ACADEMIC_UNITS } = require('../constants/academic-units');
 
 const ProjectPeriodSchema = new mongoose.Schema({
   name: {
@@ -43,6 +44,11 @@ const ProjectPeriodSchema = new mongoose.Schema({
     type: String,
     enum: ['foundation', 'interdisciplinary'],
     required: false,
+  },
+  academicUnit: {
+    type: String,
+    enum: ACADEMIC_UNITS,
+    default: 'computer_science',
   },
   programId: {
     type: String,

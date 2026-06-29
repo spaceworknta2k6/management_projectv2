@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ACADEMIC_UNITS, TOPIC_DOMAINS } = require('../constants/academic-units');
 
 const ProjectTopicSchema = new mongoose.Schema({
   periodId: {
@@ -122,6 +123,16 @@ const ProjectTopicSchema = new mongoose.Schema({
   keywords: {
     type: [String],
     default: [],
+  },
+  academicUnit: {
+    type: String,
+    enum: ACADEMIC_UNITS,
+    default: 'computer_science',
+  },
+  topicDomain: {
+    type: String,
+    enum: TOPIC_DOMAINS,
+    default: 'software_development',
   },
   supervisorId: {
     type: mongoose.Schema.Types.ObjectId,
