@@ -121,9 +121,9 @@ ProjectSchema.index(
 // A group can only have one active (non-cancelled) project in a given period
 ProjectSchema.index(
   { periodId: 1, groupId: 1 },
-  { 
-    unique: true, 
-    partialFilterExpression: { groupId: { $exists: true }, status: { $ne: 'cancelled' }, isDeleted: false } 
+  {
+    unique: true,
+    partialFilterExpression: { groupId: { $exists: true }, status: { $ne: 'cancelled' }, isDeleted: false }
   }
 );
 
