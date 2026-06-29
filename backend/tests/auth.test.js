@@ -8,6 +8,13 @@ const mongoose = require('mongoose');
 
 const TEST_PORT = 5009;
 
+const maskAuthPayload = (payload) => {
+  const clone = JSON.parse(JSON.stringify(payload));
+  if (clone.data?.accessToken) clone.data.accessToken = '[redacted]';
+  if (clone.data?.refreshToken) clone.data.refreshToken = '[redacted]';
+  return clone;
+};
+
 const runIntegrationTests = async () => {
   // Start server on temporary port 5009 to avoid port clashes
   const server = app.listen(TEST_PORT, async () => {
@@ -26,7 +33,7 @@ const runIntegrationTests = async () => {
 
       const loginResult = await loginResponse.json();
       console.log('HTTP Status:', loginResponse.status);
-      console.log('Login JSON Result:', JSON.stringify(loginResult, null, 2));
+      console.log('Login JSON Result:', JSON.stringify(maskAuthPayload(loginResult), null, 2));
 
       if (!loginResult.success || !loginResult.data.accessToken) {
         throw new Error('❌ Test 1 Failed: Login request returned unsuccessful status or no access token.');
@@ -86,7 +93,7 @@ const runIntegrationTests = async () => {
 
       const refreshResult = await refreshResponse.json();
       console.log('HTTP Status:', refreshResponse.status);
-      console.log('Refresh JSON Result:', JSON.stringify(refreshResult, null, 2));
+      console.log('Refresh JSON Result:', JSON.stringify(maskAuthPayload(refreshResult), null, 2));
 
       if (refreshResponse.status !== 200 || !refreshResult.success || !refreshResult.data.accessToken) {
         throw new Error('❌ Test 4 Failed: Token refresh request failed.');

@@ -71,7 +71,8 @@ const submitScoreSheet = async (data, user) => {
     if (activeRubric) {
       rubricIdToSave = activeRubric._id;
       rubricVersionToSave = activeRubric.version;
-      const rubricCriteria = activeRubric.criteria[rubricRole];
+      const rubricCriteria = activeRubric.criteria[rubricRole]
+        || (rubricRole === 'RECHECK' ? activeRubric.criteria.REVIEWER || activeRubric.criteria.SECOND_MARKER : null);
       if (!rubricCriteria || rubricCriteria.length === 0) {
         throw { status: 400, message: `Không tìm thấy tiêu chí chấm điểm nào cho vai trò ${rubricRole} trong Rubric.` };
       }
@@ -319,7 +320,8 @@ const updateScoreSheet = async (id, data, user) => {
     if (period && period.rubricId) {
       const activeRubric = await EvaluationRubric.findOne({ _id: period.rubricId, isDeleted: { $ne: true } });
       if (activeRubric) {
-        const rubricCriteria = activeRubric.criteria[sheet.rubricRole];
+        const rubricCriteria = activeRubric.criteria[sheet.rubricRole]
+          || (sheet.rubricRole === 'RECHECK' ? activeRubric.criteria.REVIEWER || activeRubric.criteria.SECOND_MARKER : null);
         if (!rubricCriteria || rubricCriteria.length === 0) {
           throw { status: 400, message: `Không tìm thấy tiêu chí chấm điểm nào cho vai trò ${sheet.rubricRole} trong Rubric.` };
         }

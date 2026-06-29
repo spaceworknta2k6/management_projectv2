@@ -52,6 +52,7 @@ export default function Input({
           disabled={disabled}
           autoFocus={autoFocus}
           autoComplete={isPassword ? 'current-password' : undefined}
+          aria-required={required || undefined}
           className={inputClass}
           {...rest}
         />

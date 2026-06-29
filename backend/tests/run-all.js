@@ -27,6 +27,7 @@ const SUITES = [
   { file: 'topic-change-requests.test.js', label: 'Topic Change Requests' },
 
   { file: 'rubrics-grading.test.js',      label: 'Evaluation Rubrics & Score Verification' },
+  { file: 'appeals.test.js',              label: 'Appeals & Grade Publishing' },
   { file: 'notifications-audit.test.js', label: 'Notifications & Audit Logs' },
   { file: 'files-security.test.js',      label: 'File Security' },
   { file: 'chat.test.js',                label: 'Chat Rooms & Attachments' },

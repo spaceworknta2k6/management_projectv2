@@ -143,13 +143,9 @@ const supervisorRecommend = async (requestId, status, note, actorUserId, actorLe
     at: new Date(),
     note: note.trim(),
   };
-  request.status = status;
+  request.status = status === 'rejected' ? 'rejected' : 'pending';
 
   await request.save();
-
-  if (status === 'approved') {
-    await applyApprovedExtension(request);
-  }
 
   await logWorkflowEvent({
     entityId: request._id,

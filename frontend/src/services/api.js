@@ -10,7 +10,12 @@ function subscribeTokenRefresh(cb) {
 }
 
 function onRefreshed(token) {
-  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers.forEach((cb) => cb(null, token));
+  refreshSubscribers = [];
+}
+
+function onRefreshFailed(error) {
+  refreshSubscribers.forEach((cb) => cb(error));
   refreshSubscribers = [];
 }
 
@@ -75,19 +80,23 @@ async function request(path, { token, ...options } = {}) {
         }
       } catch (refreshErr) {
         isRefreshing = false;
-        refreshSubscribers = [];
         state.logout();
         if (typeof window !== 'undefined') {
           window.location.href = '/auth/login';
         }
         const error = new Error('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.');
         error.status = 401;
+        onRefreshFailed(error);
         throw error;
       }
     } else {
       // Queue requests until token is refreshed
       return new Promise((resolve, reject) => {
-        subscribeTokenRefresh(async (newToken) => {
+        subscribeTokenRefresh(async (refreshError, newToken) => {
+          if (refreshError) {
+            reject(refreshError);
+            return;
+          }
           try {
             const retryHeaders = {
               ...headers,

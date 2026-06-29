@@ -1,5 +1,13 @@
 const Project = require('../models/Project');
-const Committee = require('../models/Committee');
+
+const loadModel = (modelPath) => {
+  try {
+    return require(modelPath);
+  } catch (error) {
+    if (error.code === 'MODULE_NOT_FOUND') return null;
+    throw error;
+  }
+};
 
 const checkContextualAssignment = (requiredRole, paramName = 'projectId') => {
   return async (req, res, next) => {
@@ -41,18 +49,22 @@ const checkContextualAssignment = (requiredRole, paramName = 'projectId') => {
 
       // Case 3: Defense Committee Board contextual checks (Chair, Secretary, Member)
       if (['COMMITTEE_CHAIR', 'COMMITTEE_SECRETARY', 'COMMITTEE_MEMBER'].includes(requiredRole)) {
+        const Committee = loadModel('../models/Committee');
+        const DefenseSession = loadModel('../models/DefenseSession');
+        if (!Committee || !DefenseSession) {
+          return res.status(501).json({ success: false, message: 'Committee contextual authorization is not configured.' });
+        }
+
         let committee;
         if (paramName === 'committeeId') {
           committee = await Committee.findById(entityId);
         } else if (paramName === 'projectId') {
           // Trace defense session associated with project to fetch the committee
-          const DefenseSession = require('../models/DefenseSession');
           const session = await DefenseSession.findOne({ projectId: entityId });
           if (session) {
             committee = await Committee.findById(session.committeeId);
           }
         } else if (paramName === 'sessionId' || paramName === 'id') {
-          const DefenseSession = require('../models/DefenseSession');
           const session = await DefenseSession.findById(entityId);
           if (session) {
             committee = await Committee.findById(session.committeeId);
