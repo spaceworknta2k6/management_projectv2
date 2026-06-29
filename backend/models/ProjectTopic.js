@@ -140,6 +140,10 @@ const ProjectTopicSchema = new mongoose.Schema({
     enum: ['draft', 'submitted', 'ai_checked', 'needs_revision', 'approved', 'published', 'assigned', 'locked', 'changed', 'cancelled', 'completed', 'rejected'],
     default: 'draft',
   },
+  rejectionReason: {
+    type: String,
+    trim: true,
+  },
   aiDuplicateRisk: {
     checked: { type: Boolean, default: false },
     maxSimilarityScore: { type: Number, default: 0 },

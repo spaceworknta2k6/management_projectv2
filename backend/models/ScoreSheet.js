@@ -109,6 +109,10 @@ const ScoreSheetSchema = new mongoose.Schema({
   lockedAt: {
     type: Date,
   },
+  digitalSignature: {
+    type: String,
+    trim: true,
+  },
   version: {
     type: Number,
     default: 0,

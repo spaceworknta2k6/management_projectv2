@@ -95,6 +95,10 @@ const SubmissionPackageSchema = new mongoose.Schema({
   reviewedAt: {
     type: Date,
   },
+  reviewNotes: {
+    type: String,
+    trim: true,
+  },
   lockedAt: {
     type: Date,
   },
