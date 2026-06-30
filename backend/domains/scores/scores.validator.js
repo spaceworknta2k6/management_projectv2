@@ -18,11 +18,11 @@ const validateScoreSheetSubmit = (req, res, next) => {
     errors.push({ field: 'periodId', code: 'PERIOD_ID_INVALID', message: 'Mã đợt đồ án (periodId) không hợp lệ.' });
   }
 
-  if (!rubricRole || !['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER', 'SECOND_MARKER', 'RECHECK'].includes(rubricRole)) {
-    errors.push({ field: 'rubricRole', code: 'RUBRIC_ROLE_INVALID', message: 'Vai trò rubric phải là một trong: SUPERVISOR, REVIEWER, COMMITTEE_MEMBER, SECOND_MARKER, RECHECK.' });
+  if (!rubricRole || !['SUPERVISOR', 'REVIEWER', 'SECOND_MARKER', 'RECHECK'].includes(rubricRole)) {
+    errors.push({ field: 'rubricRole', code: 'RUBRIC_ROLE_INVALID', message: 'Vai trò rubric phải là một trong: SUPERVISOR, REVIEWER, SECOND_MARKER, RECHECK.' });
   }
 
-  if (!targetType || !['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER', 'NON_DEFENSE_MARKER', 'SECOND_MARKER', 'RECHECK'].includes(targetType)) {
+  if (!targetType || !['SUPERVISOR', 'REVIEWER', 'SECOND_MARKER', 'RECHECK'].includes(targetType)) {
     errors.push({ field: 'targetType', code: 'TARGET_TYPE_INVALID', message: 'Loại chấm điểm (targetType) không hợp lệ.' });
   }
 

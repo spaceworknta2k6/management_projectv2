@@ -49,7 +49,6 @@ const approvalMeta = {
 const targetTypeLabels = {
   milestone: 'Mốc tiến độ',
   submission: 'Hồ sơ nộp',
-  defense_session: 'Lịch bảo vệ',
   project: 'Dự án',
 };
 
@@ -433,7 +432,7 @@ export default function ExtensionRequestsPage() {
   const getTargetLabel = (request) => {
     const milestone = milestoneMap[request.targetId];
     if (milestone) return milestone.title;
-    return `${targetTypeLabels[request.targetType] || request.targetType}: ${String(request.targetId).slice(-6)}`;
+    return `${targetTypeLabels[request.targetType] || 'Đối tượng'}: ${String(request.targetId).slice(-6)}`;
   };
 
   if (loading) {

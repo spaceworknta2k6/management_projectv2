@@ -36,7 +36,7 @@ const PackageItemSchema = new mongoose.Schema({
 const SubmissionPackageSchema = new mongoose.Schema({
   ownerType: {
     type: String,
-    enum: ['project', 'defense'],
+    enum: ['project'],
     required: true,
   },
   ownerId: {
@@ -65,7 +65,7 @@ const SubmissionPackageSchema = new mongoose.Schema({
   },
   phase: {
     type: String,
-    enum: ['proposal', 'progress', 'pre_defense', 'post_defense', 'archive'],
+    enum: ['proposal', 'progress', 'final_report', 'post_report_revision', 'archive'],
     required: true,
   },
   deadline: {
@@ -124,7 +124,7 @@ SubmissionPackageSchema.pre('validate', function () {
   if (!this.studentId && this.projectOwnerType === 'student' && this.projectOwnerId) this.studentId = this.projectOwnerId;
 });
 
-// A specific project/defense context can have only one package per phase
+// A specific project context can have only one package per phase
 SubmissionPackageSchema.index(
   { ownerType: 1, ownerId: 1, phase: 1 },
   { unique: true, partialFilterExpression: { isDeleted: false } }

@@ -11,10 +11,7 @@ const validatePeriodCreate = (req, res, next) => {
     registrationEnd,
     projectStart,
     projectEnd,
-    preDefenseSubmissionDeadline,
-    defenseStart,
-    defenseEnd,
-    postDefenseRevisionDeadline,
+    revisionDeadline,
     archiveDeadline,
     minGroupSize,
     maxGroupSize,
@@ -127,17 +124,11 @@ const validatePeriodCreate = (req, res, next) => {
     projectEnd: new Date(projectEnd),
   };
 
-  if (isOfferingFlow) {
-    if (finalSubmissionDeadline) dates.finalSubmissionDeadline = new Date(finalSubmissionDeadline);
-    if (gradingStart) dates.gradingStart = new Date(gradingStart);
-    if (gradingEnd) dates.gradingEnd = new Date(gradingEnd);
-  } else {
-    if (preDefenseSubmissionDeadline) dates.preDefenseSubmissionDeadline = new Date(preDefenseSubmissionDeadline);
-    if (defenseStart) dates.defenseStart = new Date(defenseStart);
-    if (defenseEnd) dates.defenseEnd = new Date(defenseEnd);
-    if (postDefenseRevisionDeadline) dates.postDefenseRevisionDeadline = new Date(postDefenseRevisionDeadline);
-    if (archiveDeadline) dates.archiveDeadline = new Date(archiveDeadline);
-  }
+  if (finalSubmissionDeadline) dates.finalSubmissionDeadline = new Date(finalSubmissionDeadline);
+  if (gradingStart) dates.gradingStart = new Date(gradingStart);
+  if (gradingEnd) dates.gradingEnd = new Date(gradingEnd);
+  if (revisionDeadline) dates.revisionDeadline = new Date(revisionDeadline);
+  if (archiveDeadline) dates.archiveDeadline = new Date(archiveDeadline);
 
   // Check if any date is invalid
   for (const [key, value] of Object.entries(dates)) {
@@ -161,32 +152,20 @@ const validatePeriodCreate = (req, res, next) => {
       errors.push({ field: 'projectEnd', code: 'PROJECT_END_BEFORE_START', message: 'Thời gian kết thúc đồ án phải sau thời gian bắt đầu thực hiện.' });
     }
     
-    if (isOfferingFlow) {
-      if (dates.finalSubmissionDeadline && dates.projectEnd < dates.finalSubmissionDeadline) {
-        errors.push({ field: 'finalSubmissionDeadline', code: 'FINAL_SUBMISSION_DEADLINE_AFTER_PROJECT_END', message: 'Hạn nộp báo cáo cuối cùng phải diễn ra trước khi kết thúc đợt đồ án.' });
-      }
-      if (dates.finalSubmissionDeadline && dates.gradingStart && dates.finalSubmissionDeadline >= dates.gradingStart) {
-        errors.push({ field: 'gradingStart', code: 'GRADING_START_BEFORE_SUBMISSION_DEADLINE', message: 'Thời gian bắt đầu chấm điểm phải diễn ra sau hạn nộp báo cáo.' });
-      }
-      if (dates.gradingStart && dates.gradingEnd && dates.gradingStart >= dates.gradingEnd) {
-        errors.push({ field: 'gradingEnd', code: 'GRADING_END_BEFORE_START', message: 'Thời gian kết thúc chấm điểm phải sau thời gian bắt đầu chấm điểm.' });
-      }
-    } else {
-      if (dates.preDefenseSubmissionDeadline && dates.projectEnd < dates.preDefenseSubmissionDeadline) {
-        errors.push({ field: 'preDefenseSubmissionDeadline', code: 'PRE_DEFENSE_DEADLINE_AFTER_PROJECT_END', message: 'Hạn nộp hồ sơ trước bảo vệ phải diễn ra trước khi kết thúc đợt đồ án.' });
-      }
-      if (dates.preDefenseSubmissionDeadline && dates.defenseStart && dates.preDefenseSubmissionDeadline >= dates.defenseStart) {
-        errors.push({ field: 'defenseStart', code: 'DEFENSE_START_BEFORE_SUBMISSION_DEADLINE', message: 'Thời gian bắt đầu bảo vệ phải diễn ra sau hạn nộp hồ sơ trước bảo vệ.' });
-      }
-      if (dates.defenseStart && dates.defenseEnd && dates.defenseStart >= dates.defenseEnd) {
-        errors.push({ field: 'defenseEnd', code: 'DEFENSE_END_BEFORE_START', message: 'Thời gian kết thúc bảo vệ phải sau thời gian bắt đầu bảo vệ.' });
-      }
-      if (dates.defenseEnd && dates.postDefenseRevisionDeadline && dates.defenseEnd >= dates.postDefenseRevisionDeadline) {
-        errors.push({ field: 'postDefenseRevisionDeadline', code: 'REVISION_DEADLINE_BEFORE_DEFENSE_END', message: 'Hạn sửa đổi báo cáo sau bảo vệ phải sau khi kết thúc bảo vệ.' });
-      }
-      if (dates.postDefenseRevisionDeadline && dates.archiveDeadline && dates.postDefenseRevisionDeadline >= dates.archiveDeadline) {
-        errors.push({ field: 'archiveDeadline', code: 'ARCHIVE_DEADLINE_BEFORE_REVISION_END', message: 'Hạn nộp báo cáo lưu trữ phải sau hạn sửa đổi báo cáo sau bảo vệ.' });
-      }
+    if (dates.finalSubmissionDeadline && dates.projectEnd < dates.finalSubmissionDeadline) {
+      errors.push({ field: 'finalSubmissionDeadline', code: 'FINAL_SUBMISSION_DEADLINE_AFTER_PROJECT_END', message: 'Hạn nộp báo cáo cuối cùng phải diễn ra trước khi kết thúc đợt đồ án.' });
+    }
+    if (dates.finalSubmissionDeadline && dates.gradingStart && dates.finalSubmissionDeadline >= dates.gradingStart) {
+      errors.push({ field: 'gradingStart', code: 'GRADING_START_BEFORE_SUBMISSION_DEADLINE', message: 'Thời gian bắt đầu chấm điểm phải diễn ra sau hạn nộp báo cáo.' });
+    }
+    if (dates.gradingStart && dates.gradingEnd && dates.gradingStart >= dates.gradingEnd) {
+      errors.push({ field: 'gradingEnd', code: 'GRADING_END_BEFORE_START', message: 'Thời gian kết thúc chấm điểm phải sau thời gian bắt đầu chấm điểm.' });
+    }
+    if (dates.gradingEnd && dates.revisionDeadline && dates.gradingEnd >= dates.revisionDeadline) {
+      errors.push({ field: 'revisionDeadline', code: 'REVISION_DEADLINE_BEFORE_GRADING_END', message: 'Hạn chỉnh sửa sau báo cáo phải sau thời gian kết thúc chấm điểm.' });
+    }
+    if (dates.revisionDeadline && dates.archiveDeadline && dates.revisionDeadline >= dates.archiveDeadline) {
+      errors.push({ field: 'archiveDeadline', code: 'ARCHIVE_DEADLINE_BEFORE_REVISION_END', message: 'Hạn nộp báo cáo lưu trữ phải sau hạn chỉnh sửa sau báo cáo.' });
     }
   }
 

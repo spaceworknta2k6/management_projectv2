@@ -95,19 +95,7 @@ const ProjectPeriodSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
-  preDefenseSubmissionDeadline: {
-    type: Date,
-    required: false,
-  },
-  defenseStart: {
-    type: Date,
-    required: false,
-  },
-  defenseEnd: {
-    type: Date,
-    required: false,
-  },
-  postDefenseRevisionDeadline: {
+  revisionDeadline: {
     type: Date,
     required: false,
   },
@@ -178,7 +166,7 @@ const ProjectPeriodSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'registration_open', 'topic_review', 'in_progress', 'defense', 'scoring', 'grading', 'results_published', 'appeal_open', 'result_locked', 'archived', 'cancelled'],
+    enum: ['draft', 'registration_open', 'topic_review', 'in_progress', 'grading', 'results_published', 'appeal_open', 'result_locked', 'archived', 'cancelled'],
     default: 'draft',
   },
   lockedAt: {

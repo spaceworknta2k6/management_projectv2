@@ -59,7 +59,7 @@ const STATUS_MAP = {
   enrollment: { label: 'Đăng ký', variant: 'info' },
   registration_open: { label: 'Đăng ký', variant: 'info' },
   in_progress: { label: 'Đang diễn ra', variant: 'success' },
-  defense: { label: 'Báo cáo/trình bày', variant: 'warning' },
+  grading: { label: 'Đang chấm điểm', variant: 'warning' },
   completed: { label: 'Hoàn thành', variant: 'success' },
   results_published: { label: 'Đã công bố điểm', variant: 'success' },
   appeal_open: { label: 'Đang nhận phúc khảo', variant: 'warning' },
@@ -81,12 +81,11 @@ const STATUS_MAP = {
   changed: { label: 'Đã thay đổi', variant: 'info' },
   cancelled: { label: 'Đã hủy', variant: 'error' },
   // Project statuses
-  pre_defense_submitted: { label: 'Đã nộp báo cáo', variant: 'info' },
+  final_report_submitted: { label: 'Đã nộp báo cáo cuối', variant: 'info' },
   supervisor_reviewed: { label: 'GVHD đã nhận xét', variant: 'success' },
   reviewer_reviewed: { label: 'GV chấm 2 đã nhận xét', variant: 'success' },
-  defense_eligible: { label: 'Sẵn sàng chấm', variant: 'success' },
-  defended: { label: 'Đã trình bày', variant: 'success' },
-  post_defense_revision: { label: 'Chỉnh sửa sau báo cáo', variant: 'warning' },
+  ready_for_grading: { label: 'Sẵn sàng chấm', variant: 'success' },
+  post_report_revision: { label: 'Chỉnh sửa sau báo cáo', variant: 'warning' },
   finalized: { label: 'Đã hoàn tất', variant: 'success' },
   failed: { label: 'Không đạt', variant: 'error' },
   // Submission statuses
@@ -96,11 +95,6 @@ const STATUS_MAP = {
   accepted: { label: 'Đã chấp nhận', variant: 'success' },
   graded: { label: 'Đã chấm', variant: 'success' },
   late: { label: 'Trễ hạn', variant: 'error' },
-  // Defense statuses
-  scheduled: { label: 'Đã lên lịch', variant: 'info' },
-  started: { label: 'Đang diễn ra', variant: 'warning' },
-  rescheduled: { label: 'Đã đổi lịch', variant: 'warning' },
-  no_show: { label: 'Vắng mặt', variant: 'error' },
   // Score statuses
   published: { label: 'Đã công bố', variant: 'success' },
   // Common/system statuses
@@ -138,7 +132,7 @@ const TECHNICAL_LABELS = {
   SPAWN_PROJECT: 'Tạo dự án từ đề tài',
   START_PROJECT: 'Bắt đầu dự án',
   ASSIGN_REVIEWER: 'Phân công giảng viên chấm 2',
-  MARK_DEFENSE_ELIGIBLE: 'Đánh dấu sẵn sàng chấm',
+  MARK_READY_FOR_GRADING: 'Đánh dấu sẵn sàng chấm',
   FINALIZE_PROJECT: 'Hoàn tất dự án',
   CANCEL_PROJECT: 'Hủy dự án',
 

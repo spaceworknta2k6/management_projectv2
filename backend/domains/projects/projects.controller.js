@@ -61,12 +61,12 @@ const assignReviewer = async (req, res, next) => {
   }
 };
 
-const markDefenseEligible = async (req, res, next) => {
+const markReadyForGrading = async (req, res, next) => {
   try {
-    const result = await projectsService.markDefenseEligible(req.params.id, req.user._id);
+    const result = await projectsService.markReadyForGrading(req.params.id, req.user._id);
     return res.status(200).json({
       success: true,
-      message: 'Duyệt đủ điều kiện bảo vệ đồ án tốt nghiệp thành công!',
+      message: 'Đã đánh dấu dự án sẵn sàng chấm thành công!',
       data: result,
     });
   } catch (error) {
@@ -114,7 +114,7 @@ module.exports = {
   getProjectById,
   markInProgress,
   assignReviewer,
-  markDefenseEligible,
+  markReadyForGrading,
   finalizeProject,
   cancelProject,
 };

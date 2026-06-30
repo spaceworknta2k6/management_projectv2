@@ -25,13 +25,13 @@ export default function ProjectCard({
         return <Badge variant="info">Mới phân công</Badge>;
       case 'in_progress':
         return <Badge variant="warning">Đang thực hiện</Badge>;
-      case 'pre_defense_submitted':
-        return <Badge variant="info">Đã nộp báo cáo</Badge>;
+      case 'final_report_submitted':
+        return <Badge variant="info">Đã nộp báo cáo cuối</Badge>;
       case 'supervisor_reviewed':
         return <Badge variant="success">GVHD đã đánh giá</Badge>;
       case 'reviewer_reviewed':
         return <Badge variant="success">GV chấm 2 đã đánh giá</Badge>;
-      case 'defense_eligible':
+      case 'ready_for_grading':
         return <Badge variant="success">Sẵn sàng chấm</Badge>;
       case 'finalized':
         return <Badge variant="success">Đã hoàn thành</Badge>;
@@ -69,7 +69,7 @@ export default function ProjectCard({
                 <UserCheck size={14} /> Phân công GV chấm 2
               </Button>
 
-              {['ready_for_grading', 'defense_eligible'].includes(p.status) && (
+              {p.status === 'ready_for_grading' && (
                 <Button variant="success" size="sm" onClick={() => onFinalizeProject(p._id)}>
                   <CheckSquare size={14} /> Chốt hoàn tất
                 </Button>

@@ -23,7 +23,6 @@ const {
   getSuggestionPrompt,
   getChatSystemPrompt,
   getFeedbackPrompt,
-  getDefenseQuestionsPrompt,
 } = require("./ai.prompts");
 
 const chatTopicSuggestion = async (studentId, messages) => {
@@ -367,48 +366,6 @@ const analyzeReportFeedback = async (submissionId, user) => {
   return await executeJob(job, processFn);
 };
 
-const suggestDefenseQuestions = async (projectId, user) => {
-  const project = await Project.findById(projectId).populate("topicId");
-  if (!project) throw { status: 404, message: "Dự án đồ án không tồn tại." };
-
-  const topicTitle = project.topicId
-    ? project.topicId.title
-    : "Đồ án tốt nghiệp";
-  const objectives = project.topicId ? project.topicId.objectives : "";
-
-  const inputs = { topicTitle, objectives };
-  const inputHash = crypto
-    .createHash("sha256")
-    .update(JSON.stringify(inputs))
-    .digest("hex");
-
-  const cachedJob = await AiJob.findOne({
-    feature: "defense_question",
-    targetType: "Project",
-    targetId: projectId,
-    inputHash,
-    status: "succeeded",
-  });
-  if (cachedJob) return cachedJob;
-
-  const job = new AiJob({
-    feature: "defense_question",
-    targetType: "Project",
-    targetId: projectId,
-    inputHash,
-    model: getModelName(),
-    createdBy: user._id,
-  });
-  await job.save();
-
-  const processFn = async () => {
-    const prompt = getDefenseQuestionsPrompt(topicTitle, objectives);
-    return await callGemini(prompt);
-  };
-
-  return await executeJob(job, processFn);
-};
-
 const getJobById = async (id) => {
   const job = await AiJob.findById(id);
   if (!job) throw { status: 404, message: "Tác vụ AI không tồn tại." };
@@ -454,8 +411,6 @@ const retryAiJob = async (id, user) => {
       weaknesses: "",
       suggestions: "",
     });
-  } else if (job.feature === "defense_question") {
-    processFn = async () => ({ questions: [] });
   }
 
   return await executeJob(job, processFn);
@@ -551,7 +506,6 @@ module.exports = {
   suggestTopics,
   chatTopicSuggestion,
   analyzeReportFeedback,
-  suggestDefenseQuestions,
   getJobById,
   retryAiJob,
   manualOverrideJob,

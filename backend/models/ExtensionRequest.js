@@ -22,7 +22,7 @@ const ApprovalBlockSchema = new mongoose.Schema({
 const ExtensionRequestSchema = new mongoose.Schema({
   targetType: {
     type: String,
-    enum: ['milestone', 'submission', 'defense_session', 'project'],
+    enum: ['milestone', 'submission', 'project'],
     required: true,
   },
   targetId: {

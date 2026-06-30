@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const VarianceFlagSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['committee_member_variance', 'supervisor_reviewer_variance', 'marker_variance'],
+    enum: ['supervisor_reviewer_variance', 'marker_variance'],
     required: true,
   },
   maxDifference: {
@@ -52,13 +52,13 @@ const FinalGradeSchema = new mongoose.Schema({
   },
   evaluationMode: {
     type: String,
-    enum: ['defense', 'non_defense', 'recheck'],
-    default: 'non_defense',
+    enum: ['standard', 'recheck'],
+    default: 'standard',
   },
   componentScores: {
     type: mongoose.Schema.Types.Map,
     of: Number,
-    required: true, // e.g. { supervisor: 8.5, reviewer: 9.0, committee: 8.7 }
+    required: true, // e.g. { supervisor: 8.5, reviewer: 9.0 }
   },
   finalScore: {
     type: Number,

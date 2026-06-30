@@ -1,7 +1,7 @@
 const ProjectGroup = require('../models/ProjectGroup');
 const { resolveProjectOwner, isStudentOwner } = require('./project-owner');
 
-const STAFF_ROLES = ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF'];
+const STAFF_ROLES = ['SYSTEM_ADMIN', 'FACULTY_STAFF'];
 
 const getRoles = (user = {}) => user.roles || (user.role ? [user.role] : []);
 
@@ -19,10 +19,6 @@ const isAcceptedGroupMember = (group, studentId) => {
       member.studentId.toString() === studentId.toString() &&
       member.status === 'accepted'
   );
-};
-
-const isProjectCommitteeMember = async (projectId, lecturerId) => {
-  return false;
 };
 
 const canAccessProject = async (project, user = {}) => {
@@ -50,7 +46,6 @@ const canAccessProject = async (project, user = {}) => {
 
     if (supervisorId && supervisorId.toString() === lecturerId) return true;
     if (reviewerId && reviewerId.toString() === lecturerId) return true;
-    if (await isProjectCommitteeMember(project._id, user.lecturerId)) return true;
   }
 
   return false;
@@ -69,7 +64,6 @@ module.exports = {
   hasAnyRole,
   isStaff,
   isAcceptedGroupMember,
-  isProjectCommitteeMember,
   canAccessProject,
   assertProjectAccess,
 };

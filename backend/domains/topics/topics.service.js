@@ -402,7 +402,7 @@ const reviewTopic = async (topicId, action, user, note = '') => {
   
   // Verify permissions
   const roles = user.roles || [];
-  const isStaff = roles.some(r => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(r));
+  const isStaff = roles.some(r => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(r));
   let isAuthorizedLecturer = false;
 
   if (roles.includes('LECTURER') && user.lecturerId) {

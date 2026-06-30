@@ -231,17 +231,17 @@ function ProjectProgressBar({ projects }) {
     const counts = {
       assigned: 0,
       in_progress: 0,
-      pre_defense_submitted: 0,
-      defense_eligible: 0,
+      final_report_submitted: 0,
+      ready_for_grading: 0,
       finalized: 0,
       cancelled: 0,
     };
     projects.forEach((p) => {
       if (p.status === 'assigned') counts.assigned++;
       else if (p.status === 'in_progress') counts.in_progress++;
-      else if (['pre_defense_submitted', 'supervisor_reviewed', 'reviewer_reviewed'].includes(p.status)) {
-        counts.pre_defense_submitted++;
-      } else if (p.status === 'defense_eligible') counts.defense_eligible++;
+      else if (['final_report_submitted', 'supervisor_reviewed', 'reviewer_reviewed'].includes(p.status)) {
+        counts.final_report_submitted++;
+      } else if (p.status === 'ready_for_grading') counts.ready_for_grading++;
       else if (p.status === 'finalized') counts.finalized++;
       else if (p.status === 'cancelled') counts.cancelled++;
     });
@@ -257,8 +257,8 @@ function ProjectProgressBar({ projects }) {
   const items = [
     { label: 'Mới phân công', count: stats.assigned, color: 'var(--accent)' },
     { label: 'Đang thực hiện', count: stats.in_progress, color: 'var(--warning)' },
-    { label: 'Nộp báo cáo', count: stats.pre_defense_submitted, color: '#a855f7' },
-    { label: 'Sẵn sàng chấm', count: stats.defense_eligible, color: '#10b981' },
+    { label: 'Nộp báo cáo cuối', count: stats.final_report_submitted, color: '#a855f7' },
+    { label: 'Sẵn sàng chấm', count: stats.ready_for_grading, color: '#10b981' },
     { label: 'Đã hoàn thành', count: stats.finalized, color: 'var(--success)' },
     { label: 'Đã hủy', count: stats.cancelled, color: 'var(--error)' },
   ].filter((item) => item.count > 0);
@@ -421,7 +421,7 @@ export default function DashboardPage() {
         });
 
       dashboard.projects
-        .filter((project) => project.status === 'defense_eligible')
+        .filter((project) => project.status === 'ready_for_grading')
         .slice(0, 4)
         .forEach((project) => {
           items.push({

@@ -175,27 +175,27 @@ const assignReviewer = async (projectId, reviewerId, actorUserId) => {
   return project;
 };
 
-const markDefenseEligible = async (projectId, actorUserId) => {
+const markReadyForGrading = async (projectId, actorUserId) => {
   const project = await Project.findById(projectId);
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
 
-  const allowedStatuses = ['in_progress', 'pre_defense_submitted', 'supervisor_reviewed', 'reviewer_reviewed'];
+  const allowedStatuses = ['in_progress', 'final_report_submitted', 'supervisor_reviewed', 'reviewer_reviewed'];
   if (!allowedStatuses.includes(project.status)) {
     throw { status: 400, message: `Không thể đánh dấu sẵn sàng chấm cho dự án đang ở trạng thái [${project.status}].` };
   }
 
   const fromStatus = project.status;
-  project.status = 'defense_eligible';
+  project.status = 'ready_for_grading';
   await project.save();
 
   await logWorkflowEvent({
     entityId: project._id,
     fromStatus,
-    toStatus: 'defense_eligible',
+    toStatus: 'ready_for_grading',
     actorId: actorUserId,
-    action: 'MARK_DEFENSE_ELIGIBLE',
+    action: 'MARK_READY_FOR_GRADING',
     reason: 'Đánh dấu dự án sẵn sàng chấm',
   });
 
@@ -251,7 +251,7 @@ module.exports = {
   getProjectById,
   markInProgress,
   assignReviewer,
-  markDefenseEligible,
+  markReadyForGrading,
   finalizeProject,
   cancelProject,
 };

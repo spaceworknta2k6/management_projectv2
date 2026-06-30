@@ -59,19 +59,15 @@ const runIntegrationTests = async () => {
           topicChangeDeadline: new Date('2026-06-20'),
           projectStart: new Date('2026-06-25'),
           projectEnd: new Date('2026-10-31'),
-          preDefenseSubmissionDeadline: new Date('2026-10-15'),
-          defenseStart: new Date('2026-11-05'),
-          defenseEnd: new Date('2026-11-15'),
-          postDefenseRevisionDeadline: new Date('2026-11-20'),
+          finalSubmissionDeadline: new Date('2026-10-15'),
+          gradingStart: new Date('2026-11-05'),
+          gradingEnd: new Date('2026-11-15'),
+          revisionDeadline: new Date('2026-11-20'),
           archiveDeadline: new Date('2026-11-30'),
           minGroupSize: 1,
           maxGroupSize: 3,
           rubricVersion: 'v1.0-IT-HUST',
-          scoringFormula: {
-            supervisor: 0.3,
-            reviewer: 0.2,
-            committee: 0.5
-          },
+          scoringFormula: { supervisor: 0.5, reviewer: 0.5 },
           status: 'in_progress',
         });
       }

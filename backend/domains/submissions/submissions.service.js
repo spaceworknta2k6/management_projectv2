@@ -94,14 +94,14 @@ const initializePackage = async (projectId, phase, actorUserId, actorStudentId) 
     );
   } else if (phase === 'progress') {
     items.push({ type: 'report_pdf', required: true, status: 'missing' });
-  } else if (phase === 'pre_defense') {
+  } else if (phase === 'final_report') {
     items.push(
       { type: 'report_pdf', required: true, status: 'missing' },
       { type: 'slide', required: true, status: 'missing' },
       { type: 'source_code', required: false, status: 'missing' }
     );
   } else {
-    // post_defense or archive
+    // post_report_revision or archive
     items.push(
       { type: 'report_pdf', required: true, status: 'missing' },
       { type: 'source_code', required: true, status: 'missing' }
@@ -184,11 +184,11 @@ const submitPackage = async (packageId, actorUserId, actorStudentId) => {
   pkg.submittedAt = new Date();
   await pkg.save();
 
-  // If phase is pre_defense, auto transition parent project status to pre_defense_submitted
-  if (pkg.phase === 'pre_defense') {
+  // If phase is final_report, auto transition parent project status to final_report_submitted
+  if (pkg.phase === 'final_report') {
     const project = await Project.findById(pkg.ownerId);
     if (project && project.status === 'in_progress') {
-      project.status = 'pre_defense_submitted';
+      project.status = 'final_report_submitted';
       await project.save();
     }
   }
@@ -266,7 +266,7 @@ const reviewPackageItem = async (packageId, type, status, actorUserId, actorLect
   await pkg.save();
 
   // Link status change to Project workspace
-  if (pkg.phase === 'pre_defense' && pkg.status === 'accepted') {
+  if (pkg.phase === 'final_report' && pkg.status === 'accepted') {
     project.status = 'supervisor_reviewed';
     await project.save();
   }

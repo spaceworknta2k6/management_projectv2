@@ -9,7 +9,7 @@ const { assertOwnerAccess, resolveProjectOwner } = require('../../utils/project-
 const notificationsService = require('../notifications/notifications.service');
 
 
-const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(role));
+const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(role));
 
 const getRequestStudentUserIds = async (request) => {
   const userIds = [];

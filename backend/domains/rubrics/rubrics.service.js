@@ -36,11 +36,11 @@ const updateRubric = async (id, data, user) => {
   if (data.name !== undefined) rubric.name = data.name;
   if (data.description !== undefined) rubric.description = data.description;
   if (data.version !== undefined) rubric.version = data.version;
-  if (data.criteria !== undefined) {
-    if (data.criteria.SUPERVISOR) rubric.criteria.SUPERVISOR = data.criteria.SUPERVISOR;
-    if (data.criteria.REVIEWER) rubric.criteria.REVIEWER = data.criteria.REVIEWER;
-    if (data.criteria.COMMITTEE_MEMBER) rubric.criteria.COMMITTEE_MEMBER = data.criteria.COMMITTEE_MEMBER;
-  }
+    if (data.criteria !== undefined) {
+      if (data.criteria.SUPERVISOR) rubric.criteria.SUPERVISOR = data.criteria.SUPERVISOR;
+      if (data.criteria.REVIEWER) rubric.criteria.REVIEWER = data.criteria.REVIEWER;
+      if (data.criteria.SECOND_MARKER) rubric.criteria.SECOND_MARKER = data.criteria.SECOND_MARKER;
+    }
   rubric.updatedBy = user._id;
 
   return await rubric.save();

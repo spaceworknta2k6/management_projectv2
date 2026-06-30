@@ -115,7 +115,7 @@ export default function ScoresPage() {
   const [myAppeals, setMyAppeals] = useState([]);
   const [selectedPeriodData, setSelectedPeriodData] = useState(null);
 
-  const isStaffUser = useMemo(() => hasAnyRole(user, ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']), [user]);
+  const isStaffUser = useMemo(() => hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']), [user]);
   const isStudentUser = useMemo(() => (user?.roles || []).includes('STUDENT'), [user]);
 
   const fetchData = useCallback(async () => {

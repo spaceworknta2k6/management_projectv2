@@ -61,19 +61,15 @@ const runIntegrationTests = async () => {
           topicChangeDeadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
           projectStart: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
           projectEnd: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000),
-          preDefenseSubmissionDeadline: new Date(Date.now() + 100 * 24 * 60 * 60 * 1000),
-          defenseStart: new Date(Date.now() + 110 * 24 * 60 * 60 * 1000),
-          defenseEnd: new Date(Date.now() + 115 * 24 * 60 * 60 * 1000),
-          postDefenseRevisionDeadline: new Date(Date.now() + 118 * 24 * 60 * 60 * 1000),
+          finalSubmissionDeadline: new Date(Date.now() + 100 * 24 * 60 * 60 * 1000),
+          gradingStart: new Date(Date.now() + 110 * 24 * 60 * 60 * 1000),
+          gradingEnd: new Date(Date.now() + 115 * 24 * 60 * 60 * 1000),
+          revisionDeadline: new Date(Date.now() + 118 * 24 * 60 * 60 * 1000),
           archiveDeadline: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000),
           minGroupSize: 1,
           maxGroupSize: 3,
           rubricVersion: 'v1.0-IT-HUST',
-          scoringFormula: {
-            supervisor: 0.3,
-            reviewer: 0.2,
-            committee: 0.5
-          },
+          scoringFormula: { supervisor: 0.5, reviewer: 0.5 },
           status: 'in_progress',
         });
       }

@@ -103,7 +103,7 @@ export default function TopicChangesPage() {
 
   const isStudent = hasAnyRole(user, ['STUDENT']);
   const isLecturer = hasAnyRole(user, ['LECTURER']);
-  const isFaculty = hasAnyRole(user, ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']);
+  const isFaculty = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
 
   const visibleProjects = useMemo(() => {
     if (isStudent) {

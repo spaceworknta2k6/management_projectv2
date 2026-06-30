@@ -8,8 +8,8 @@ const validatePackageInitialize = (req, res, next) => {
     errors.push({ field: 'projectId', code: 'PROJECT_ID_INVALID', message: 'Mã dự án (projectId) không hợp lệ.' });
   }
 
-  if (!phase || !['proposal', 'progress', 'pre_defense', 'post_defense', 'archive'].includes(phase)) {
-    errors.push({ field: 'phase', code: 'PHASE_INVALID', message: 'Giai đoạn nộp báo cáo phải là một trong: proposal, progress, pre_defense, post_defense, archive.' });
+  if (!phase || !['proposal', 'progress', 'final_report', 'post_report_revision', 'archive'].includes(phase)) {
+    errors.push({ field: 'phase', code: 'PHASE_INVALID', message: 'Giai đoạn nộp báo cáo phải là một trong: đề cương, tiến độ, báo cáo cuối, chỉnh sửa sau báo cáo hoặc lưu trữ.' });
   }
 
   if (errors.length > 0) {

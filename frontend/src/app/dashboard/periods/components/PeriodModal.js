@@ -314,6 +314,38 @@ export default function PeriodModal({
               onChange={handleChange}
               error={formErrors.projectEnd}
             />
+            <Input
+              label="Hạn nộp báo cáo cuối"
+              name="finalSubmissionDeadline"
+              type="datetime-local"
+              value={form.finalSubmissionDeadline}
+              onChange={handleChange}
+              error={formErrors.finalSubmissionDeadline}
+            />
+            <Input
+              label="Bắt đầu chấm điểm"
+              name="gradingStart"
+              type="datetime-local"
+              value={form.gradingStart}
+              onChange={handleChange}
+              error={formErrors.gradingStart}
+            />
+            <Input
+              label="Kết thúc chấm điểm"
+              name="gradingEnd"
+              type="datetime-local"
+              value={form.gradingEnd}
+              onChange={handleChange}
+              error={formErrors.gradingEnd}
+            />
+            <Input
+              label="Hạn chỉnh sửa sau báo cáo"
+              name="revisionDeadline"
+              type="datetime-local"
+              value={form.revisionDeadline}
+              onChange={handleChange}
+              error={formErrors.revisionDeadline}
+            />
           </div>
 
           {/* Action Buttons */}

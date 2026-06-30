@@ -49,7 +49,7 @@ const getUsers = async ({ search = '', role = '', status = '', page = 1, limit =
  * Cập nhật vai trò (Roles) cho tài khoản
  */
 const updateUserRole = async (userId, roles) => {
-  const VALID_ROLES = ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF', 'LECTURER', 'STUDENT'];
+  const VALID_ROLES = ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'LECTURER', 'STUDENT'];
   
   if (!Array.isArray(roles) || roles.length === 0) {
     throw { status: 400, message: 'Danh sách vai trò không hợp lệ.' };

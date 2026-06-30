@@ -11,7 +11,7 @@ const validateRubricSubmit = (req, res, next) => {
   }
 
   if (criteria) {
-    const roles = ['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER'];
+    const roles = ['SUPERVISOR', 'REVIEWER', 'SECOND_MARKER'];
     roles.forEach((role) => {
       const criteriaList = criteria[role];
       if (criteriaList !== undefined) {

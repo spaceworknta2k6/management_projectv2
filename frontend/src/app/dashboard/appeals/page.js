@@ -41,7 +41,7 @@ export default function AppealsPage() {
 
   const [selectedAppealProject, setSelectedAppealProject] = useState(null);
 
-  const isStaffUser = useMemo(() => hasAnyRole(user, ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']), [user]);
+  const isStaffUser = useMemo(() => hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']), [user]);
 
   const fetchAppeals = useCallback(async () => {
     if (!selectedPeriodId || !token) return;

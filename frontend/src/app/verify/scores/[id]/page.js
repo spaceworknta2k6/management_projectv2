@@ -126,7 +126,8 @@ export default function PublicScoreVerificationPage() {
               <div className={css.infoVal}>
                 {sheet.rubricRole === 'SUPERVISOR' && 'Giảng viên hướng dẫn'}
                 {sheet.rubricRole === 'REVIEWER' && 'Giảng viên chấm 2'}
-                {sheet.rubricRole === 'COMMITTEE_MEMBER' && `Thành viên Hội đồng (${sheet.graderRole})`}
+                {sheet.rubricRole === 'SECOND_MARKER' && 'Giảng viên chấm bổ sung'}
+                {sheet.rubricRole === 'RECHECK' && 'Giảng viên phúc khảo'}
               </div>
             </div>
           </div>

@@ -36,12 +36,6 @@ const seedRubrics = async () => {
           { criteriaCode: 'C2', criteriaName: 'Chất lượng tài liệu tham khảo và trích dẫn khoa học', maxScore: 10, weight: 0.1 },
           { criteriaCode: 'C3', criteriaName: 'Ý nghĩa thực tiễn, tính mới và độ phức tạp của đề tài', maxScore: 10, weight: 0.3 },
           { criteriaCode: 'C4', criteriaName: 'Kết quả thực nghiệm, mức độ hoàn thiện sản phẩm', maxScore: 10, weight: 0.4 },
-        ],
-        COMMITTEE_MEMBER: [
-          { criteriaCode: 'C1', criteriaName: 'Bố cục và tính khoa học của nội dung báo cáo', maxScore: 10, weight: 0.2 },
-          { criteriaCode: 'C2', criteriaName: 'Chất lượng sản phẩm thực tế / Source code / Thực nghiệm', maxScore: 10, weight: 0.3 },
-          { criteriaCode: 'C3', criteriaName: 'Kỹ năng thuyết trình, slide báo cáo chuyên nghiệp', maxScore: 10, weight: 0.25 },
-          { criteriaCode: 'C4', criteriaName: 'Kỹ năng vấn đáp, trả lời câu hỏi phản biện hội đồng', maxScore: 10, weight: 0.25 },
         ]
       },
       createdBy: creatorId,
@@ -66,12 +60,6 @@ const seedRubrics = async () => {
           { criteriaCode: 'C2', criteriaName: 'Tính mới, độ phức tạp và khả năng ứng dụng thực tế', maxScore: 10, weight: 0.2 },
           { criteriaCode: 'C3', criteriaName: 'Khối lượng công việc và mức độ hoàn thành sản phẩm liên ngành', maxScore: 10, weight: 0.3 },
           { criteriaCode: 'C4', criteriaName: 'Chất lượng giải pháp kỹ thuật tích hợp liên ngành', maxScore: 10, weight: 0.3 },
-        ],
-        COMMITTEE_MEMBER: [
-          { criteriaCode: 'C1', criteriaName: 'Mức độ tích hợp liên ngành và phối hợp nhóm', maxScore: 10, weight: 0.2 },
-          { criteriaCode: 'C2', criteriaName: 'Chất lượng sản phẩm chung và Source code nhóm', maxScore: 10, weight: 0.3 },
-          { criteriaCode: 'C3', criteriaName: 'Kỹ năng thuyết trình nhóm, sự phối hợp báo cáo', maxScore: 10, weight: 0.2 },
-          { criteriaCode: 'C4', criteriaName: 'Đóng góp cá nhân và trả lời câu hỏi chuyên sâu', maxScore: 10, weight: 0.3 },
         ]
       },
       createdBy: creatorId,

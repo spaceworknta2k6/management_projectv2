@@ -14,7 +14,7 @@ router.post('/:id/mark-in-progress', projectsController.markInProgress);
 
 // Staff administrative actions
 router.post('/:id/assign-reviewer', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), projectsValidator.validateAssignReviewer, projectsController.assignReviewer);
-router.post('/:id/mark-defense-eligible', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), projectsController.markDefenseEligible);
+router.post('/:id/mark-ready-for-grading', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), projectsController.markReadyForGrading);
 router.post('/:id/finalize', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), projectsController.finalizeProject);
 router.post('/:id/cancel', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), projectsController.cancelProject);
 

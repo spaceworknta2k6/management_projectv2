@@ -12,8 +12,6 @@ const ProjectPeriod = require('../models/ProjectPeriod');
 const Project = require('../models/Project');
 const ProjectGroup = require('../models/ProjectGroup');
 const ProjectTopic = require('../models/ProjectTopic');
-const Committee = require('../models/Committee');
-const DefenseSession = require('../models/DefenseSession');
 const SubmissionPackage = require('../models/SubmissionPackage');
 const AiJob = require('../models/AiJob');
 const TopicEmbedding = require('../models/TopicEmbedding');
@@ -48,8 +46,6 @@ const runIntegrationTests = async () => {
       // Clean up previous runs
       await AiJob.deleteMany({});
       await TopicEmbedding.deleteMany({});
-      await Committee.deleteMany({});
-      await DefenseSession.deleteMany({});
       await ProjectGroup.deleteMany({});
       await ProjectTopic.deleteMany({});
       await Project.deleteMany({});
@@ -96,7 +92,6 @@ const runIntegrationTests = async () => {
       };
 
       const tokenStudent = await loginActor('hoanganh@hust.edu.vn', 'password123');
-      const tokenSupervisor = await loginActor('haikt@hust.edu.vn', 'password123');
       const tokenStaff = await loginActor('huonglt@hust.edu.vn', 'password123');
       console.log('✅ Access tokens retrieved successfully.');
 
@@ -112,16 +107,16 @@ const runIntegrationTests = async () => {
         registrationEnd: new Date('2026-06-15'),
         projectStart: new Date('2026-06-25'),
         projectEnd: new Date('2026-10-31'),
-        preDefenseSubmissionDeadline: new Date('2026-10-15'),
-        defenseStart: new Date('2026-11-05'),
-        defenseEnd: new Date('2026-11-15'),
-        postDefenseRevisionDeadline: new Date('2026-11-20'),
+        finalSubmissionDeadline: new Date('2026-10-15'),
+        gradingStart: new Date('2026-11-05'),
+        gradingEnd: new Date('2026-11-15'),
+        revisionDeadline: new Date('2026-11-20'),
         archiveDeadline: new Date('2026-11-30'),
         minGroupSize: 1,
         maxGroupSize: 3,
         topicChangeDeadline: new Date('2026-06-20'),
         rubricVersion: 'v1.0',
-        scoringFormula: { supervisor: 0.3, reviewer: 0.2, committee: 0.5 },
+        scoringFormula: { supervisor: 0.5, reviewer: 0.5 },
         status: 'in_progress',
       });
 
@@ -186,32 +181,6 @@ const runIntegrationTests = async () => {
       const projectId = project._id;
       console.log(`✅ Created mock project: ${projectId}`);
 
-      // Mock Committee & Defense Session for Defense questions check
-      const committee = await Committee.create({
-        periodId: period._id,
-        name: 'Hội đồng chấm HĐ-01',
-        facultyId: period.facultyId,
-        members: [
-          { lecturerId: supervisorLecturer._id, role: 'COMMITTEE_MEMBER' },
-          { lecturerId: reviewerLecturer._id, role: 'COMMITTEE_SECRETARY' },
-          { lecturerId: new mongoose.Types.ObjectId(), role: 'COMMITTEE_CHAIR' }
-        ],
-        status: 'active'
-      });
-
-      await DefenseSession.create({
-        projectId,
-        groupId: group._id,
-        committeeId: committee._id,
-        mode: 'online',
-        defenseDate: new Date('2026-06-15'),
-        startTime: '09:00',
-        endTime: '09:45',
-        orderNumber: 1,
-        status: 'scheduled'
-      });
-      console.log('✅ Created mock committee & defense session.');
-
       // 2. AI Duplicate Topic Check
       console.log('\n--- Test 1: POST /api/v1/ai/topics/:id/check-duplicate (AI duplicate check) ---');
       const dupRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/ai/topics/${topicId}/check-duplicate`, {
@@ -275,37 +244,8 @@ const runIntegrationTests = async () => {
       console.log('- suggestions:', feedResultData.suggestions);
       console.log('✅ Test 3 Passed: AI report feedback completed successfully!');
 
-      // 5. AI Defense Questions & Security check
-      console.log('\n--- Test 4: AI Defense Questions and Security scoping ---');
-      // Student tries to view defense questions
-      const badQuesRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/ai/projects/${projectId}/defense-questions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${tokenStudent}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      console.log('Student Request HTTP Status (Should be 403):', badQuesRes.status);
-      if (badQuesRes.status !== 403) {
-        throw new Error('❌ Test 4 Failed: Student was allowed to fetch committee defense questions.');
-      }
-      console.log('✅ Test 4a Passed: Student blocked from viewing exam questions!');
-
-      // Committee Member Nguyễn Thị Hồng views questions
-      const goodQuesRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/ai/projects/${projectId}/defense-questions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${tokenSupervisor}`, // haikt (Supervisor is in committee)
-          'Content-Type': 'application/json'
-        }
-      });
-      const goodQuesResult = await goodQuesRes.json();
-      console.log('Committee Request HTTP Status:', goodQuesRes.status);
-      const goodQuesResultData = validateAiJob(goodQuesResult, 'Test 4');
-      console.log(`✅ Test 4 Passed: Committee successfully retrieved ${goodQuesResultData.questions.length} deep defense questions!`);
-
-      // 6. Cache Hit Hit Check & Manual Override
-      console.log('\n--- Test 5: Cache Hit hit check and Manual Override ---');
+      // 5. Cache Hit Hit Check & Manual Override
+      console.log('\n--- Test 4: Cache Hit hit check and Manual Override ---');
       const startTimer = Date.now();
       
       // Request duplicate check again with same input

@@ -34,7 +34,7 @@ const getRequestStudentUserIds = async (request) => {
   return userIds;
 };
 
-const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(role));
+const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(role));
 
 const logWorkflowEvent = async ({
   entityType = 'TopicChangeRequest',
@@ -289,7 +289,7 @@ const supervisorReview = async (id, decision, note, user) => {
     // 2. Nếu GVHD đồng ý, gửi thông báo cho Giáo vụ khoa/Admin để duyệt tiếp
     if (decision === 'approved') {
       const staffUsers = await User.find({
-        roles: { $in: ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'] },
+        roles: { $in: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
         isDeleted: false,
         status: 'active'
       });

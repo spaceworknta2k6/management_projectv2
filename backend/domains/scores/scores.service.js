@@ -472,7 +472,7 @@ const aggregateFinalGrade = async (projectId, user) => {
     existingGrade.passStatus = passStatus;
     existingGrade.varianceFlags = varianceFlags;
     existingGrade.formulaVersion = period.rubricVersion || '1.0';
-    existingGrade.evaluationMode = 'non_defense';
+    existingGrade.evaluationMode = 'standard';
     grade = await existingGrade.save();
   } else {
     const owner = resolveProjectOwner(project);
@@ -483,7 +483,7 @@ const aggregateFinalGrade = async (projectId, user) => {
       studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
       groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : undefined,
       periodId: project.periodId,
-      evaluationMode: 'non_defense',
+      evaluationMode: 'standard',
       componentScores,
       finalScore,
       letterGrade,

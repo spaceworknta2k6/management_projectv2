@@ -49,9 +49,6 @@ const runTests = async () => {
           ],
           REVIEWER: [
             { criteriaCode: 'C1', criteriaName: 'Phản biện', maxScore: 10, weight: 1.0 }
-          ],
-          COMMITTEE_MEMBER: [
-            { criteriaCode: 'C1', criteriaName: 'Hội đồng', maxScore: 10, weight: 1.0 }
           ]
         },
         createdBy: staffUser._id,
@@ -72,20 +69,16 @@ const runTests = async () => {
         topicChangeDeadline: new Date('2026-06-20'),
         projectStart: new Date('2026-06-25'),
         projectEnd: new Date('2026-10-31'),
-        preDefenseSubmissionDeadline: new Date('2026-10-15'),
-        defenseStart: new Date('2026-11-05'),
-        defenseEnd: new Date('2026-11-15'),
-        postDefenseRevisionDeadline: new Date('2026-11-20'),
+        finalSubmissionDeadline: new Date('2026-10-15'),
+        gradingStart: new Date('2026-11-05'),
+        gradingEnd: new Date('2026-11-15'),
+        revisionDeadline: new Date('2026-11-20'),
         archiveDeadline: new Date('2026-11-30'),
         minGroupSize: 1,
         maxGroupSize: 3,
         rubricVersion: '1.0',
         rubricId: rubric._id,
-        scoringFormula: {
-          supervisor: 0.3,
-          reviewer: 0.2,
-          committee: 0.5
-        },
+        scoringFormula: { supervisor: 0.5, reviewer: 0.5 },
         status: 'in_progress',
       });
       console.log(`✅ ProjectPeriod created with Rubric link. Rubric ID = ${period.rubricId}`);

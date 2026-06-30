@@ -252,13 +252,13 @@ export default function ProjectsPage() {
       switch (status) {
         case 'assigned': return 'Mới phân công';
         case 'in_progress': return 'Đang thực hiện';
-        case 'pre_defense_submitted': return 'Đã nộp báo cáo';
+        case 'final_report_submitted': return 'Đã nộp báo cáo cuối';
         case 'supervisor_reviewed': return 'GVHD đã đánh giá';
         case 'reviewer_reviewed': return 'GV chấm 2 đã đánh giá';
-        case 'defense_eligible': return 'Sẵn sàng chấm';
+        case 'ready_for_grading': return 'Sẵn sàng chấm';
         case 'finalized': return 'Đã hoàn thành';
         case 'cancelled': return 'Đã hủy';
-        default: return status || '';
+        default: return 'Không xác định';
       }
     };
 

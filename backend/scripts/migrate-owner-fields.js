@@ -5,7 +5,6 @@ const connectDB = require('../config/db');
 const ProjectTopic = require('../models/ProjectTopic');
 const Project = require('../models/Project');
 const ExtensionRequest = require('../models/ExtensionRequest');
-const DefenseSession = require('../models/DefenseSession');
 const ScoreSheet = require('../models/ScoreSheet');
 const FinalGrade = require('../models/FinalGrade');
 const TopicChangeRequest = require('../models/TopicChangeRequest');
@@ -64,7 +63,6 @@ const run = async () => {
     ['ProjectTopic', ProjectTopic],
     ['Project', Project],
     ['ExtensionRequest', ExtensionRequest],
-    ['DefenseSession', DefenseSession],
     ['ScoreSheet', ScoreSheet],
     ['FinalGrade', FinalGrade],
     ['TopicChangeRequest', TopicChangeRequest],

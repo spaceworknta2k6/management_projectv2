@@ -93,7 +93,7 @@ export default function ProfilePage() {
   const status = statusInfo[user?.status] || { label: user?.status || statusInfo.active.label, variant: 'neutral' };
   const avatarUrl = getAvatarUrl(user?.avatarUrl);
   const isStudent = roles.includes('STUDENT');
-  const hasLecturerProfile = roles.includes('LECTURER') || roles.includes('DEPARTMENT_STAFF');
+  const hasLecturerProfile = roles.includes('LECTURER');
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));

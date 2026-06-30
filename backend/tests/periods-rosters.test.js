@@ -71,19 +71,15 @@ const runIntegrationTests = async () => {
         topicChangeDeadline: '2026-06-20T00:00:00.000Z',
         projectStart: '2026-06-25T00:00:00.000Z',
         projectEnd: '2026-10-31T00:00:00.000Z',
-        preDefenseSubmissionDeadline: '2026-10-15T00:00:00.000Z',
-        defenseStart: '2026-11-05T00:00:00.000Z',
-        defenseEnd: '2026-11-15T00:00:00.000Z',
-        postDefenseRevisionDeadline: '2026-11-20T00:00:00.000Z',
+        finalSubmissionDeadline: '2026-10-15T00:00:00.000Z',
+        gradingStart: '2026-11-05T00:00:00.000Z',
+        gradingEnd: '2026-11-15T00:00:00.000Z',
+        revisionDeadline: '2026-11-20T00:00:00.000Z',
         archiveDeadline: '2026-11-30T00:00:00.000Z',
         minGroupSize: 1,
         maxGroupSize: 3,
         rubricVersion: 'v1.0-IT-HUST',
-        scoringFormula: {
-          supervisor: 0.3,
-          reviewer: 0.2,
-          committee: 0.5
-        }
+        scoringFormula: { supervisor: 0.5, reviewer: 0.5 }
       };
 
       const createResponse = await fetch(`http://localhost:${TEST_PORT}/api/v1/periods`, {

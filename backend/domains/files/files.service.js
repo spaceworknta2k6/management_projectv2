@@ -227,7 +227,7 @@ const checkFileAccess = async (id, user) => {
   }
 
   // Case 1: Global Admin or Faculty Staff bypass
-  if (hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF'])) {
+  if (hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF'])) {
     return asset;
   }
 
@@ -341,7 +341,7 @@ const deleteFile = async (id, user) => {
     throw { status: 404, message: 'Tệp tin không tồn tại.' };
   }
 
-  const isStaff = hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF']);
+  const isStaff = hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF']);
   const isOwner = asset.uploadedBy.toString() === user._id.toString();
 
   if (!isStaff && !isOwner) {

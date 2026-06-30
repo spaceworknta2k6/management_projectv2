@@ -82,7 +82,7 @@ const protect = async (req, res, next) => {
       }
     }
 
-    if (user.roles.includes('LECTURER') || user.roles.includes('DEPARTMENT_STAFF')) {
+    if (user.roles.includes('LECTURER')) {
       const lecturer = await Lecturer.findOne({ userId: user._id, isDeleted: false });
       if (lecturer) {
         req.user.lecturerId = lecturer._id;

@@ -66,19 +66,15 @@ const runIntegrationTests = async () => {
           topicChangeDeadline: new Date('2026-06-20'),
           projectStart: new Date('2026-06-25'),
           projectEnd: new Date('2026-10-31'),
-          preDefenseSubmissionDeadline: new Date('2026-10-15'),
-          defenseStart: new Date('2026-11-05'),
-          defenseEnd: new Date('2026-11-15'),
-          postDefenseRevisionDeadline: new Date('2026-11-20'),
+          finalSubmissionDeadline: new Date('2026-10-15'),
+          gradingStart: new Date('2026-11-05'),
+          gradingEnd: new Date('2026-11-15'),
+          revisionDeadline: new Date('2026-11-20'),
           archiveDeadline: new Date('2026-11-30'),
           minGroupSize: 1,
           maxGroupSize: 3,
           rubricVersion: 'v1.0-IT-HUST',
-          scoringFormula: {
-            supervisor: 0.3,
-            reviewer: 0.2,
-            committee: 0.5
-          },
+          scoringFormula: { supervisor: 0.5, reviewer: 0.5 },
           status: 'in_progress',
         });
       }
@@ -346,8 +342,8 @@ const runIntegrationTests = async () => {
       console.log('✅ Test 8 Passed: Faculty Staff successfully assigned Lecturer Nguyễn Thị Hồng as Reviewer.');
 
       // 9. Mark Defense Eligible (Staff only)
-      console.log('\n--- Test 9: POST /api/v1/projects/:id/mark-defense-eligible ---');
-      const eligibleRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}/mark-defense-eligible`, {
+      console.log('\n--- Test 9: POST /api/v1/projects/:id/mark-ready-for-grading ---');
+      const eligibleRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}/mark-ready-for-grading`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${tokenStaff}`,
@@ -357,10 +353,10 @@ const runIntegrationTests = async () => {
 
       const eligibleResult = await eligibleRes.json();
       console.log('HTTP Status:', eligibleRes.status);
-      if (!eligibleResult.success || eligibleResult.data.status !== 'defense_eligible') {
-        throw new Error(`❌ Test 9 Failed: Marking defense eligible failed. Msg: ${eligibleResult.message}`);
+      if (!eligibleResult.success || eligibleResult.data.status !== 'ready_for_grading') {
+        throw new Error(`❌ Test 9 Failed: Marking ready for grading failed. Msg: ${eligibleResult.message}`);
       }
-      console.log('✅ Test 9 Passed: Project workspace successfully marked as defense_eligible.');
+      console.log('✅ Test 9 Passed: Project workspace successfully marked as ready_for_grading.');
 
       // 10. Finalize Project (Staff only)
       console.log('\n--- Test 10: POST /api/v1/projects/:id/finalize ---');

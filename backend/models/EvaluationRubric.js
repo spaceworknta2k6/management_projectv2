@@ -52,10 +52,6 @@ const EvaluationRubricSchema = new mongoose.Schema({
       type: [RubricCriteriaSchema],
       default: [],
     },
-    COMMITTEE_MEMBER: {
-      type: [RubricCriteriaSchema],
-      default: [],
-    },
   },
   isDeleted: {
     type: Boolean,

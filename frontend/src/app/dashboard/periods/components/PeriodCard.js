@@ -114,11 +114,7 @@ export default function PeriodCard({
         <div>
           <span className={css.s21}>Công thức tính điểm: </span>
           <strong>
-            {period.scoringFormula?.committee > 0 ? (
-              `HD: ${period.scoringFormula?.supervisor} | PB: ${period.scoringFormula?.reviewer} | HĐ: ${period.scoringFormula?.committee}`
-            ) : (
-              `GVHD: ${period.scoringFormula?.supervisor !== undefined ? `${period.scoringFormula.supervisor * 100}%` : '50%'} | GV Chấm 2: ${period.scoringFormula?.reviewer !== undefined ? `${period.scoringFormula.reviewer * 100}%` : '50%'}`
-            )}
+            {`GVHD: ${period.scoringFormula?.supervisor !== undefined ? `${period.scoringFormula.supervisor * 100}%` : '50%'} | GV Chấm 2: ${period.scoringFormula?.reviewer !== undefined ? `${period.scoringFormula.reviewer * 100}%` : '50%'}`}
           </strong>
         </div>
       </div>

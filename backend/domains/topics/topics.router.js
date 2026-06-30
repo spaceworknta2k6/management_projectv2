@@ -26,7 +26,7 @@ router.post('/:id/reject', topicsController.rejectTopic);
 router.post('/:id/request-revision', topicsController.requestRevision);
 
 // Staff restricted administrative actions
-router.use(requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']));
+router.use(requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']));
 router.post('/:id/publish', topicsController.publishTopic);
 router.post('/:id/unpublish', topicsController.unpublishTopic);
 router.post('/:id/assign-supervisor', topicsController.assignSupervisor);

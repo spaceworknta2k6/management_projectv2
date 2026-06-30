@@ -124,29 +124,9 @@ Quy tắc:
 }`;
 };
 
-const getDefenseQuestionsPrompt = (topicTitle, objectives) => {
-  return `Hệ thống hỗ trợ Hội đồng bảo vệ đồ án tốt nghiệp Phenikaa.
-Thông tin đồ án:
-- Tên đề tài: "${topicTitle}"
-- Mục tiêu đồ án: "${objectives || "Nghiên cứu ứng dụng thực tế"}"
-
-Hãy gợi ý tối thiểu 3 câu hỏi phản biện chuyên sâu sắc để Hội đồng đặt câu hỏi cho nhóm sinh viên bảo vệ. Các câu hỏi cần phân bổ ở các khía cạnh kỹ thuật khác nhau như: Database, Frontend/Backend, Bảo mật, Kiến trúc và Hạn chế hệ thống.
-Trả về kết quả duy nhất ở định dạng JSON theo schema:
-{
-  "questions": [
-    {
-      "category": "string (Ví dụ: Database, Backend, Security, v.v.)",
-      "text": "string (nội dung câu hỏi cụ thể sắc bén)",
-      "expectedAnswer": "string (gợi ý câu trả lời kỳ vọng từ nhóm sinh viên)"
-    }
-  ]
-}`;
-};
-
 module.exports = {
   getDuplicatePrompt,
   getSuggestionPrompt,
   getChatSystemPrompt,
   getFeedbackPrompt,
-  getDefenseQuestionsPrompt,
 };

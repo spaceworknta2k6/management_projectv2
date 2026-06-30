@@ -41,15 +41,15 @@ function periodPayload(name) {
     topicChangeDeadline: '2026-06-20T00:00:00.000Z',
     projectStart: '2026-06-25T00:00:00.000Z',
     projectEnd: '2026-09-15T00:00:00.000Z',
-    preDefenseSubmissionDeadline: '2026-09-01T00:00:00.000Z',
-    defenseStart: '2026-09-05T00:00:00.000Z',
-    defenseEnd: '2026-09-10T00:00:00.000Z',
-    postDefenseRevisionDeadline: '2026-09-20T00:00:00.000Z',
+    finalSubmissionDeadline: '2026-09-01T00:00:00.000Z',
+    gradingStart: '2026-09-05T00:00:00.000Z',
+    gradingEnd: '2026-09-10T00:00:00.000Z',
+    revisionDeadline: '2026-09-20T00:00:00.000Z',
     archiveDeadline: '2026-10-01T00:00:00.000Z',
     minGroupSize: 1,
     maxGroupSize: 1,
     rubricVersion: 'HUST-SET-2026',
-    scoringFormula: { supervisor: 0.3, reviewer: 0.2, committee: 0.5 },
+    scoringFormula: { supervisor: 0.5, reviewer: 0.5 },
   };
 }
 

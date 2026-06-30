@@ -261,7 +261,7 @@ export default function TopicsPage() {
         case 'approved': return 'Đã duyệt';
         case 'rejected': return 'Từ chối';
         case 'needs_revision': return 'Yêu cầu sửa đổi';
-        default: return status || '';
+        default: return 'Không xác định';
       }
     };
 

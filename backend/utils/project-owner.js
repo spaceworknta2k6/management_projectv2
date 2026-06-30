@@ -89,7 +89,7 @@ const canAccessOwner = async (owner, user = {}) => {
   if (!normalized || !user) return false;
 
   const roles = user.roles || (user.role ? [user.role] : []);
-  if (roles.some((role) => ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'DEPARTMENT_STAFF'].includes(role))) {
+  if (roles.some((role) => ['SYSTEM_ADMIN', 'FACULTY_STAFF'].includes(role))) {
     return true;
   }
 

@@ -4,8 +4,8 @@ const validateExtensionCreate = (req, res, next) => {
   const { targetType, targetId, projectId, reason, requestedTo } = req.body;
   const errors = [];
 
-  if (!targetType || !['milestone', 'submission', 'defense_session', 'project'].includes(targetType)) {
-    errors.push({ field: 'targetType', code: 'TARGET_TYPE_INVALID', message: 'Loại đối tượng gia hạn phải là một trong: milestone, submission, defense_session, project.' });
+  if (!targetType || !['milestone', 'submission', 'project'].includes(targetType)) {
+    errors.push({ field: 'targetType', code: 'TARGET_TYPE_INVALID', message: 'Loại đối tượng gia hạn phải là một trong: milestone, submission, project.' });
   }
 
   if (!targetId || !mongoose.Types.ObjectId.isValid(targetId)) {

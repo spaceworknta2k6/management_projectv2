@@ -23,7 +23,6 @@ const INITIAL_FORM_STATE = {
   criteria: {
     SUPERVISOR: [...DEFAULT_CRITERIA],
     REVIEWER: [...DEFAULT_CRITERIA],
-    COMMITTEE_MEMBER: [],
   }
 };
 
@@ -77,7 +76,6 @@ export default function RubricsPage() {
       criteria: {
         SUPERVISOR: rubric.criteria?.SUPERVISOR ? JSON.parse(JSON.stringify(rubric.criteria.SUPERVISOR)) : [],
         REVIEWER: rubric.criteria?.REVIEWER ? JSON.parse(JSON.stringify(rubric.criteria.REVIEWER)) : [],
-        COMMITTEE_MEMBER: rubric.criteria?.COMMITTEE_MEMBER ? JSON.parse(JSON.stringify(rubric.criteria.COMMITTEE_MEMBER)) : [],
       }
     });
     setFormErrors({});
@@ -154,7 +152,7 @@ export default function RubricsPage() {
       }
     });
 
-    const allRoles = ['SUPERVISOR', 'REVIEWER', 'COMMITTEE_MEMBER'];
+    const allRoles = ['SUPERVISOR', 'REVIEWER'];
     allRoles.forEach((role) => {
       const criteriaList = form.criteria[role] || [];
       criteriaList.forEach((c, idx) => {
@@ -302,7 +300,7 @@ export default function RubricsPage() {
             Quản lý Tiêu chí Đánh giá
           </h1>
           <p className={css.description}>
-            Cấu hình bảng điểm tiêu chí đánh giá động cho các hội đồng và giảng viên
+            Cấu hình bảng điểm tiêu chí đánh giá cho giảng viên hướng dẫn và giảng viên chấm 2
           </p>
         </div>
         <div className={css.actions}>
@@ -340,7 +338,6 @@ export default function RubricsPage() {
                 <div className={css.criteriaSummary}>
                   <span className={css.criteriaBadge}>GVHD: {r.criteria?.SUPERVISOR?.length || 0} TC</span>
                   <span className={css.criteriaBadge}>GV Chấm 2: {r.criteria?.REVIEWER?.length || 0} TC</span>
-                  <span className={css.criteriaBadge}>Hội đồng: {r.criteria?.COMMITTEE_MEMBER?.length || 0} TC</span>
                 </div>
               </div>
               <p className={css.cardDesc}>
@@ -426,7 +423,6 @@ export default function RubricsPage() {
 
                 {renderCriteriaConfigSection('SUPERVISOR', 'Tiêu chí Giảng viên hướng dẫn')}
                 {renderCriteriaConfigSection('REVIEWER', 'Tiêu chí Giảng viên chấm 2')}
-                {renderCriteriaConfigSection('COMMITTEE_MEMBER', 'Tiêu chí Hội đồng (Tùy chọn)')}
               </div>
 
               <div className={css.modalFooter}>

@@ -43,8 +43,6 @@ function getNotificationActionUrl(notification) {
   if (entityType === 'Project') return '/dashboard/projects';
   if (entityType === 'SubmissionPackage' || entityType === 'Milestone') return '/dashboard/submissions';
   if (entityType === 'ExtensionRequest') return '/dashboard/extensions';
-  if (entityType === 'Committee') return '/dashboard/committees';
-  if (entityType === 'DefenseSession') return '/dashboard/defenses';
   if (entityType === 'User') return '/dashboard/users';
 
   if (rawUrl === '/topics') return '/dashboard/topics';
@@ -211,7 +209,7 @@ export default function NotificationsPage() {
             Thông báo hệ thống
           </h1>
           <p className={css.s13}>
-            Theo dõi các cập nhật mới về đề tài, báo cáo, hội đồng và các mốc quan trọng.
+            Theo dõi các cập nhật mới về đề tài, báo cáo, điểm số và các mốc quan trọng.
           </p>
         </div>
 

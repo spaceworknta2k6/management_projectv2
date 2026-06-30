@@ -53,19 +53,6 @@ const analyzeReportFeedback = async (req, res, next) => {
   }
 };
 
-const suggestDefenseQuestions = async (req, res, next) => {
-  try {
-    const job = await aiService.suggestDefenseQuestions(req.params.id, req.user);
-    res.status(200).json({
-      success: true,
-      message: 'Tạo bộ câu hỏi phản biện bảo vệ đồ án thành công.',
-      data: job,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 const getJobById = async (req, res, next) => {
   try {
     const job = await aiService.getJobById(req.params.id);
@@ -124,7 +111,6 @@ module.exports = {
   suggestTopics,
   chatTopicSuggestion,
   analyzeReportFeedback,
-  suggestDefenseQuestions,
   getJobById,
   retryAiJob,
   manualOverrideJob,

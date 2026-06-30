@@ -49,7 +49,7 @@ export function useTopics(initialActiveTab = 'all') {
   const [submitting, setSubmitting] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState(null);
 
-  const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']);
+  const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
   const isLecturer = hasAnyRole(user, ['LECTURER']);
   const isStudent = hasAnyRole(user, ['STUDENT']);
 

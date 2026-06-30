@@ -9,7 +9,7 @@ const WorkflowEvent = require('../../models/WorkflowEvent');
 const notificationsService = require('../notifications/notifications.service');
 
 const isStaff = (user = {}) =>
-  (user.roles || []).some((r) => ['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN'].includes(r));
+  (user.roles || []).some((r) => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(r));
 
 const logWorkflowEvent = (data) =>
   WorkflowEvent.create({

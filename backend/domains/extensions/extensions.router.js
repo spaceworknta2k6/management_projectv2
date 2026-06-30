@@ -16,7 +16,7 @@ router.get('/:id', extensionsController.getRequestById);
 router.post('/:id/supervisor-approve', extensionsValidator.validateSupervisorReview, extensionsController.supervisorRecommend);
 
 // Faculty Staff final decision
-router.post('/:id/faculty-approve', requireRole(['FACULTY_STAFF', 'DEPARTMENT_STAFF', 'SYSTEM_ADMIN']), extensionsValidator.validateFacultyDecision, extensionsController.facultyDecide);
+router.post('/:id/faculty-approve', requireRole(['FACULTY_STAFF', 'SYSTEM_ADMIN']), extensionsValidator.validateFacultyDecision, extensionsController.facultyDecide);
 router.post('/:id/cancel', extensionsController.cancelRequest);
 
 module.exports = router;

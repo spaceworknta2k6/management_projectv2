@@ -33,7 +33,6 @@ import css from './page.module.css';
 const ROLE_OPTIONS = [
   { value: 'SYSTEM_ADMIN', label: 'Quản trị viên', badge: 'error' },
   { value: 'FACULTY_STAFF', label: 'Giáo vụ Khoa', badge: 'warning' },
-  { value: 'DEPARTMENT_STAFF', label: 'Giáo vụ Bộ môn', badge: 'info' },
   { value: 'LECTURER', label: 'Giảng viên', badge: 'neutral' },
   { value: 'STUDENT', label: 'Sinh viên', badge: 'success' }
 ];

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const AiJobSchema = new mongoose.Schema({
   feature: {
     type: String,
-    enum: ['duplicate_topic', 'topic_suggestion', 'report_feedback', 'defense_question'],
+    enum: ['duplicate_topic', 'topic_suggestion', 'report_feedback'],
     required: true,
   },
   targetType: {
