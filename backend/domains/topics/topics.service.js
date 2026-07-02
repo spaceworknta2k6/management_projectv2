@@ -35,7 +35,7 @@ const getTopicStudentUserIds = async (topic) => {
 };
 
 
-const ACTIVE_TOPIC_STATUSES = ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'];
+const ACTIVE_TOPIC_STATUSES = ['submitted', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'];
 const ACTIVE_PROJECT_STATUSES = { $nin: ['cancelled', 'archived', 'failed'] };
 
 const getTopicAllowedOwnerTypes = (topic) => (
@@ -352,7 +352,7 @@ const proposeTopic = async (topicData, studentId) => {
     periodId,
     groupId,
     isDeleted: false,
-    status: { $in: ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] },
+    status: { $in: ['submitted', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] },
   });
 
   if (existingActiveTopic) {

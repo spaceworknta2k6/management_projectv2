@@ -22,8 +22,6 @@ try {
   const ScoreSheet = require('../models/ScoreSheet');
   const FinalGrade = require('../models/FinalGrade');
   const FileAsset = require('../models/FileAsset');
-  const AiJob = require('../models/AiJob');
-  const TopicEmbedding = require('../models/TopicEmbedding');
   const Notification = require('../models/Notification');
   const WorkflowEvent = require('../models/WorkflowEvent');
 

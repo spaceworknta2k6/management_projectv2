@@ -148,7 +148,7 @@ const ProjectTopicSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'submitted', 'ai_checked', 'needs_revision', 'approved', 'published', 'assigned', 'locked', 'changed', 'cancelled', 'completed', 'rejected'],
+    enum: ['draft', 'submitted', 'needs_revision', 'approved', 'published', 'assigned', 'locked', 'changed', 'cancelled', 'completed', 'rejected'],
     default: 'draft',
   },
   rejectionReason: {
@@ -214,7 +214,7 @@ ProjectTopicSchema.index(
       ownerType: { $exists: true },
       ownerId: { $exists: true },
       isDeleted: false,
-      status: { $in: ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] }
+      status: { $in: ['submitted', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] }
     }
   }
 );
@@ -227,7 +227,7 @@ ProjectTopicSchema.index(
     partialFilterExpression: { 
       groupId: { $exists: true },
       isDeleted: false, 
-      status: { $in: ['submitted', 'ai_checked', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] } 
+      status: { $in: ['submitted', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] } 
     } 
   }
 );

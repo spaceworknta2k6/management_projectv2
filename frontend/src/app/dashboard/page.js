@@ -143,7 +143,7 @@ function TopicDonutChart({ topics }) {
     const counts = { approved: 0, pending: 0, rejected: 0, revision: 0 };
     topics.forEach((t) => {
       if (t.status === 'approved') counts.approved++;
-      else if (['submitted', 'ai_checked', 'pending_review'].includes(t.status)) counts.pending++;
+      else if (['submitted', 'pending_review'].includes(t.status)) counts.pending++;
       else if (t.status === 'rejected') counts.rejected++;
       else if (t.status === 'needs_revision') counts.revision++;
     });
@@ -389,7 +389,7 @@ export default function DashboardPage() {
 
     if (isStaff) {
       dashboard.topics
-        .filter((topic) => ['submitted', 'ai_checked', 'pending_review'].includes(topic.status))
+        .filter((topic) => ['submitted', 'pending_review'].includes(topic.status))
         .slice(0, 5)
         .forEach((topic) => {
           items.push({
@@ -517,7 +517,7 @@ export default function DashboardPage() {
 
   const stats = useMemo(() => {
     const pendingTopics = dashboard.topics.filter((topic) =>
-      ['submitted', 'ai_checked', 'pending_review'].includes(topic.status)
+      ['submitted', 'pending_review'].includes(topic.status)
     ).length;
     const unreadNotifications = dashboard.notifications.filter((notification) => !notification.readAt).length;
     const submittedMilestones = Object.values(dashboard.milestonesByProject)

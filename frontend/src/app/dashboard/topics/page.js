@@ -5,8 +5,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTopics } from './hooks/useTopics';
 import TopicCard from './components/TopicCard';
 import TopicModal from './components/TopicModal';
-import OverrideModal from './components/OverrideModal';
-import AiChatPanel from './components/AiChatPanel';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -20,7 +18,7 @@ import api from '@/services/api';
 import { handleApiError } from '@/lib/utils';
 import { getAcademicUnitLabel, getTopicDomainLabel } from '@/lib/academicUnits';
 import EmptyState from '@/components/ui/EmptyState';
-import { BookOpen, Plus, Lightbulb, MagnifyingGlass, FileText } from '@phosphor-icons/react';
+import { BookOpen, Plus, FileText } from '@phosphor-icons/react';
 import { exportToCSV } from '@/lib/export';
 import css from './page.module.css';
 
@@ -92,21 +90,6 @@ export default function TopicsPage() {
     setShowProposeModal,
     activeTab,
     setActiveTab,
-    aiCheckingId,
-    aiResults,
-    showOverrideModal,
-    setShowOverrideModal,
-    overrideComment,
-    setOverrideComment,
-    overriding,
-    chatOpen,
-    setChatOpen,
-    chatMessages,
-    chatInput,
-    setChatInput,
-    chatLoading,
-    suggestLoading,
-    chatEndRef,
     form,
     setForm,
     submitting,
@@ -122,11 +105,6 @@ export default function TopicsPage() {
     handleReject,
     handleRequestRevision,
     handleCancelTopic,
-    handleSuggestTopics,
-    handleSendChat,
-    handleSelectSuggestedTopic,
-    handleCheckDuplicate,
-    handleOverrideSubmit,
     handleRegisterTopic,
     handlePublishTopic,
     handleUnpublishTopic,
@@ -256,8 +234,7 @@ export default function TopicsPage() {
       switch (status) {
         case 'draft': return 'Bản nháp';
         case 'submitted': return 'Chờ duyệt';
-        case 'ai_checked': return 'AI đã kiểm tra';
-        case 'pending_review': return 'Đang xem xét';
+                case 'pending_review': return 'Đang xem xét';
         case 'approved': return 'Đã duyệt';
         case 'rejected': return 'Từ chối';
         case 'needs_revision': return 'Yêu cầu sửa đổi';
@@ -331,28 +308,11 @@ export default function TopicsPage() {
             Quản lý Đề tài
           </h1>
           <p className={css.s4}>
-            Xem danh sách đề tài đồ án tốt nghiệp, duyệt đề xuất và thực hiện kiểm tra AI
+            Xem danh sách đề tài đồ án tốt nghiệp, duyệt đề xuất và quản lý đăng ký.
           </p>
         </div>
         {isStudent && (
-          <div className={css.s5}>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={suggestLoading}
-              onClick={() => {
-                if (chatMessages.length > 0) {
-                  setChatOpen(true);
-                } else {
-                  handleSuggestTopics();
-                }
-              }}
-              className={css.buttonGap}
-            >
-              <Lightbulb size={16} />
-              Gợi ý đề tài cho tôi
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setShowProposeModal(true)}>
+          <div className={css.s5}>            <Button variant="primary" size="sm" onClick={() => setShowProposeModal(true)}>
               <Plus size={16} />
               Đề xuất đề tài mới
             </Button>
@@ -414,12 +374,7 @@ export default function TopicsPage() {
               handleApprove={handleApprove}
               handleAssignSupervisorClick={openAssignSupervisorModal}
               handleCancelClick={setTopicToCancel}
-              handleEditClick={handleEditClick}
-              handleCheckDuplicate={handleCheckDuplicate}
-              aiCheckingId={aiCheckingId}
-              aiResults={aiResults}
-              setShowOverrideModal={setShowOverrideModal}
-              onRegisterTopic={onRegisterTopic}
+              handleEditClick={handleEditClick}              onRegisterTopic={onRegisterTopic}
               onPublishTopic={handlePublishTopic}
               onUnpublishTopic={handleUnpublishTopic}
             />
@@ -468,34 +423,6 @@ export default function TopicsPage() {
           isLecturerOrStaff={isLecturer || isStaff}
         />
       )}
-
-      {/* Staff manual override modal */}
-      {showOverrideModal && (
-        <OverrideModal
-          overrideComment={overrideComment}
-          setOverrideComment={setOverrideComment}
-          handleOverrideSubmit={handleOverrideSubmit}
-          onClose={() => setShowOverrideModal(null)}
-          overriding={overriding}
-        />
-      )}
-
-      {/* AI Suggestion Chat panel */}
-      {chatOpen && (
-        <AiChatPanel
-          chatMessages={chatMessages}
-          chatInput={chatInput}
-          setChatInput={setChatInput}
-          chatLoading={chatLoading}
-          suggestLoading={suggestLoading}
-          chatEndRef={chatEndRef}
-          handleSuggestTopics={handleSuggestTopics}
-          handleSendChat={handleSendChat}
-          handleSelectSuggestedTopic={handleSelectSuggestedTopic}
-          onClose={() => setChatOpen(false)}
-        />
-      )}
-
       {assignTopic && (
         (() => {
           const assignedPeriod = getPeriodByTopic(assignTopic);

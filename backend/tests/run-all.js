@@ -28,10 +28,8 @@ const SUITES = [
 
   { file: 'rubrics-grading.test.js',      label: 'Evaluation Rubrics & Score Verification' },
   { file: 'appeals.test.js',              label: 'Appeals & Grade Publishing' },
-  { file: 'notifications-audit.test.js', label: 'Notifications & Audit Logs' },
   { file: 'files-security.test.js',      label: 'File Security' },
   { file: 'chat.test.js',                label: 'Chat Rooms & Attachments' },
-  // { file: 'ai-integration.test.js',      label: 'Gemini AI Integration' },
 ];
 
 const DIVIDER = '='.repeat(70);
@@ -83,7 +81,7 @@ const main = async () => {
     }
 
     if (quota) {
-      console.log(`\n⚠️  ${suite.file} QUOTA WARNING — API limit reached, skipping AI tests.\n`);
+      console.log(`\n⚠️  ${suite.file} QUOTA WARNING — external API limit reached.\n`);
     } else {
       console.log(`\n✅ ${suite.file} PASSED successfully inside ${elapsed}ms.\n`);
     }
@@ -122,7 +120,7 @@ const main = async () => {
   if (totalFailed === 0 && skipped === 0 && totalQuota === 0) {
     console.log('\n  🎉 ALL INTEGRATION TESTS PASSED — SYSTEM IS FULLY VERIFIED! 🎉');
   } else if (totalFailed === 0 && skipped === 0 && totalQuota > 0) {
-    console.log('\n  ✅ ALL CRITICAL TESTS PASSED! (AI suite skipped due to API quota — rerun tomorrow or upgrade key)');
+    console.log('\n  ✅ ALL CRITICAL TESTS PASSED! (one external API quota warning was reported)');
   } else {
     console.log('\n  ⚠️  Some test suites did not pass. Please review the output above.');
   }

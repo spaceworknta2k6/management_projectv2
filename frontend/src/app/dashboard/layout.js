@@ -16,7 +16,6 @@ import {
   ChartBar,
   Bell,
   ChatsCircle,
-  ClockCounterClockwise,
   SignOut,
   CaretLeft,
   List,
@@ -102,7 +101,6 @@ const NAV_ITEMS = [
   { href: '/dashboard/appeals',    label: 'Phúc khảo',     icon: Siren,            roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/notifications', label: 'Thông báo',  icon: Bell,             roles: null },
   { href: '/dashboard/chat',      label: 'Chat',          icon: ChatsCircle,      roles: null },
-  { href: '/dashboard/audit',      label: 'Nhật ký',       icon: ClockCounterClockwise, roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/users',      label: 'Quản lý tài khoản', icon: Users,            roles: ['SYSTEM_ADMIN'] },
 ];
 

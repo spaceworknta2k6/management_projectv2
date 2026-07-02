@@ -72,7 +72,6 @@ const STATUS_MAP = {
   removed: { label: 'Đã rút', variant: 'error' },
   // Topic statuses
   assigned: { label: 'Đã phân công', variant: 'info' },
-  ai_checked: { label: 'Đã kiểm tra AI', variant: 'info' },
   pending_review: { label: 'Chờ duyệt', variant: 'warning' },
   approved: { label: 'Đã duyệt', variant: 'success' },
   rejected: { label: 'Từ chối', variant: 'error' },
