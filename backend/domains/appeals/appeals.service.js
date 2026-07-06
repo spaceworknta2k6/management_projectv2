@@ -1,20 +1,15 @@
-const mongoose = require('mongoose');
-const AppealRequest = require('../../models/AppealRequest');
-const Project = require('../../models/Project');
-const ProjectPeriod = require('../../models/ProjectPeriod');
-const FinalGrade = require('../../models/FinalGrade');
-const ScoreSheet = require('../../models/ScoreSheet');
-const Student = require('../../models/Student');
-const Lecturer = require('../../models/Lecturer');
-const WorkflowEvent = require('../../models/WorkflowEvent');
-const notificationsService = require('../notifications/notifications.service');
+const { randomBytes } = require('crypto');
 const prisma = require('../../config/prisma');
+const notificationsService = require('../notifications/notifications.service');
+
+const newObjectId = () => randomBytes(12).toString('hex');
 
 const isStaff = (user = {}) =>
   (user.roles || []).some((r) => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(r));
 
-const logWorkflowEvent = (data) =>
-  WorkflowEvent.create({
+const logWorkflowEvent = (data) => {
+  const WorkflowEvent = require('../../utils/workflow-event');
+  return WorkflowEvent.create({
     entityType: 'AppealRequest',
     entityId: data.entityId,
     fromStatus: data.fromStatus || '',
@@ -25,35 +20,82 @@ const logWorkflowEvent = (data) =>
     reason: data.reason || '',
     metadata: data.metadata || {},
   });
+};
 
-// ─── Mirror helper ────────────────────────────────────────────────────────────
+const mapAppealWithRelations = async (appeal) => {
+  if (!appeal) return null;
 
-const toMongoAppealData = (pgAppeal) => ({
-  projectId: pgAppeal.projectId,
-  studentId: pgAppeal.studentId,
-  periodId: pgAppeal.periodId,
-  finalGradeId: pgAppeal.finalGradeId,
-  reason: pgAppeal.reason,
-  status: pgAppeal.status,
-  feePaidAt: pgAppeal.feePaidAt || undefined,
-  recheckGraderId: pgAppeal.recheckGraderId || undefined,
-  recheckScoreSheetId: pgAppeal.recheckScoreSheetId || undefined,
-  adminNote: pgAppeal.adminNote || undefined,
-  resolvedAt: pgAppeal.resolvedAt || undefined,
-  isDeleted: pgAppeal.isDeleted,
-  deletedAt: pgAppeal.deletedAt || undefined,
-  deletedBy: pgAppeal.deletedBy || undefined,
-  createdAt: pgAppeal.createdAt,
-  updatedAt: pgAppeal.updatedAt,
-});
+  const student = await prisma.student.findUnique({
+    where: { id: appeal.studentId },
+    include: { user: { select: { id: true, fullName: true, email: true } } }
+  });
 
-const syncMongoMirror = async (pgAppeal) => {
-  const filter = { _id: pgAppeal.mongoId || pgAppeal.id };
-  await AppealRequest.findOneAndUpdate(
-    filter,
-    { $set: toMongoAppealData(pgAppeal) },
-    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
-  ).setOptions({ includeDeleted: true });
+  const project = await prisma.project.findFirst({
+    where: { id: appeal.projectId }
+  });
+
+  let mappedProject = null;
+  if (project) {
+    const topic = await prisma.projectTopic.findUnique({
+      where: { id: project.topicId },
+      select: { title: true }
+    });
+    const supervisor = await prisma.lecturer.findUnique({
+      where: { id: project.supervisorId },
+      include: { user: { select: { fullName: true, email: true } } }
+    });
+    const reviewer = project.reviewerId ? await prisma.lecturer.findUnique({
+      where: { id: project.reviewerId },
+      include: { user: { select: { fullName: true, email: true } } }
+    }) : null;
+
+    mappedProject = {
+      ...project,
+      _id: project.id,
+      topicId: topic ? { ...topic, _id: project.topicId, title: topic.title } : null,
+      supervisorId: supervisor ? {
+        ...supervisor,
+        _id: project.supervisorId,
+        userId: supervisor.user ? { ...supervisor.user, _id: supervisor.user.id } : null
+      } : null,
+      reviewerId: reviewer ? {
+        ...reviewer,
+        _id: project.reviewerId,
+        userId: reviewer.user ? { ...reviewer.user, _id: reviewer.user.id } : null
+      } : null
+    };
+  }
+
+  const finalGrade = await prisma.finalGrade.findUnique({
+    where: { id: appeal.finalGradeId }
+  });
+
+  const recheckGrader = appeal.recheckGraderId ? await prisma.lecturer.findUnique({
+    where: { id: appeal.recheckGraderId },
+    include: { user: { select: { fullName: true, email: true } } }
+  }) : null;
+
+  const recheckScoreSheet = appeal.recheckScoreSheetId ? await prisma.scoreSheet.findUnique({
+    where: { id: appeal.recheckScoreSheetId }
+  }) : null;
+
+  return {
+    ...appeal,
+    _id: appeal.id,
+    studentId: student ? {
+      ...student,
+      _id: student.id,
+      userId: student.user ? { ...student.user, _id: student.user.id } : null
+    } : null,
+    projectId: mappedProject,
+    finalGradeId: finalGrade ? { ...finalGrade, _id: finalGrade.id } : null,
+    recheckGraderId: recheckGrader ? {
+      ...recheckGrader,
+      _id: appeal.recheckGraderId,
+      userId: recheckGrader.user ? { ...recheckGrader.user, _id: recheckGrader.user.id } : null
+    } : null,
+    recheckScoreSheetId: recheckScoreSheet ? { ...recheckScoreSheet, _id: recheckScoreSheet.id } : null
+  };
 };
 
 // ─── Submit appeal (sinh viên nộp đơn) ───────────────────────────────────────
@@ -65,28 +107,33 @@ const submitAppeal = async (data, user) => {
     throw { status: 403, message: 'Chỉ sinh viên mới có thể nộp đơn phúc khảo.' };
   }
 
-  const project = await Project.findById(projectId);
+  const project = await prisma.project.findFirst({
+    where: { id: projectId.toString(), isDeleted: false },
+  });
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
 
   const studentId = user.studentId;
 
-  if (project.ownerType === 'student' && project.studentId?.toString() !== studentId.toString()) {
+  if (project.ownerType === 'student' && project.studentId !== studentId.toString()) {
     throw { status: 403, message: 'Bạn không phải chủ nhân của dự án này.' };
   }
 
   if (project.ownerType === 'group') {
-    const ProjectGroup = require('../../models/ProjectGroup');
-    const group = await ProjectGroup.findById(project.groupId);
+    const group = await prisma.projectGroup.findFirst({
+      where: { id: project.groupId, isDeleted: false },
+    });
     if (!group || !group.members.some(
-      (m) => m.studentId.toString() === studentId.toString() && m.status === 'accepted'
+      (m) => m.studentId?.toString() === studentId.toString() && m.status === 'accepted'
     )) {
       throw { status: 403, message: 'Bạn không thuộc nhóm thực hiện dự án này.' };
     }
   }
 
-  const period = await ProjectPeriod.findById(project.periodId);
+  const period = await prisma.projectPeriod.findFirst({
+    where: { id: project.periodId, isDeleted: false }
+  });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -103,7 +150,9 @@ const submitAppeal = async (data, user) => {
     }
   }
 
-  const finalGrade = await FinalGrade.findOne({ projectId: project._id });
+  const finalGrade = await prisma.finalGrade.findFirst({
+    where: { projectId: project.id }
+  });
   if (!finalGrade) {
     throw { status: 404, message: 'Chưa có điểm tổng kết để phúc khảo.' };
   }
@@ -111,12 +160,11 @@ const submitAppeal = async (data, user) => {
     throw { status: 400, message: 'Điểm chưa được công bố, không thể phúc khảo.' };
   }
 
-  // Kiểm tra unique: 1 đơn/dự án/sinh viên/đợt — kiểm tra trên Postgres
   const existing = await prisma.appealRequest.findFirst({
     where: {
-      projectId: project._id.toString(),
+      projectId: project.id,
       studentId: studentId.toString(),
-      periodId: period._id.toString(),
+      periodId: period.id,
       isDeleted: false,
     },
   });
@@ -124,18 +172,17 @@ const submitAppeal = async (data, user) => {
     throw { status: 409, message: 'Bạn đã có đơn phúc khảo cho dự án này trong đợt hiện tại.' };
   }
 
-  const newId = new mongoose.Types.ObjectId().toString();
+  const newId = newObjectId();
   const now = new Date();
 
-  // Tạo trên Postgres trước
   const pgAppeal = await prisma.appealRequest.create({
     data: {
       id: newId,
       mongoId: newId,
-      projectId: project._id.toString(),
+      projectId: project.id,
       studentId: studentId.toString(),
-      periodId: period._id.toString(),
-      finalGradeId: finalGrade._id.toString(),
+      periodId: period.id,
+      finalGradeId: finalGrade.id,
       reason: reason.trim(),
       status: 'pending',
       createdAt: now,
@@ -143,28 +190,20 @@ const submitAppeal = async (data, user) => {
     },
   });
 
-  // Mirror về MongoDB
-  const appeal = await AppealRequest.create({
-    _id: newId,
-    projectId: project._id,
-    studentId,
-    periodId: period._id,
-    finalGradeId: finalGrade._id,
-    reason: reason.trim(),
-    status: 'pending',
-  });
-
   await logWorkflowEvent({
-    entityId: appeal._id,
+    entityId: pgAppeal.id,
     toStatus: 'pending',
     actorId: user._id,
     actorRoles: ['STUDENT'],
     action: 'SUBMIT_APPEAL',
-    reason: appeal.reason,
-    metadata: { projectId: project._id, periodId: period._id },
+    reason: pgAppeal.reason,
+    metadata: { projectId: project.id, periodId: period.id },
   });
 
-  return appeal;
+  return {
+    ...pgAppeal,
+    _id: pgAppeal.id
+  };
 };
 
 // ─── Assign recheck grader (giáo vụ phân công GV chấm lại) ──────────────────
@@ -182,10 +221,12 @@ const assignRecheck = async (id, data, user) => {
     throw { status: 400, message: 'Chỉ có thể phân công cho đơn đang ở trạng thái chờ xử lý.' };
   }
 
-  const project = await Project.findById(pgAppeal.projectId);
+  const project = await prisma.project.findFirst({
+    where: { id: pgAppeal.projectId, isDeleted: false },
+  });
 
-  const supervisorId = project?.supervisorId?.toString();
-  const reviewerId = project?.reviewerId?.toString();
+  const supervisorId = project?.supervisorId;
+  const reviewerId = project?.reviewerId;
   if (recheckGraderId === supervisorId || recheckGraderId === reviewerId) {
     throw {
       status: 400,
@@ -193,15 +234,21 @@ const assignRecheck = async (id, data, user) => {
     };
   }
 
-  let lecturer = await Lecturer.findById(recheckGraderId).populate('userId');
-  if (!lecturer) {
-    lecturer = await Lecturer.findOne({ userId: recheckGraderId }).populate('userId');
-  }
+  const lecturer = await prisma.lecturer.findFirst({
+    where: {
+      OR: [
+        { id: recheckGraderId.toString() },
+        { userId: recheckGraderId.toString() }
+      ],
+      isDeleted: false
+    },
+    include: { user: true }
+  });
   if (!lecturer) {
     throw { status: 404, message: 'Giảng viên chấm lại không tồn tại.' };
   }
 
-  const resolvedGraderId = lecturer._id.toString();
+  const resolvedGraderId = lecturer.id;
   const resolvedFeePaidAt = feePaidAt ? new Date(feePaidAt) : new Date();
 
   const updated = await prisma.appealRequest.update({
@@ -215,11 +262,6 @@ const assignRecheck = async (id, data, user) => {
     },
   });
 
-  await syncMongoMirror(updated);
-
-  // Lấy lại document MongoDB đã được populate để trả về
-  const appeal = await AppealRequest.findById(id).populate('projectId');
-
   await logWorkflowEvent({
     entityId: id,
     fromStatus: 'pending',
@@ -232,9 +274,9 @@ const assignRecheck = async (id, data, user) => {
   });
 
   try {
-    if (lecturer.userId) {
+    if (lecturer.user) {
       await notificationsService.createNotification({
-        recipientId: lecturer.userId._id,
+        recipientId: lecturer.user.id,
         type: 'APPEAL_GRADER_ASSIGNED',
         title: 'Bạn được phân công chấm phúc khảo',
         body: `Bạn được phân công chấm phiếu phúc khảo cho một dự án đồ án.${adminNote ? ` Ghi chú: "${adminNote.trim()}"` : ''}`,
@@ -247,7 +289,7 @@ const assignRecheck = async (id, data, user) => {
     console.error('Lỗi gửi thông báo phân công phúc khảo:', err.message);
   }
 
-  return appeal;
+  return await mapAppealWithRelations(updated);
 };
 
 // ─── Cancel appeal (sinh viên rút đơn) ───────────────────────────────────────
@@ -275,10 +317,6 @@ const cancelAppeal = async (id, user) => {
     data: { status: 'cancelled', updatedAt: new Date() },
   });
 
-  await syncMongoMirror(updated);
-
-  const appeal = await AppealRequest.findById(id);
-
   await logWorkflowEvent({
     entityId: id,
     fromStatus: 'pending',
@@ -288,7 +326,7 @@ const cancelAppeal = async (id, user) => {
     action: 'CANCEL_APPEAL',
   });
 
-  return appeal;
+  return await mapAppealWithRelations(updated);
 };
 
 // ─── Link recheck score sheet (gọi từ scores.service sau khi GV nộp phiếu) ──
@@ -299,12 +337,10 @@ const linkRecheckScoreSheet = async (appealId, scoreSheetId) => {
   });
   if (!pgAppeal || pgAppeal.status !== 'grading') return;
 
-  const updated = await prisma.appealRequest.update({
+  await prisma.appealRequest.update({
     where: { id: appealId },
     data: { recheckScoreSheetId: scoreSheetId, updatedAt: new Date() },
   });
-
-  await syncMongoMirror(updated);
 };
 
 // ─── Complete appeal (giáo vụ hoàn tất phúc khảo) ───────────────────────────
@@ -324,7 +360,6 @@ const completeAppeal = async (id, user) => {
     throw { status: 400, message: 'Chưa có phiếu chấm phúc khảo. GV chấm lại cần nộp phiếu trước.' };
   }
 
-  // Kiểm tra phiếu đã được khóa chưa (từ Postgres ScoreSheet)
   const pgRecheckSheet = await prisma.scoreSheet.findFirst({
     where: { id: pgAppeal.recheckScoreSheetId },
   });
@@ -337,7 +372,6 @@ const completeAppeal = async (id, user) => {
 
   const recheckScore = pgRecheckSheet.roundedTotal;
 
-  // Lấy điểm SUPERVISOR từ Postgres
   const pgSupervisorSheet = await prisma.scoreSheet.findFirst({
     where: {
       projectId: pgAppeal.projectId,
@@ -346,16 +380,18 @@ const completeAppeal = async (id, user) => {
   });
   const supervisorRaw = pgSupervisorSheet ? pgSupervisorSheet.rawTotal : 0;
 
-  // Lấy hệ số từ period
-  const period = await ProjectPeriod.findById(pgAppeal.periodId);
+  const period = await prisma.projectPeriod.findFirst({
+    where: { id: pgAppeal.periodId }
+  });
   let fSupervisor = 0.5;
   let fRecheck = 0.5;
 
   if (period && period.scoringFormula) {
-    if (period.scoringFormula.get('supervisor') !== undefined) {
-      fSupervisor = period.scoringFormula.get('supervisor');
+    const formula = period.scoringFormula || {};
+    if (formula.supervisor !== undefined) {
+      fSupervisor = formula.supervisor;
     }
-    const recheckWeight = period.scoringFormula.get('recheck') || period.scoringFormula.get('reviewer') || period.scoringFormula.get('secondMarker');
+    const recheckWeight = formula.recheck !== undefined ? formula.recheck : (formula.reviewer !== undefined ? formula.reviewer : formula.secondMarker);
     if (recheckWeight !== undefined) {
       fRecheck = recheckWeight;
     }
@@ -381,7 +417,6 @@ const completeAppeal = async (id, user) => {
   const componentScores = { supervisor: supervisorRaw, recheck: recheckScore };
   const now = new Date();
 
-  // Cập nhật FinalGrade trên Postgres
   await prisma.finalGrade.update({
     where: { id: pgAppeal.finalGradeId },
     data: {
@@ -395,27 +430,19 @@ const completeAppeal = async (id, user) => {
     },
   });
 
-  // Đồng bộ FinalGrade về MongoDB
-  await FinalGrade.findByIdAndUpdate(pgAppeal.finalGradeId, {
-    $set: {
-      componentScores,
-      finalScore,
-      letterGrade,
-      passStatus,
-      evaluationMode: 'recheck',
-      publishedAt: now,
-    },
-  });
 
-  // Cập nhật AppealRequest trên Postgres
+
   const updatedAppeal = await prisma.appealRequest.update({
     where: { id },
     data: { status: 'completed', resolvedAt: now, updatedAt: now },
   });
-  await syncMongoMirror(updatedAppeal);
 
-  const finalGrade = await FinalGrade.findById(pgAppeal.finalGradeId);
-  const appeal = await AppealRequest.findById(id);
+  const finalGrade = await prisma.finalGrade.findUnique({
+    where: { id: pgAppeal.finalGradeId }
+  });
+  const finalGradeWithMirrorProps = finalGrade ? { ...finalGrade, _id: finalGrade.id } : null;
+
+  const appeal = await mapAppealWithRelations(updatedAppeal);
 
   await logWorkflowEvent({
     entityId: id,
@@ -428,10 +455,13 @@ const completeAppeal = async (id, user) => {
   });
 
   try {
-    const student = await Student.findById(pgAppeal.studentId).populate('userId');
-    if (student && student.userId) {
+    const student = await prisma.student.findFirst({
+      where: { id: pgAppeal.studentId, isDeleted: false },
+      include: { user: true }
+    });
+    if (student && student.user) {
       await notificationsService.createNotification({
-        recipientId: student.userId._id,
+        recipientId: student.user.id,
         type: 'APPEAL_COMPLETED',
         title: 'Kết quả phúc khảo đã có',
         body: `Đơn phúc khảo của bạn đã được xử lý xong. Điểm mới: ${finalScore} (${letterGrade}).`,
@@ -444,43 +474,45 @@ const completeAppeal = async (id, user) => {
     console.error('Lỗi gửi thông báo hoàn tất phúc khảo:', err.message);
   }
 
-  return { appeal, finalGrade };
+  return { appeal, finalGrade: finalGradeWithMirrorProps };
 };
 
 // ─── Get appeals list ─────────────────────────────────────────────────────────
 
 const getAppeals = async (queryParams = {}, user = {}) => {
   const { periodId, status, projectId, page = 1, limit = 20 } = queryParams;
-  const filter = {};
+  const where = { isDeleted: false };
 
-  if (periodId) filter.periodId = periodId;
-  if (status) filter.status = status;
-  if (projectId) filter.projectId = projectId;
+  if (periodId) where.periodId = periodId.toString();
+  if (status) where.status = status;
+  if (projectId) where.projectId = projectId.toString();
 
   if (!isStaff(user) && !(user.roles || []).includes('LECTURER')) {
     if (!user.studentId) {
       throw { status: 403, message: 'Bạn không có quyền xem danh sách đơn phúc khảo.' };
     }
-    filter.studentId = user.studentId;
+    where.studentId = user.studentId.toString();
   }
 
   const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
 
   const [appeals, total] = await Promise.all([
-    AppealRequest.find(filter)
-      .populate({ path: 'studentId', populate: { path: 'userId', select: 'fullName email' } })
-      .populate({ path: 'projectId', select: 'status topicId supervisorId reviewerId', populate: { path: 'topicId', select: 'title' } })
-      .populate({ path: 'finalGradeId', select: 'finalScore letterGrade passStatus evaluationMode' })
-      .populate({ path: 'recheckGraderId', populate: { path: 'userId', select: 'fullName email' } })
-      .populate({ path: 'recheckScoreSheetId', select: 'roundedTotal lockedAt' })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit)),
-    AppealRequest.countDocuments(filter),
+    prisma.appealRequest.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: Number(limit)
+    }),
+    prisma.appealRequest.count({ where }),
   ]);
 
+  const mappedAppeals = [];
+  for (const app of appeals) {
+    mappedAppeals.push(await mapAppealWithRelations(app));
+  }
+
   return {
-    appeals,
+    appeals: mappedAppeals,
     total,
     page: Number(page),
     pages: Math.ceil(total / Number(limit)),
@@ -491,24 +523,22 @@ const getAppeals = async (queryParams = {}, user = {}) => {
 // ─── Get appeal by ID ─────────────────────────────────────────────────────────
 
 const getAppealById = async (id, user = {}) => {
-  const appeal = await AppealRequest.findById(id)
-    .populate({ path: 'studentId', populate: { path: 'userId', select: 'fullName email studentCode className' } })
-    .populate({ path: 'projectId', select: 'status topicId supervisorId reviewerId', populate: { path: 'topicId', select: 'title' } })
-    .populate({ path: 'finalGradeId', select: 'finalScore letterGrade passStatus componentScores evaluationMode publishedAt' })
-    .populate({ path: 'recheckGraderId', populate: { path: 'userId', select: 'fullName email' } })
-    .populate({ path: 'recheckScoreSheetId', select: 'criteriaScores roundedTotal rawTotal comment lockedAt' });
-
+  const appeal = await prisma.appealRequest.findFirst({
+    where: { id: id.toString(), isDeleted: false }
+  });
   if (!appeal) {
     throw { status: 404, message: 'Đơn phúc khảo không tồn tại.' };
   }
 
+  const mapped = await mapAppealWithRelations(appeal);
+
   if (!isStaff(user) && !(user.roles || []).includes('LECTURER')) {
-    if (!user.studentId || appeal.studentId._id.toString() !== user.studentId.toString()) {
+    if (!user.studentId || mapped.studentId._id.toString() !== user.studentId.toString()) {
       throw { status: 403, message: 'Bạn không có quyền xem đơn phúc khảo này.' };
     }
   }
 
-  return appeal;
+  return mapped;
 };
 
 // ─── Get student's own appeals ────────────────────────────────────────────────
@@ -518,11 +548,16 @@ const getMyAppeals = async (user) => {
     throw { status: 403, message: 'Chỉ sinh viên mới có thể xem đơn phúc khảo của mình.' };
   }
 
-  return AppealRequest.find({ studentId: user.studentId })
-    .populate({ path: 'projectId', select: 'status topicId', populate: { path: 'topicId', select: 'title' } })
-    .populate({ path: 'finalGradeId', select: 'finalScore letterGrade passStatus evaluationMode' })
-    .populate({ path: 'recheckScoreSheetId', select: 'roundedTotal lockedAt' })
-    .sort({ createdAt: -1 });
+  const appeals = await prisma.appealRequest.findMany({
+    where: { studentId: user.studentId.toString(), isDeleted: false },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  const mapped = [];
+  for (const app of appeals) {
+    mapped.push(await mapAppealWithRelations(app));
+  }
+  return mapped;
 };
 
 module.exports = {

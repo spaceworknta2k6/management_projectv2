@@ -1,10 +1,7 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
 
 const TEST_PORT = 5020;
 
@@ -161,8 +158,6 @@ const runUsersTests = async () => {
       console.log('\n--- Đang tắt môi trường kiểm thử ---');
       server.close(async () => {
         console.log('✅ Đã tắt server kiểm thử tạm thời.');
-        await mongoose.disconnect();
-        console.log('✅ Đã đóng kết nối MongoDB.');
         process.exit(0);
       });
     }

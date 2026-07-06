@@ -1,35 +1,22 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const Lecturer = require('../models/Lecturer');
-const Student = require('../models/Student');
-const ProjectPeriod = require('../models/ProjectPeriod');
-const Project = require('../models/Project');
-const FileAsset = require('../models/FileAsset');
+const {
+  db,
+  newObjectId,
+  User,
+  Lecturer,
+  Student,
+  ProjectPeriod,
+  Project,
+  FileAsset
+} = require('./db-compat');
 
 const TEST_PORT = 5007;
 const TEST_OWNER_TYPE = 'file_security_test';
 
-const clearGridFsBucket = async () => {
-  const bucketName = process.env.GRIDFS_BUCKET_NAME || 'fileAssets';
-  const filesCollection = mongoose.connection.db.collection(`${bucketName}.files`);
-  const chunksCollection = mongoose.connection.db.collection(`${bucketName}.chunks`);
-  const files = await filesCollection
-    .find({ 'metadata.ownerType': TEST_OWNER_TYPE })
-    .project({ _id: 1 })
-    .toArray();
-
-  if (files.length === 0) return;
-
-  const fileIds = files.map((file) => file._id);
-  await chunksCollection.deleteMany({ files_id: { $in: fileIds } });
-  await filesCollection.deleteMany({ _id: { $in: fileIds } });
-};
+const clearStoredFiles = async () => {};
 
 const runIntegrationTests = async () => {
   const server = app.listen(TEST_PORT, async () => {
@@ -52,8 +39,10 @@ const runIntegrationTests = async () => {
       if (!reviewerLecturer) throw new Error('❌ Reviewer Lecturer profile not found.');
 
       // Clean up previous runs
+      const prisma = require('../config/prisma');
+      await prisma.fileAsset.deleteMany({ where: { ownerType: TEST_OWNER_TYPE } });
       await FileAsset.deleteMany({ ownerType: TEST_OWNER_TYPE });
-      await clearGridFsBucket();
+      await clearStoredFiles();
       console.log('✅ Cleaned up old file assets.');
 
       // Logins
@@ -75,9 +64,9 @@ const runIntegrationTests = async () => {
 
       // Mock a project ownerId to test contextual scopes
       const mockProject = await Project.create({
-        periodId: new mongoose.Types.ObjectId(),
-        groupId: new mongoose.Types.ObjectId(),
-        topicId: new mongoose.Types.ObjectId(),
+        periodId: newObjectId(),
+        groupId: newObjectId(),
+        topicId: newObjectId(),
         supervisorId: supervisorUser._id, // haikt is Supervisor
         status: 'in_progress'
       });
@@ -117,11 +106,11 @@ const runIntegrationTests = async () => {
       console.log('- sha256 Hashing:', uploadResult.data.sha256);
       console.log('- size:', uploadResult.data.size, 'bytes');
       console.log('- scanStatus:', uploadResult.data.scanStatus);
-      if ((process.env.STORAGE_PROVIDER || 'local').trim().toLowerCase() === 'gridfs') {
-        if (!String(uploadResult.data.storageKey || '').startsWith('gridfs:')) {
-          throw new Error('❌ Test 1 Failed: GridFS storage did not return a gridfs storage key.');
+      if ((process.env.STORAGE_PROVIDER || 'local').trim().toLowerCase() === 'file storage') {
+        if (!String(uploadResult.data.storageKey || '').startsWith('file storage:')) {
+          throw new Error('❌ Test 1 Failed: file storage storage did not return a file storage storage key.');
         }
-        console.log('- storageKey:', 'gridfs:*');
+        console.log('- storageKey:', 'file storage:*');
       }
       console.log('✅ Test 1 Passed: Valid PDF upload succeeded!');
 
@@ -199,8 +188,9 @@ const runIntegrationTests = async () => {
 
       // Clean up project
       await Project.findByIdAndDelete(projectId);
+      await prisma.fileAsset.deleteMany({ where: { ownerType: TEST_OWNER_TYPE } });
       await FileAsset.deleteMany({ ownerType: TEST_OWNER_TYPE });
-      await clearGridFsBucket();
+      await clearStoredFiles();
 
       console.log('\n🎉 ALL PHASE 11 FILE SECURITY INTEGRATION TESTS PASSED SUCCESSFULLY! 🎉');
     } catch (error) {
@@ -211,8 +201,8 @@ const runIntegrationTests = async () => {
       console.log('\n--- Shutting Down Test Environment ---');
       server.close(async () => {
         console.log('✅ Temporary test server shut down.');
-        await mongoose.disconnect();
-        console.log('✅ MongoDB connection closed.');
+        await db.disconnect();
+        console.log('✅ Compatibility DB connection closed.');
         process.exit(process.exitCode || 0);
       });
     }

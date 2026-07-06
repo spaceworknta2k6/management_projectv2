@@ -1,10 +1,9 @@
 const prisma = require('../../config/prisma');
-const mongoose = require('mongoose');
-const MilestoneMirror = require('../../models/Milestone');
+const { randomBytes } = require('crypto');
 const { assertProjectAccess } = require('../../utils/access-control');
 const { resolveProjectOwner, isStudentOwner } = require('../../utils/project-owner');
 
-const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const newObjectId = () => randomBytes(12).toString('hex');
 const toId = (value) => (value ? value.toString() : null);
 
 const toPublicMilestone = (milestone) => {
@@ -15,31 +14,7 @@ const toPublicMilestone = (milestone) => {
   };
 };
 
-const toMongoMirrorMilestoneData = (milestone) => {
-  return {
-    _id: milestone.id,
-    projectId: toId(milestone.projectId),
-    title: milestone.title,
-    description: milestone.description || '',
-    deadline: milestone.deadline,
-    status: milestone.status,
-    submissions: milestone.submissions || [],
-    feedback: milestone.feedback || [],
-    isDeleted: milestone.isDeleted,
-    deletedAt: milestone.deletedAt || undefined,
-    deletedBy: toId(milestone.deletedBy) || undefined,
-    createdAt: milestone.createdAt,
-    updatedAt: milestone.updatedAt,
-  };
-};
 
-const syncMongoMirrorMilestone = async (milestone) => {
-  await MilestoneMirror.updateOne(
-    { _id: milestone.id },
-    { $set: toMongoMirrorMilestoneData(milestone) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
 
 const isAcceptedGroupMember = (group, studentId) => {
   if (!group || !studentId) return false;
@@ -145,7 +120,6 @@ const createMilestone = async (projectId, milestoneData, actorUserId, actorLectu
     }
   });
 
-  await syncMongoMirrorMilestone(milestone);
   await emitMilestoneChange(projectId);
   return toPublicMilestone(milestone);
 };
@@ -184,7 +158,6 @@ const updateMilestone = async (milestoneId, milestoneData, actorUserId, actorLec
     data: updateData
   });
 
-  await syncMongoMirrorMilestone(updatedMilestone);
   await emitMilestoneChange(milestone.projectId);
   return toPublicMilestone(updatedMilestone);
 };
@@ -222,7 +195,6 @@ const deleteMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
     }
   });
 
-  await syncMongoMirrorMilestone(updatedMilestone);
   await emitMilestoneChange(milestone.projectId);
 
   return { success: true, message: 'Mốc tiến độ đã được xóa thành công.' };
@@ -265,7 +237,6 @@ const submitMilestoneWork = async (milestoneId, submissionData, actorUserId, act
     }
   });
 
-  await syncMongoMirrorMilestone(updatedMilestone);
   await emitMilestoneChange(milestone.projectId);
 
   return toPublicMilestone(updatedMilestone);
@@ -306,7 +277,6 @@ const submitFeedback = async (milestoneId, feedbackData, actorUserId, actorLectu
     }
   });
 
-  await syncMongoMirrorMilestone(updatedMilestone);
   await emitMilestoneChange(milestone.projectId);
 
   return toPublicMilestone(updatedMilestone);
@@ -336,7 +306,6 @@ const lockMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
     data: { status: 'locked' }
   });
 
-  await syncMongoMirrorMilestone(updatedMilestone);
   await emitMilestoneChange(milestone.projectId);
 
   return toPublicMilestone(updatedMilestone);
@@ -388,7 +357,6 @@ const unlockMilestone = async (milestoneId, actorUserId, actorLecturerId) => {
     data: { status: nextStatus }
   });
 
-  await syncMongoMirrorMilestone(updatedMilestone);
   await emitMilestoneChange(milestone.projectId);
   return toPublicMilestone(updatedMilestone);
 };

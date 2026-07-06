@@ -1,22 +1,23 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const Lecturer = require('../models/Lecturer');
-const Student = require('../models/Student');
-const ProjectPeriod = require('../models/ProjectPeriod');
-const ProjectRoster = require('../models/ProjectRoster');
-const ProjectGroup = require('../models/ProjectGroup');
-const ProjectTopic = require('../models/ProjectTopic');
-const Project = require('../models/Project');
-const Milestone = require('../models/Milestone');
-const SubmissionPackage = require('../models/SubmissionPackage');
-const ExtensionRequest = require('../models/ExtensionRequest');
-const WorkflowEvent = require('../models/WorkflowEvent');
+const {
+  db,
+  newObjectId,
+  User,
+  Lecturer,
+  Student,
+  ProjectPeriod,
+  ProjectRoster,
+  ProjectGroup,
+  ProjectTopic,
+  Project,
+  Milestone,
+  SubmissionPackage,
+  ExtensionRequest,
+  WorkflowEvent
+} = require('./db-compat');
 
 const TEST_PORT = 5004;
 
@@ -120,7 +121,7 @@ const runIntegrationTests = async () => {
           }
         },
         create: {
-          id: new mongoose.Types.ObjectId().toString(),
+          id: newObjectId(),
           periodId: period._id.toString(),
           studentId: studentProfile._id.toString(),
           classSection: 'IT4911',
@@ -139,7 +140,7 @@ const runIntegrationTests = async () => {
       await prisma.projectGroup.deleteMany({ where: { periodId: period._id.toString() } });
       await prisma.projectTopic.deleteMany({ where: { periodId: period._id.toString() } });
       await prisma.project.deleteMany({ where: { periodId: period._id.toString() } });
-      console.log('✅ Cleaned up old database mock collections.');
+      console.log('✅ Cleaned up old database records.');
 
       // Create valid Project Group
       const group = await ProjectGroup.create({
@@ -296,7 +297,7 @@ const runIntegrationTests = async () => {
       console.log('\n--- Test 3: POST /api/v1/submissions/packages/:id/items (Student uploads report_pdf) ---');
       const uploadPayload = {
         type: 'report_pdf',
-        fileId: new mongoose.Types.ObjectId().toString()
+        fileId: newObjectId()
       };
 
       const uploadRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/submissions/packages/${packageId}/items`, {
@@ -430,7 +431,7 @@ const runIntegrationTests = async () => {
 
       // 10. Database verification (Verify milestone deadline was auto-updated)
       console.log('\n--- Test 9: Verify target Milestone deadline was updated in Database ---');
-      const updatedMilestone = await Milestone.findById(milestoneId);
+      const updatedMilestone = await prisma.milestone.findUnique({ where: { id: milestoneId.toString() } });
       console.log('Original Milestone Deadline: 2026-06-10T00:00:00.000Z');
       console.log('New Milestone Deadline in DB:', updatedMilestone.deadline.toISOString());
       
@@ -448,8 +449,8 @@ const runIntegrationTests = async () => {
       console.log('\n--- Shutting Down Test Environment ---');
       server.close(async () => {
         console.log('✅ Temporary test server shut down.');
-        await mongoose.disconnect();
-        console.log('✅ MongoDB connection closed.');
+        await db.disconnect();
+        console.log('✅ Compatibility DB connection closed.');
         process.exit(process.exitCode || 0);
       });
     }

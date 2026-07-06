@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const { isObjectId } = require('../../utils/object-id');
 
 const validateMilestoneCreate = (req, res, next) => {
   const { title, deadline } = req.body;
@@ -58,7 +58,7 @@ const validateMilestoneSubmit = (req, res, next) => {
     errors.push({ field: 'fileIds', code: 'FILE_IDS_MUST_BE_ARRAY', message: 'Danh sách mã tệp tin đính kèm phải là một mảng.' });
   } else if (Array.isArray(fileIds)) {
     fileIds.forEach((id, index) => {
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      if (!isObjectId(id)) {
         errors.push({ field: `fileIds[${index}]`, code: 'FILE_ID_INVALID', message: 'Mã tệp tin đính kèm không hợp lệ.' });
       }
     });

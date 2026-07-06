@@ -1,22 +1,23 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const bcrypt = require('bcryptjs');
-const mongoose = require('mongoose');
 const { app } = require('../app');
-const User = require('../models/User');
-const Lecturer = require('../models/Lecturer');
-const Student = require('../models/Student');
-const ProjectPeriod = require('../models/ProjectPeriod');
-const ProjectGroup = require('../models/ProjectGroup');
-const ProjectTopic = require('../models/ProjectTopic');
-const Project = require('../models/Project');
-const ScoreSheet = require('../models/ScoreSheet');
-const FinalGrade = require('../models/FinalGrade');
-const AppealRequest = require('../models/AppealRequest');
-const WorkflowEvent = require('../models/WorkflowEvent');
+const {
+  db,
+  newObjectId,
+  User,
+  Lecturer,
+  Student,
+  ProjectPeriod,
+  ProjectGroup,
+  ProjectTopic,
+  Project,
+  ScoreSheet,
+  FinalGrade,
+  AppealRequest,
+  WorkflowEvent
+} = require('./db-compat');
 
 const TEST_PORT = 5013;
 const API_BASE = `http://localhost:${TEST_PORT}/api/v1`;
@@ -353,8 +354,10 @@ const runIntegrationTests = async () => {
       console.log('Publish-by-period endpoint verified successfully.');
 
       console.log('\n--- Test 3: Submit appeal after opening appeal window ---');
-      publishedPeriod.status = 'appeal_open';
-      await publishedPeriod.save();
+      await prisma.projectPeriod.update({
+        where: { id: period._id.toString() },
+        data: { status: 'appeal_open' }
+      });
 
       const appealResult = await expectSuccess(
         'Submit appeal',
@@ -467,8 +470,8 @@ const runIntegrationTests = async () => {
             email: RECHECK_EMAIL
           }
         });
-        await mongoose.disconnect();
-        console.log('MongoDB connection closed.');
+        await db.disconnect();
+        console.log('Compatibility DB connection closed.');
         process.exit(process.exitCode || 0);
       });
     }

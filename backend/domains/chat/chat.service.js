@@ -1,8 +1,4 @@
-const mongoose = require('mongoose');
 const crypto = require('crypto');
-const ProjectGroup = require('../../models/ProjectGroup');
-const Lecturer = require('../../models/Lecturer');
-const FileAsset = require('../../models/FileAsset');
 const filesService = require('../files/files.service');
 const notificationsService = require('../notifications/notifications.service');
 const { uploadImageBuffer } = require('../../config/cloudinary');
@@ -18,7 +14,7 @@ const getAttachmentKind = (mimeType) => {
 
 const createChatAuditEvent = async ({ roomId, user, action, reason, metadata = {} }) => {
   try {
-    const id = new mongoose.Types.ObjectId().toString();
+    const id = crypto.randomBytes(12).toString('hex');
     await prisma.workflowEvent.create({
       data: {
         id,
@@ -37,6 +33,8 @@ const createChatAuditEvent = async ({ roomId, user, action, reason, metadata = {
     console.error('Chat audit event failed:', error.message);
   }
 };
+
+// ─── NOTIFICATION MEMBER HELPERS ──────────────────────────────────────────────
 
 const notifyRoomMembers = async (room, sender, message) => {
   const recipientIds = (room.memberIds || [])
@@ -171,11 +169,13 @@ const mapMessageToOldShape = async (msg) => {
     for (const att of msg.attachments) {
       let filePopulated = null;
       if (att.fileId) {
-        const asset = await FileAsset.findById(att.fileId).lean();
+        const asset = await prisma.fileAsset.findUnique({
+          where: { id: att.fileId }
+        });
         if (asset) {
           filePopulated = {
-            _id: asset._id,
-            id: asset._id.toString(),
+            _id: asset.id,
+            id: asset.id,
             originalName: asset.originalName,
             mimeClient: asset.mimeClient,
             mimeVerified: asset.mimeVerified,
@@ -219,16 +219,24 @@ const mapMessageToOldShape = async (msg) => {
 // ─── SERVICES ────────────────────────────────────────────────────────────────
 
 const getAcceptedGroupMemberUserIds = async (group) => {
-  const populatedGroup = await ProjectGroup.findById(group._id)
-    .populate({
-      path: 'members.studentId',
-      select: 'userId isDeleted',
-      match: { isDeleted: false },
-    });
+  const pgGroup = await prisma.projectGroup.findUnique({
+    where: { id: group._id.toString() }
+  });
+  if (!pgGroup) return [];
 
-  return (populatedGroup?.members || [])
-    .filter((member) => member.status === 'accepted' && member.studentId?.userId)
-    .map((member) => member.studentId.userId);
+  const members = Array.isArray(pgGroup.members) ? pgGroup.members : [];
+  const acceptedMembers = members.filter(m => m.status === 'accepted');
+  const studentIds = acceptedMembers.map(m => m.studentId).filter(Boolean);
+
+  const students = await prisma.student.findMany({
+    where: {
+      id: { in: studentIds },
+      isDeleted: false
+    },
+    select: { userId: true }
+  });
+
+  return students.map(s => s.userId);
 };
 
 const ensureGroupRoom = async (group) => {
@@ -276,17 +284,16 @@ const ensureGroupRoom = async (group) => {
 const syncGroupRoomsForUser = async (user) => {
   if (!user.studentId) return;
 
-  const groups = await ProjectGroup.find({
-    isDeleted: false,
-    members: {
-      $elemMatch: {
-        studentId: user.studentId,
-        status: 'accepted',
-      },
-    },
-  }).select('name members');
+  const groups = await prisma.projectGroup.findMany({
+    where: { isDeleted: false }
+  });
 
-  await Promise.all(groups.map((group) => ensureGroupRoom(group)));
+  const userGroups = groups.filter(g => {
+    const members = Array.isArray(g.members) ? g.members : [];
+    return members.some(m => m.studentId === user.studentId.toString() && m.status === 'accepted');
+  });
+
+  await Promise.all(userGroups.map((group) => ensureGroupRoom({ _id: group.id, name: group.name })));
 };
 
 const getRooms = async (user) => {
@@ -351,7 +358,8 @@ const getRooms = async (user) => {
 };
 
 const getRoomForUser = async (roomId, user) => {
-  if (!mongoose.Types.ObjectId.isValid(roomId)) {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(roomId || '');
+  if (!isObjectId) {
     throw { status: 422, message: 'Mã phòng chat không hợp lệ.' };
   }
 
@@ -380,12 +388,16 @@ const ensureStudentCanRequestDirect = (user) => {
 };
 
 const getLecturerUserId = async ({ lecturerId, lecturerUserId }) => {
-  if (lecturerUserId && mongoose.Types.ObjectId.isValid(lecturerUserId)) {
-    const lecturer = await Lecturer.findOne({ userId: lecturerUserId, isDeleted: false });
+  if (lecturerUserId) {
+    const lecturer = await prisma.lecturer.findFirst({
+      where: { userId: lecturerUserId.toString(), isDeleted: false }
+    });
     if (lecturer) return lecturer.userId;
   }
-  if (lecturerId && mongoose.Types.ObjectId.isValid(lecturerId)) {
-    const lecturer = await Lecturer.findOne({ _id: lecturerId, isDeleted: false });
+  if (lecturerId) {
+    const lecturer = await prisma.lecturer.findFirst({
+      where: { id: lecturerId.toString(), isDeleted: false }
+    });
     if (lecturer) return lecturer.userId;
   }
   throw { status: 404, message: 'Không tìm thấy giảng viên.' };
@@ -410,7 +422,7 @@ const requestDirectRoom = async (user, payload = {}) => {
     return await mapRoomToOldShape(existingRoom, user._id.toString());
   }
 
-  const roomId = new mongoose.Types.ObjectId().toString();
+  const roomId = crypto.randomBytes(12).toString('hex');
   const now = new Date();
 
   const room = await prisma.chatRoom.create({
@@ -492,14 +504,34 @@ const assertGroupLeader = async (room, user) => {
   if (room.type !== 'group' || !room.groupId) {
     throw { status: 422, message: 'Chỉ phòng nhóm mới có cấu hình nhóm.' };
   }
-  const group = await ProjectGroup.findOne({ _id: room.groupId, isDeleted: { $ne: true } });
-  if (!group) {
+
+  const group = await prisma.projectGroup.findUnique({
+    where: { id: room.groupId }
+  });
+  if (!group || group.isDeleted) {
     throw { status: 404, message: 'Nhóm không tồn tại.' };
   }
-  if (!user.studentId || toId(group.leaderStudentId) !== toId(user.studentId)) {
+
+  if (!user.studentId || group.leaderStudentId !== user.studentId.toString()) {
     throw { status: 403, message: 'Chỉ trưởng nhóm mới có quyền cấu hình nhóm.' };
   }
-  return group;
+
+  return {
+    _id: group.id,
+    id: group.id,
+    name: group.name,
+    avatarUrl: group.avatarUrl,
+    leaderStudentId: group.leaderStudentId,
+    save: async function() {
+      await prisma.projectGroup.update({
+        where: { id: this.id },
+        data: {
+          name: this.name,
+          avatarUrl: this.avatarUrl
+        }
+      });
+    }
+  };
 };
 
 const updateGroupSettings = async (roomId, user, payload = {}) => {
@@ -555,7 +587,7 @@ const uploadGroupAvatar = async (roomId, user, file) => {
     throw { status: 400, message: 'Ảnh nhóm chỉ hỗ trợ JPG, PNG hoặc WEBP.' };
   }
 
-  const publicId = `${group._id}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const publicId = `${group.id}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const fileName = `${publicId}${extension}`;
   const uploadResult = await uploadImageBuffer(file.buffer, {
     folder: 'management-project/group-avatars',
@@ -724,7 +756,7 @@ const sendMessage = async (roomId, user, body) => {
     throw { status: 403, message: 'Bạn cần xác nhận lời mời trước khi nhắn tin.' };
   }
 
-  const messageId = new mongoose.Types.ObjectId().toString();
+  const messageId = crypto.randomBytes(12).toString('hex');
   const now = new Date();
 
   const msg = await prisma.chatMessage.create({
@@ -785,7 +817,7 @@ const sendAttachmentMessage = async (roomId, user, { body, file } = {}) => {
 
   const asset = await filesService.uploadFile(file, 'chat_room', roomId, user);
   const mimeType = asset.mimeVerified || asset.mimeClient;
-  const messageId = new mongoose.Types.ObjectId().toString();
+  const messageId = crypto.randomBytes(12).toString('hex');
   const now = new Date();
 
   const msg = await prisma.chatMessage.create({

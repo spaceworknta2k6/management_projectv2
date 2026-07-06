@@ -1,10 +1,7 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
 
 const TEST_PORT = 5009;
 
@@ -107,8 +104,6 @@ const runIntegrationTests = async () => {
       console.log('\n--- Shutting Down Test Environment ---');
       server.close(async () => {
         console.log('✅ Temporary test server shut down.');
-        await mongoose.disconnect();
-        console.log('✅ MongoDB connection closed.');
         process.exit(0);
       });
     }

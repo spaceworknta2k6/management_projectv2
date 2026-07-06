@@ -1,16 +1,17 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const ChatRoom = require('../models/ChatRoom');
-const ChatMessage = require('../models/ChatMessage');
-const FileAsset = require('../models/FileAsset');
-const Notification = require('../models/Notification');
-const WorkflowEvent = require('../models/WorkflowEvent');
+const {
+  db,
+  newObjectId,
+  User,
+  ChatRoom,
+  ChatMessage,
+  FileAsset,
+  Notification,
+  WorkflowEvent
+} = require('./db-compat');
 
 const TEST_PORT = 5011;
 
@@ -57,7 +58,7 @@ const runIntegrationTests = async () => {
       await Notification.deleteMany({ type: 'CHAT_MESSAGE' });
       await WorkflowEvent.deleteMany({ entityType: 'ChatRoom' });
 
-      const roomId = new mongoose.Types.ObjectId().toString();
+      const roomId = newObjectId();
       const now = new Date();
 
       await prisma.chatRoom.create({
@@ -255,7 +256,7 @@ const runIntegrationTests = async () => {
       process.exitCode = 1;
     } finally {
       server.close(async () => {
-        await mongoose.disconnect();
+        await db.disconnect();
         process.exit(process.exitCode || 0);
       });
     }

@@ -1,11 +1,9 @@
 const prisma = require('../../config/prisma');
-const mongoose = require('mongoose');
-const ProjectGroupMirror = require('../../models/ProjectGroup');
-const WorkflowEvent = require('../../models/WorkflowEvent');
-const Project = require('../../models/Project');
-const ProjectTopic = require('../../models/ProjectTopic');
+const ProjectGroupMirror = { updateOne: async () => {} };
+const WorkflowEvent = require('../../utils/workflow-event');
+const { randomBytes } = require('crypto');
 
-const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const newObjectId = () => randomBytes(12).toString('hex');
 const toId = (value) => (value ? value.toString() : null);
 
 const toPublicGroup = (group) => {
@@ -40,13 +38,7 @@ const toMongoMirrorData = (group) => {
   };
 };
 
-const syncMongoMirror = async (group) => {
-  await ProjectGroupMirror.updateOne(
-    { _id: group.id },
-    { $set: toMongoMirrorData(group) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
+const syncMongoMirror = async (group) => {};
 
 const logWorkflowEvent = async ({
   entityType = 'ProjectGroup',
@@ -257,7 +249,8 @@ const resolveInvitedStudent = async (studentIdentifier) => {
     return null;
   }
 
-  if (mongoose.Types.ObjectId.isValid(value)) {
+  const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(value);
+  if (isValidObjectId) {
     return prisma.student.findFirst({
       where: { id: value, isDeleted: false }
     });
@@ -577,7 +570,9 @@ const deleteGroup = async (groupId, user) => {
     throw { status: 400, message: 'Trưởng nhóm chỉ được xóa nhóm khi nhóm còn ở trạng thái nháp.' };
   }
 
-  const linkedProject = await Project.findOne({ groupId: group.id });
+  const linkedProject = await prisma.project.findFirst({
+    where: { groupId: group.id, isDeleted: false }
+  });
   if (linkedProject || group.status === 'locked') {
     throw { status: 400, message: 'Nhóm đã có đề tài/dự án liên kết nên không thể xóa. Hãy hủy hoặc xử lý trạng thái nghiệp vụ thay vì xóa.' };
   }
@@ -601,21 +596,29 @@ const cancelLinkedWorkAndDeleteGroup = async (groupId, user) => {
   }
 
   const [projects, topics] = await Promise.all([
-    Project.find({ groupId: group.id }),
-    ProjectTopic.find({ groupId: group.id, isDeleted: { $ne: true } }),
+    prisma.project.findMany({
+      where: { groupId: group.id, isDeleted: false }
+    }),
+    prisma.projectTopic.findMany({
+      where: { groupId: group.id, isDeleted: false }
+    }),
   ]);
 
   for (const project of projects) {
     const fromStatus = project.status;
-    project.status = 'cancelled';
-    project.isDeleted = true;
-    project.deletedAt = new Date();
-    project.deletedBy = user._id;
-    await project.save();
+    await prisma.project.update({
+      where: { id: project.id },
+      data: {
+        status: 'cancelled',
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: toId(user._id)
+      }
+    });
 
     await logWorkflowEvent({
       entityType: 'Project',
-      entityId: project._id,
+      entityId: project.id,
       fromStatus,
       toStatus: 'cancelled',
       actorId: user._id,
@@ -627,15 +630,19 @@ const cancelLinkedWorkAndDeleteGroup = async (groupId, user) => {
 
   for (const topic of topics) {
     const fromStatus = topic.status;
-    topic.status = 'cancelled';
-    topic.isDeleted = true;
-    topic.deletedAt = new Date();
-    topic.deletedBy = user._id;
-    await topic.save();
+    await prisma.projectTopic.update({
+      where: { id: topic.id },
+      data: {
+        status: 'cancelled',
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: toId(user._id)
+      }
+    });
 
     await logWorkflowEvent({
       entityType: 'ProjectTopic',
-      entityId: topic._id,
+      entityId: topic.id,
       fromStatus,
       toStatus: 'cancelled',
       actorId: user._id,

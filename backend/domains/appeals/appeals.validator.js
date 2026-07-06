@@ -1,10 +1,10 @@
-const mongoose = require('mongoose');
+const { isObjectId } = require('../../utils/object-id');
 
 const validateSubmitAppeal = (req, res, next) => {
   const { projectId, reason } = req.body;
   const errors = [];
 
-  if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
+  if (!projectId || !isObjectId(projectId)) {
     errors.push({ field: 'projectId', code: 'PROJECT_ID_INVALID', message: 'Mã dự án (projectId) không hợp lệ.' });
   }
 
@@ -24,7 +24,7 @@ const validateAssignRecheck = (req, res, next) => {
   const { recheckGraderId } = req.body;
   const errors = [];
 
-  if (!recheckGraderId || !mongoose.Types.ObjectId.isValid(recheckGraderId)) {
+  if (!recheckGraderId || !isObjectId(recheckGraderId)) {
     errors.push({ field: 'recheckGraderId', code: 'GRADER_ID_INVALID', message: 'Mã giảng viên chấm phúc khảo không hợp lệ.' });
   }
 

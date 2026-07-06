@@ -1,10 +1,10 @@
-const mongoose = require('mongoose');
+const { isObjectId } = require('../../utils/object-id');
 
 const validateGroupCreate = (req, res, next) => {
   const { periodId, name } = req.body;
   const errors = [];
 
-  if (!periodId || !mongoose.Types.ObjectId.isValid(periodId)) {
+  if (!periodId || !isObjectId(periodId)) {
     errors.push({ field: 'periodId', code: 'PERIOD_ID_INVALID', message: 'Mã đợt đồ án (periodId) không hợp lệ.' });
   }
 
@@ -27,7 +27,7 @@ const validateInviteMember = (req, res, next) => {
   const { studentId, studentCode } = req.body;
   const errors = [];
 
-  if (studentId && !mongoose.Types.ObjectId.isValid(studentId)) {
+  if (studentId && !isObjectId(studentId)) {
     errors.push({ field: 'studentId', code: 'STUDENT_ID_INVALID', message: 'Mã định danh sinh viên không hợp lệ.' });
   }
 

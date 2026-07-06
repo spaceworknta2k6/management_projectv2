@@ -214,19 +214,23 @@ model ProjectPeriod {
 }
 
 model ProjectRoster {
-  id           String   @id @default(cuid())
-  mongoId      String?  @unique @map("mongo_id")
-  periodId     String   @map("period_id")
-  studentId    String   @map("student_id")
-  classSection String   @map("class_section")
-  status       String   @default("active")
-  importedBy   String   @map("imported_by")
-  importedAt   DateTime @default(now()) @map("imported_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id           String    @id @default(cuid())
+  mongoId      String?   @unique @map("mongo_id")
+  periodId     String    @map("period_id")
+  studentId    String    @map("student_id")
+  classSection String    @map("class_section")
+  status       String    @default("active")
+  importedBy   String    @map("imported_by")
+  importedAt   DateTime  @default(now()) @map("imported_at")
+  isDeleted    Boolean   @default(false) @map("is_deleted")
+  deletedAt    DateTime? @map("deleted_at")
+  deletedBy    String?   @map("deleted_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@unique([periodId, studentId])
   @@index([periodId, status])
+  @@index([periodId, isDeleted])
   @@map("project_rosters")
 }
 
@@ -289,7 +293,6 @@ model ProjectTopic {
   departmentId          String    @map("department_id")
   status                String    @default("draft")
   rejectionReason       String?   @map("rejection_reason")
-  aiDuplicateRisk       Json      @default("{\"checked\":false,\"maxSimilarityScore\":0,\"riskLevel\":\"low\"}") @map("ai_duplicate_risk")
   approvedBy            String?   @map("approved_by")
   approvedAt            DateTime? @map("approved_at")
   version               Int       @default(1)
@@ -426,7 +429,7 @@ model ScoreSheet {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  @@unique([targetType, targetId, graderId])
+  @@unique([targetType, targetId, graderId, rubricRole])
   @@index([projectId])
   @@index([periodId])
   @@map("score_sheets")
@@ -595,3 +598,26 @@ model ChatMessage {
   @@map("chat_messages")
 }
 
+model FileAsset {
+  id           String    @id
+  mongoId      String?   @unique @map("mongo_id")
+  originalName String    @map("original_name")
+  storageKey   String    @map("storage_key")
+  mimeClient   String    @map("mime_client")
+  mimeVerified String    @map("mime_verified")
+  size         Int
+  sha256       String
+  ownerType    String    @map("owner_type")
+  ownerId      String?   @map("owner_id")
+  uploadedBy   String    @map("uploaded_by")
+  scanStatus   String    @default("clean") @map("scan_status")
+  accessPolicy String    @default("private") @map("access_policy")
+  metadata     Json      @default("{}")
+  isDeleted    Boolean   @default(false) @map("is_deleted")
+  deletedAt    DateTime? @map("deleted_at")
+  deletedBy    String?   @map("deleted_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("file_assets")
+}

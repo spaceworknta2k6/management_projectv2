@@ -1,20 +1,20 @@
-const mongoose = require('mongoose');
+const { isObjectId } = require('../../utils/object-id');
 
 const validateScoreSheetSubmit = (req, res, next) => {
   const { projectId, groupId, periodId, rubricRole, targetType, targetId, criteriaScores, comment } = req.body;
   const errors = [];
 
-  if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
+  if (!projectId || !isObjectId(projectId)) {
     errors.push({ field: 'projectId', code: 'PROJECT_ID_INVALID', message: 'Mã dự án (projectId) không hợp lệ.' });
   }
 
   if (groupId !== undefined && groupId !== null && groupId !== '') {
-    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+    if (!isObjectId(groupId)) {
       errors.push({ field: 'groupId', code: 'GROUP_ID_INVALID', message: 'Mã nhóm (groupId) không hợp lệ.' });
     }
   }
 
-  if (!periodId || !mongoose.Types.ObjectId.isValid(periodId)) {
+  if (!periodId || !isObjectId(periodId)) {
     errors.push({ field: 'periodId', code: 'PERIOD_ID_INVALID', message: 'Mã đợt đồ án (periodId) không hợp lệ.' });
   }
 
@@ -26,7 +26,7 @@ const validateScoreSheetSubmit = (req, res, next) => {
     errors.push({ field: 'targetType', code: 'TARGET_TYPE_INVALID', message: 'Loại chấm điểm (targetType) không hợp lệ.' });
   }
 
-  if (!targetId || !mongoose.Types.ObjectId.isValid(targetId)) {
+  if (!targetId || !isObjectId(targetId)) {
     errors.push({ field: 'targetId', code: 'TARGET_ID_INVALID', message: 'Mã đối tượng chấm (targetId) không hợp lệ.' });
   }
 

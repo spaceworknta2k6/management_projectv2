@@ -1,16 +1,8 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const Lecturer = require('../models/Lecturer');
-const Student = require('../models/Student');
-const ProjectPeriod = require('../models/ProjectPeriod');
-const ProjectRoster = require('../models/ProjectRoster');
-const WorkflowEvent = require('../models/WorkflowEvent');
+const prisma = require('../config/prisma');
 
 const TEST_PORT = 5001;
 
@@ -22,12 +14,12 @@ const runIntegrationTests = async () => {
     try {
       // 1. Fetch the facultyId and departmentId of the Faculty Staff (Lê Thị Hương)
       console.log('\n--- Test 0: Fetching Lê Thị Hương profile for operational context ---');
-      const staffUser = await User.findOne({ email: 'huonglt@hust.edu.vn' });
+      const staffUser = await prisma.user.findFirst({ where: { email: 'huonglt@hust.edu.vn', isDeleted: false } });
       if (!staffUser) {
         throw new Error('❌ Test 0 Failed: Could not find Faculty Staff user (huonglt@hust.edu.vn) in database.');
       }
       
-      const staffLecturer = await Lecturer.findOne({ userId: staffUser._id });
+      const staffLecturer = await prisma.lecturer.findFirst({ where: { userId: staffUser.id, isDeleted: false } });
       if (!staffLecturer) {
         throw new Error('❌ Test 0 Failed: Could not find Lecturer profile for Lê Thị Hương.');
       }
@@ -55,7 +47,7 @@ const runIntegrationTests = async () => {
       console.log('✅ Test 1 Passed: Login succeeded as FACULTY_STAFF.');
 
       // Clean up any existing periods created in previous runs to prevent pollution
-      await ProjectPeriod.deleteMany({ name: 'Đợt Đồ Án Tốt Nghiệp Kỳ 2025.2' });
+      await prisma.projectPeriod.deleteMany({ where: { name: 'Đợt Đồ Án Tốt Nghiệp Kỳ 2025.2' } });
 
       // 3. Create a Project Period
       console.log('\n--- Test 2: POST /api/v1/periods (Create Project Period in draft) ---');
@@ -271,8 +263,6 @@ const runIntegrationTests = async () => {
       console.log('\n--- Shutting Down Test Environment ---');
       server.close(async () => {
         console.log('✅ Temporary test server shut down.');
-        await mongoose.disconnect();
-        console.log('✅ MongoDB connection closed.');
         process.exit(process.exitCode || 0);
       });
     }

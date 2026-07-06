@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const { isObjectId } = require('../../utils/object-id');
 
 const validateExtensionCreate = (req, res, next) => {
   const { targetType, targetId, projectId, reason, requestedTo } = req.body;
@@ -8,11 +8,11 @@ const validateExtensionCreate = (req, res, next) => {
     errors.push({ field: 'targetType', code: 'TARGET_TYPE_INVALID', message: 'Loại đối tượng gia hạn phải là một trong: milestone, submission, project.' });
   }
 
-  if (!targetId || !mongoose.Types.ObjectId.isValid(targetId)) {
+  if (!targetId || !isObjectId(targetId)) {
     errors.push({ field: 'targetId', code: 'TARGET_ID_INVALID', message: 'Mã đối tượng gia hạn (targetId) không hợp lệ.' });
   }
 
-  if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
+  if (!projectId || !isObjectId(projectId)) {
     errors.push({ field: 'projectId', code: 'PROJECT_ID_INVALID', message: 'Mã dự án (projectId) không hợp lệ.' });
   }
 

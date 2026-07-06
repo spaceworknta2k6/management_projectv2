@@ -1,15 +1,9 @@
 const bcrypt = require('bcryptjs');
-const mongoose = require('mongoose');
 const prisma = require('../../config/prisma');
-const ProjectRosterMirror = require('../../models/ProjectRoster');
-const UserMirror = require('../../models/User');
-const StudentMirror = require('../../models/Student');
-const WorkflowEvent = require('../../models/WorkflowEvent');
-const Project = require('../../models/Project');
-const ProjectTopic = require('../../models/ProjectTopic');
-const ProjectGroup = require('../../models/ProjectGroup');
+const WorkflowEvent = require('../../utils/workflow-event');
+const { randomBytes } = require('crypto');
 
-const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const newObjectId = () => randomBytes(12).toString('hex');
 const toId = (value) => (value ? value.toString() : null);
 
 const logWorkflowEvent = async ({
@@ -66,68 +60,6 @@ const trimStudentData = (studentData) => ({
   cohort: (studentData.cohort || 'K67').trim(),
   major: (studentData.major || 'Công nghệ thông tin').trim(),
 });
-
-const mirrorUser = async (user) => {
-  await UserMirror.updateOne(
-    { _id: user.id },
-    {
-      $set: {
-        fullName: user.fullName,
-        email: user.email,
-        passwordHash: user.passwordHash,
-        roles: user.roles,
-        status: user.status,
-        phoneNumber: user.phoneNumber || '',
-        cohort: user.cohort || '',
-        avatarUrl: user.avatarUrl || '',
-        isDeleted: user.isDeleted,
-        deletedAt: user.deletedAt,
-        deletedBy: user.deletedBy,
-      },
-    },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
-
-const mirrorStudent = async (student) => {
-  await StudentMirror.updateOne(
-    { _id: student.id },
-    {
-      $set: {
-        userId: student.userId,
-        studentCode: student.studentCode,
-        className: student.className,
-        cohort: student.cohort,
-        major: student.major,
-        facultyId: student.facultyId,
-        skills: student.skills || [],
-        interests: student.interests || [],
-        technologies: student.technologies || [],
-        isDeleted: student.isDeleted,
-        deletedAt: student.deletedAt,
-        deletedBy: student.deletedBy,
-      },
-    },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
-
-const mirrorRoster = async (roster) => {
-  await ProjectRosterMirror.updateOne(
-    { _id: roster.id },
-    {
-      $set: {
-        periodId: roster.periodId,
-        studentId: roster.studentId,
-        classSection: roster.classSection,
-        status: roster.status,
-        importedBy: roster.importedBy,
-        importedAt: roster.importedAt,
-      },
-    },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
 
 const getPeriodOrThrow = async (periodId) => {
   const period = await prisma.projectPeriod.findFirst({
@@ -208,11 +140,6 @@ const getOrCreateStudent = async (studentData, passwordHash, facultyId) => {
     });
   }
 
-  await Promise.all([
-    mirrorUser(user),
-    mirrorStudent(student),
-  ]);
-
   return { student, user };
 };
 
@@ -253,7 +180,6 @@ const upsertRosterEntry = async ({ periodId, studentId, classSection, actorId })
       },
     });
 
-  await mirrorRoster(rosterEntry);
   return { rosterEntry, createdOrReactivated: true };
 };
 
@@ -271,8 +197,6 @@ const importRoster = async (periodId, rosterList, actorId) => {
       actorId,
     });
     importedCodes.push(student.studentCode);
-    await mirrorUser(user);
-    await mirrorStudent(student);
   }
 
   await logWorkflowEvent({
@@ -320,6 +244,7 @@ const getRosterByPeriod = async (periodId) => {
     where: {
       periodId: toId(periodId),
       status: 'active',
+      isDeleted: false,
     },
     orderBy: {
       createdAt: 'desc',
@@ -351,59 +276,84 @@ const getRosterByPeriod = async (periodId) => {
 };
 
 const assertStudentCanBeRemoved = async (periodId, studentId) => {
-  const activeProject = await Project.findOne({
-    periodId,
-    studentId,
-    status: { $ne: 'cancelled' },
+  const activeProject = await prisma.project.findFirst({
+    where: {
+      periodId,
+      studentId,
+      status: { not: 'cancelled' },
+      isDeleted: false,
+    }
   });
   if (activeProject) {
     throw { status: 400, message: 'Sinh viên đang thực hiện dự án hoạt động trong học phần này, không thể xóa khỏi danh sách.' };
   }
 
-  const activeTopic = await ProjectTopic.findOne({
-    periodId,
-    proposedByStudentId: studentId,
-    status: { $in: ['submitted', 'approved', 'assigned', 'locked', 'changed'] },
+  const activeTopic = await prisma.projectTopic.findFirst({
+    where: {
+      periodId,
+      proposedByStudentId: studentId,
+      status: { in: ['submitted', 'approved', 'assigned', 'locked', 'changed'] },
+      isDeleted: false,
+    }
   });
   if (activeTopic) {
     throw { status: 400, message: 'Sinh viên đang có đề tài hoạt động trong học phần này, không thể xóa khỏi danh sách.' };
   }
 
-  const studentGroups = await ProjectGroup.find({
-    periodId,
-    isDeleted: { $ne: true },
-    status: { $ne: 'cancelled' },
-    members: {
-      $elemMatch: {
-        studentId,
-        status: 'accepted',
-      },
-    },
+  const studentGroups = await prisma.projectGroup.findMany({
+    where: {
+      periodId,
+      status: { not: 'cancelled' },
+      isDeleted: false,
+    }
   });
 
-  if (studentGroups.length === 0) return;
+  const studentGroupIds = studentGroups
+    .filter((group) => {
+      const members = group.members || [];
+      return members.some((m) => toId(m.studentId) === toId(studentId) && m.status === 'accepted');
+    })
+    .map((group) => group.id);
 
-  const groupIds = studentGroups.map((group) => group._id);
-  const activeGroupProject = await Project.findOne({
-    periodId,
-    groupId: { $in: groupIds },
-    status: { $ne: 'cancelled' },
+  if (studentGroupIds.length === 0) return;
+
+  const activeGroupProject = await prisma.project.findFirst({
+    where: {
+      periodId,
+      groupId: { in: studentGroupIds },
+      status: { not: 'cancelled' },
+      isDeleted: false,
+    }
   });
   if (activeGroupProject) {
     throw { status: 400, message: 'Sinh viên thuộc nhóm đang thực hiện dự án hoạt động, không thể xóa khỏi danh sách.' };
   }
 
-  const activeGroupTopic = await ProjectTopic.findOne({
-    periodId,
-    groupId: { $in: groupIds },
-    status: { $in: ['submitted', 'approved', 'assigned', 'locked', 'changed'] },
+  const activeGroupTopic = await prisma.projectTopic.findFirst({
+    where: {
+      periodId,
+      groupId: { in: studentGroupIds },
+      status: { in: ['submitted', 'approved', 'assigned', 'locked', 'changed'] },
+      isDeleted: false,
+    }
   });
   if (activeGroupTopic) {
     throw { status: 400, message: 'Sinh viên thuộc nhóm có đề tài hoạt động, không thể xóa khỏi danh sách.' };
   }
 };
 
+const PERIOD_EDITABLE_STATUSES = ['draft', 'open'];
+
 const removeStudentFromRoster = async (periodId, studentId, actorId) => {
+  const period = await getPeriodOrThrow(periodId);
+
+  if (!PERIOD_EDITABLE_STATUSES.includes(period.status)) {
+    throw {
+      status: 400,
+      message: `Không thể rút sinh viên khỏi danh sách khi đợt đồ án đang ở trạng thái "${period.status}". Chỉ cho phép khi đợt ở trạng thái đang mở đăng ký.`,
+    };
+  }
+
   const rosterEntry = await prisma.projectRoster.findUnique({
     where: {
       periodId_studentId: {
@@ -413,7 +363,7 @@ const removeStudentFromRoster = async (periodId, studentId, actorId) => {
     },
   });
 
-  if (!rosterEntry) {
+  if (!rosterEntry || rosterEntry.isDeleted) {
     throw { status: 404, message: 'Không tìm thấy sinh viên trong danh sách học phần đồ án.' };
   }
 
@@ -423,12 +373,16 @@ const removeStudentFromRoster = async (periodId, studentId, actorId) => {
 
   await assertStudentCanBeRemoved(toId(periodId), toId(studentId));
 
+  const now = new Date();
   const updatedRoster = await prisma.projectRoster.update({
     where: { id: rosterEntry.id },
-    data: { status: 'removed' },
+    data: {
+      status: 'removed',
+      isDeleted: true,
+      deletedAt: now,
+      deletedBy: toId(actorId),
+    },
   });
-
-  await mirrorRoster(updatedRoster);
 
   await logWorkflowEvent({
     entityId: toId(periodId),
@@ -512,12 +466,6 @@ const updateRosterEntry = async (periodId, studentId, updates, actorId) => {
     Object.keys(rosterUpdate).length
       ? prisma.projectRoster.update({ where: { id: rosterEntry.id }, data: rosterUpdate })
       : prisma.projectRoster.findUnique({ where: { id: rosterEntry.id } }),
-  ]);
-
-  await Promise.all([
-    mirrorUser(updatedUser),
-    mirrorStudent(updatedStudent),
-    mirrorRoster(updatedRoster),
   ]);
 
   await logWorkflowEvent({

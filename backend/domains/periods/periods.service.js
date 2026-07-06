@@ -1,10 +1,9 @@
-const mongoose = require('mongoose');
+const { randomBytes } = require('crypto');
 const prisma = require('../../config/prisma');
-const ProjectPeriodMirror = require('../../models/ProjectPeriod');
-const WorkflowEvent = require('../../models/WorkflowEvent');
+const WorkflowEvent = require('../../utils/workflow-event');
 const { ACADEMIC_UNIT_DEPARTMENT_IDS, IT_FACULTY_ID } = require('../../constants/academic-units');
 
-const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const newObjectId = () => randomBytes(12).toString('hex');
 const toId = (value) => (value ? value.toString() : null);
 
 const DATE_FIELDS = [
@@ -76,61 +75,7 @@ const normalizePeriodData = (data = {}) => {
   return normalized;
 };
 
-const toMongoMirrorData = (period) => ({
-  _id: period.id,
-  name: period.name,
-  schoolYear: period.schoolYear,
-  semester: period.semester,
-  facultyId: period.facultyId,
-  departmentId: period.departmentId,
-  type: period.type,
-  courseCode: period.courseCode,
-  courseName: period.courseName,
-  projectType: period.projectType,
-  academicUnit: period.academicUnit,
-  programId: period.programId,
-  programName: period.programName,
-  coordinatorLecturerId: period.coordinatorLecturerId,
-  allowIndividual: period.allowIndividual,
-  allowGroup: period.allowGroup,
-  groupMinSize: period.groupMinSize,
-  groupMaxSize: period.groupMaxSize,
-  registrationStart: period.registrationStart,
-  registrationEnd: period.registrationEnd,
-  projectStart: period.projectStart,
-  projectEnd: period.projectEnd,
-  revisionDeadline: period.revisionDeadline,
-  archiveDeadline: period.archiveDeadline,
-  finalSubmissionDeadline: period.finalSubmissionDeadline,
-  gradingStart: period.gradingStart,
-  gradingEnd: period.gradingEnd,
-  appealDaysAfterPublish: period.appealDaysAfterPublish,
-  appealProcessingDays: period.appealProcessingDays,
-  resultPublishedAt: period.resultPublishedAt,
-  minGroupSize: period.minGroupSize,
-  maxGroupSize: period.maxGroupSize,
-  topicChangeDeadline: period.topicChangeDeadline,
-  varianceThreshold: period.varianceThreshold,
-  passScore: period.passScore,
-  rubricVersion: period.rubricVersion,
-  rubricId: period.rubricId,
-  scoringFormula: period.scoringFormula || {},
-  status: period.status,
-  lockedAt: period.lockedAt,
-  createdBy: period.createdBy,
-  updatedBy: period.updatedBy,
-  isDeleted: period.isDeleted,
-  deletedAt: period.deletedAt,
-  deletedBy: period.deletedBy,
-});
 
-const syncMongoMirror = async (period) => {
-  await ProjectPeriodMirror.updateOne(
-    { _id: period.id },
-    { $set: toMongoMirrorData(period) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
 
 const logWorkflowEvent = async ({
   entityId,
@@ -199,8 +144,6 @@ const createPeriod = async (periodData, actorId) => {
       ...normalized,
     },
   });
-
-  await syncMongoMirror(period);
 
   await logWorkflowEvent({
     entityId: period.id,
@@ -272,8 +215,6 @@ const updatePeriod = async (id, updateData, actorId) => {
     data,
   });
 
-  await syncMongoMirror(period);
-
   await logWorkflowEvent({
     entityId: period.id,
     fromStatus: current.status,
@@ -311,8 +252,6 @@ const deletePeriod = async (id, actorId) => {
       updatedBy: actorId,
     },
   });
-
-  await syncMongoMirror(period);
 
   await logWorkflowEvent({
     entityId: period.id,
@@ -366,8 +305,6 @@ const transitionStatus = async (id, toStatus, action, actorId, actorRoles = ['FA
       ...(toStatus === 'results_published' ? { resultPublishedAt: new Date() } : {}),
     },
   });
-
-  await syncMongoMirror(period);
 
   await logWorkflowEvent({
     entityId: period.id,

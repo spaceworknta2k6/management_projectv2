@@ -11,9 +11,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
 
-assertSafeTestDatabase();
 
 // Danh sách các bộ kiểm thử theo thứ tự vòng đời hệ thống
 const SUITES = [

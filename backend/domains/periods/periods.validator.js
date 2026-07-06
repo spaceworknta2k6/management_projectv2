@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const { isObjectId } = require('../../utils/object-id');
 const { ACADEMIC_UNITS } = require('../../constants/academic-units');
 
 const validatePeriodCreate = (req, res, next) => {
@@ -42,7 +42,7 @@ const validatePeriodCreate = (req, res, next) => {
   }
 
   if (rubricId !== undefined && rubricId !== null && rubricId !== '') {
-    if (!mongoose.Types.ObjectId.isValid(rubricId)) {
+    if (!isObjectId(rubricId)) {
       errors.push({ field: 'rubricId', code: 'RUBRIC_ID_INVALID', message: 'Mã tiêu chí đánh giá (rubricId) không hợp lệ.' });
     }
   }
@@ -71,7 +71,7 @@ const validatePeriodCreate = (req, res, next) => {
     if (!courseName || typeof courseName !== 'string' || courseName.trim() === '') {
       errors.push({ field: 'courseName', code: 'COURSE_NAME_REQUIRED', message: 'Tên học phần là bắt buộc.' });
     }
-    if (!coordinatorLecturerId || !mongoose.Types.ObjectId.isValid(coordinatorLecturerId)) {
+    if (!coordinatorLecturerId || !isObjectId(coordinatorLecturerId)) {
       errors.push({ field: 'coordinatorLecturerId', code: 'COORDINATOR_LECTURER_ID_REQUIRED', message: 'Giảng viên phụ trách học phần không hợp lệ.' });
     }
     if (allowIndividual === false && allowGroup === false) {
@@ -186,7 +186,7 @@ const validatePeriodUpdate = (req, res, next) => {
   const errors = [];
 
   if (rubricId !== undefined && rubricId !== null && rubricId !== '') {
-    if (!mongoose.Types.ObjectId.isValid(rubricId)) {
+    if (!isObjectId(rubricId)) {
       errors.push({ field: 'rubricId', code: 'RUBRIC_ID_INVALID', message: 'Mã tiêu chí đánh giá (rubricId) không hợp lệ.' });
     }
   }

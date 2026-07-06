@@ -1,10 +1,10 @@
-const mongoose = require('mongoose');
+const { isObjectId } = require('../../utils/object-id');
 
 const validateNotificationId = (req, res, next) => {
   const { id } = req.params;
   const errors = [];
 
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+  if (!id || !isObjectId(id)) {
     errors.push({ field: 'id', code: 'NOTIFICATION_ID_INVALID', message: 'Mã thông báo (id) không hợp lệ.' });
   }
 

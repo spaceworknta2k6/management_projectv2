@@ -61,6 +61,40 @@ const uploadImageBuffer = async (buffer, { folder, publicId, filename }) => {
   return data;
 };
 
+const uploadFileBuffer = async (buffer, { folder, publicId, filename, resourceType = 'auto' }) => {
+  const { cloudName, apiKey, apiSecret } = getCloudinaryConfig();
+  const params = {
+    folder,
+    overwrite: 'true',
+    public_id: publicId,
+    timestamp: Math.floor(Date.now() / 1000),
+  };
+
+  const formData = new FormData();
+  formData.append('file', new Blob([buffer]), filename);
+  formData.append('api_key', apiKey);
+  Object.entries(params).forEach(([key, value]) => {
+    formData.append(key, String(value));
+  });
+  formData.append('signature', signParams(params, apiSecret));
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw {
+      status: 502,
+      message: data.error?.message || 'Không thể upload file lên Cloudinary.',
+    };
+  }
+
+  return data;
+};
+
 module.exports = {
   uploadImageBuffer,
+  uploadFileBuffer,
 };

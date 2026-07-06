@@ -1,4 +1,4 @@
-const ProjectGroup = require('../models/ProjectGroup');
+const prisma = require('../config/prisma');
 
 const OWNER_TYPES = ['student', 'group'];
 
@@ -72,9 +72,11 @@ const isAcceptedGroupOwnerMember = async (owner, studentId) => {
 
   const group = normalized.groupId?.members
     ? normalized.groupId
-    : await ProjectGroup.findOne({
-      _id: normalized.groupId || normalized.ownerId,
-      isDeleted: { $ne: true },
+    : await prisma.projectGroup.findFirst({
+      where: {
+        id: (normalized.groupId || normalized.ownerId).toString(),
+        isDeleted: false,
+      },
     });
 
   if (!group?.members) return false;

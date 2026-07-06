@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const { isObjectId } = require('../../utils/object-id');
 
 const validateCreate = (req, res, next) => {
   const { newTitle, newScope, newPlan, reason } = req.body;
@@ -48,7 +48,7 @@ const validateReview = (req, res, next) => {
 };
 
 const validateIdParam = (req, res, next) => {
-  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+  if (!isObjectId(req.params.id)) {
     return res.status(422).json({
       success: false,
       message: 'Mã đơn đổi đề tài không hợp lệ.',

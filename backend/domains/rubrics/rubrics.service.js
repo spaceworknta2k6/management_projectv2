@@ -1,112 +1,138 @@
-const EvaluationRubric = require('../../models/EvaluationRubric');
-const ProjectPeriod = require('../../models/ProjectPeriod');
+const { randomBytes } = require('crypto');
 const prisma = require('../../config/prisma');
 
-const toId = (value) => (value ? value.toString() : null);
+const resolveUser = async (id) => {
+  if (!id || typeof id !== 'string') return null;
 
-const toPrismaRubricData = (rubric) => {
-  const source = typeof rubric.toObject === 'function' ? rubric.toObject() : rubric;
-  return {
-    id: toId(source._id),
-    mongoId: toId(source._id),
-    name: source.name,
-    description: source.description || '',
-    version: source.version,
-    criteria: source.criteria || {},
-    isDeleted: Boolean(source.isDeleted),
-    deletedAt: source.deletedAt || null,
-    deletedBy: toId(source.deletedBy),
-    createdAt: source.createdAt || new Date(),
-    updatedAt: source.updatedAt || new Date(),
-  };
-};
-
-const syncPrismaRubric = async (rubric) => {
-  const data = toPrismaRubricData(rubric);
-  await prisma.evaluationRubric.upsert({
-    where: { mongoId: data.mongoId },
-    create: data,
-    update: {
-      name: data.name,
-      description: data.description,
-      version: data.version,
-      criteria: data.criteria,
-      isDeleted: data.isDeleted,
-      deletedAt: data.deletedAt,
-      deletedBy: data.deletedBy,
-      updatedAt: data.updatedAt,
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id },
+        { mongoId: id },
+      ],
+      isDeleted: false,
     },
+    select: { id: true, fullName: true, email: true }
   });
+
+  return user ? { ...user, _id: user.id } : null;
 };
+
+const mapRubric = async (rubric) => ({
+  ...rubric,
+  _id: rubric.id,
+  createdBy: await resolveUser(rubric.createdBy),
+  updatedBy: await resolveUser(rubric.updatedBy),
+});
 
 const createRubric = async (data, user) => {
-  const rubric = new EvaluationRubric({
-    ...data,
-    createdBy: user._id,
-    updatedBy: user._id,
+  const newId = randomBytes(12).toString('hex');
+  const now = new Date();
+  const rubric = await prisma.evaluationRubric.create({
+    data: {
+      id: newId,
+      mongoId: newId,
+      name: data.name,
+      description: data.description || '',
+      version: data.version,
+      criteria: data.criteria || {},
+      isDeleted: false,
+      createdAt: now,
+      updatedAt: now
+    }
   });
-  const saved = await rubric.save();
-  await syncPrismaRubric(saved);
-  return saved;
+
+  return mapRubric(rubric);
 };
 
 const getRubrics = async (query = {}) => {
-  return await EvaluationRubric.find({ ...query, isDeleted: { $ne: true } })
-    .populate('createdBy', 'fullName email')
-    .populate('updatedBy', 'fullName email');
+  const where = { isDeleted: false };
+  if (query.name) where.name = { contains: query.name, mode: 'insensitive' };
+
+  const rubrics = await prisma.evaluationRubric.findMany({
+    where,
+    orderBy: { createdAt: 'desc' }
+  });
+
+  const mappedRubrics = [];
+  for (const rub of rubrics) {
+    mappedRubrics.push(await mapRubric(rub));
+  }
+
+  return mappedRubrics;
 };
 
 const getRubricById = async (id) => {
-  const rubric = await EvaluationRubric.findOne({ _id: id, isDeleted: { $ne: true } })
-    .populate('createdBy', 'fullName email')
-    .populate('updatedBy', 'fullName email');
+  const rubric = await prisma.evaluationRubric.findFirst({
+    where: { id: id.toString(), isDeleted: false }
+  });
   if (!rubric) {
     throw { status: 404, message: 'Tiêu chí đánh giá (Rubric) không tồn tại hoặc đã bị xóa.' };
   }
-  return rubric;
+
+  return mapRubric(rubric);
 };
 
 const updateRubric = async (id, data, user) => {
-  const rubric = await EvaluationRubric.findOne({ _id: id, isDeleted: { $ne: true } });
+  const rubric = await prisma.evaluationRubric.findFirst({
+    where: { id: id.toString(), isDeleted: false }
+  });
   if (!rubric) {
     throw { status: 404, message: 'Tiêu chí đánh giá (Rubric) không tồn tại hoặc đã bị xóa.' };
   }
 
-  // Update fields
-  if (data.name !== undefined) rubric.name = data.name;
-  if (data.description !== undefined) rubric.description = data.description;
-  if (data.version !== undefined) rubric.version = data.version;
-    if (data.criteria !== undefined) {
-      if (data.criteria.SUPERVISOR) rubric.criteria.SUPERVISOR = data.criteria.SUPERVISOR;
-      if (data.criteria.REVIEWER) rubric.criteria.REVIEWER = data.criteria.REVIEWER;
-      if (data.criteria.SECOND_MARKER) rubric.criteria.SECOND_MARKER = data.criteria.SECOND_MARKER;
-    }
-  rubric.updatedBy = user._id;
+  const updatePayload = { updatedAt: new Date() };
+  if (data.name !== undefined) updatePayload.name = data.name;
+  if (data.description !== undefined) updatePayload.description = data.description;
+  if (data.version !== undefined) updatePayload.version = data.version;
 
-  const saved = await rubric.save();
-  await syncPrismaRubric(saved);
-  return saved;
+  if (data.criteria !== undefined) {
+    const criteria = { ...rubric.criteria };
+    if (data.criteria.SUPERVISOR) criteria.SUPERVISOR = data.criteria.SUPERVISOR;
+    if (data.criteria.REVIEWER) criteria.REVIEWER = data.criteria.REVIEWER;
+    if (data.criteria.SECOND_MARKER) criteria.SECOND_MARKER = data.criteria.SECOND_MARKER;
+    updatePayload.criteria = criteria;
+  }
+
+  const updated = await prisma.evaluationRubric.update({
+    where: { id: id.toString() },
+    data: updatePayload
+  });
+
+  return mapRubric(updated);
 };
 
 const deleteRubric = async (id, user) => {
-  const rubric = await EvaluationRubric.findOne({ _id: id, isDeleted: { $ne: true } });
+  const rubric = await prisma.evaluationRubric.findFirst({
+    where: { id: id.toString(), isDeleted: false }
+  });
   if (!rubric) {
     throw { status: 404, message: 'Tiêu chí đánh giá (Rubric) không tồn tại hoặc đã bị xóa.' };
   }
 
-  // Check if rubric is linked to any active/existing project period
-  const periodsCount = await ProjectPeriod.countDocuments({ rubricId: id, isDeleted: { $ne: true } });
+  const periodsCount = await prisma.projectPeriod.count({
+    where: {
+      rubricId: id.toString(),
+      isDeleted: false
+    }
+  });
   if (periodsCount > 0) {
     throw { status: 400, message: 'Không thể xóa Rubric này vì đang được liên kết với đợt đồ án đang hoạt động.' };
   }
 
-  rubric.isDeleted = true;
-  rubric.deletedAt = new Date();
-  rubric.deletedBy = user._id;
+  const deleted = await prisma.evaluationRubric.update({
+    where: { id: id.toString() },
+    data: {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: user._id.toString()
+    }
+  });
 
-  const saved = await rubric.save();
-  await syncPrismaRubric(saved);
-  return saved;
+  return {
+    ...deleted,
+    _id: deleted.id
+  };
 };
 
 module.exports = {

@@ -1,72 +1,31 @@
-const mongoose = require('mongoose');
-const ExtensionRequest = require('../../models/ExtensionRequest');
-const Project = require('../../models/Project');
-const ProjectGroup = require('../../models/ProjectGroup');
-const Milestone = require('../../models/Milestone');
-const SubmissionPackage = require('../../models/SubmissionPackage');
-const Student = require('../../models/Student');
-const WorkflowEvent = require('../../models/WorkflowEvent');
-const { assertOwnerAccess, resolveProjectOwner } = require('../../utils/project-owner');
-const notificationsService = require('../notifications/notifications.service');
+const { randomBytes } = require('crypto');
 const prisma = require('../../config/prisma');
+const notificationsService = require('../notifications/notifications.service');
+const { assertOwnerAccess, resolveProjectOwner } = require('../../utils/project-owner');
 
 const isStaff = (user = {}) => (user.roles || []).some((role) => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(role));
-
-// ─── Mirror helper ────────────────────────────────────────────────────────────
-
-const toDateOrUndefined = (value) => (value ? new Date(value) : undefined);
-
-const toMongoApprovalBlock = (block = {}) => ({
-  status: block.status || 'pending',
-  by: block.by || undefined,
-  at: toDateOrUndefined(block.at),
-  note: block.note || undefined,
-});
-
-const toMongoExtensionData = (pgReq) => ({
-  targetType: pgReq.targetType,
-  targetId: pgReq.targetId,
-  projectId: pgReq.projectId,
-  ownerType: pgReq.ownerType || undefined,
-  ownerId: pgReq.ownerId || undefined,
-  studentId: pgReq.studentId || undefined,
-  groupId: pgReq.groupId || undefined,
-  reason: pgReq.reason,
-  evidenceFileIds: pgReq.evidenceFileIds || [],
-  requestedTo: new Date(pgReq.requestedTo),
-  supervisorApproval: toMongoApprovalBlock(pgReq.supervisorApproval),
-  facultyDecision: toMongoApprovalBlock(pgReq.facultyDecision),
-  status: pgReq.status,
-  cancelledAt: toDateOrUndefined(pgReq.cancelledAt),
-  cancelledBy: pgReq.cancelledBy || undefined,
-  createdAt: pgReq.createdAt,
-  updatedAt: pgReq.updatedAt,
-});
-
-const syncMongoMirror = async (pgReq) => {
-  const filter = { _id: pgReq.mongoId || pgReq.id };
-  await ExtensionRequest.findOneAndUpdate(
-    filter,
-    { $set: toMongoExtensionData(pgReq) },
-    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
-  );
-};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const getRequestStudentUserIds = async (request) => {
   const userIds = [];
   if (request.studentId) {
-    const student = await Student.findOne({ _id: request.studentId, isDeleted: false });
+    const student = await prisma.student.findFirst({
+      where: { id: request.studentId, isDeleted: false }
+    });
     if (student && student.userId) userIds.push(student.userId.toString());
   } else if (request.groupId) {
-    const group = await ProjectGroup.findOne({ _id: request.groupId, isDeleted: false })
-      .populate({ path: 'members.studentId', match: { isDeleted: false } });
+    const group = await prisma.projectGroup.findFirst({
+      where: { id: request.groupId, isDeleted: false }
+    });
     if (group) {
-      for (const m of group.members) {
-        if (m.status === 'accepted' && m.studentId && m.studentId.userId) {
-          userIds.push(m.studentId.userId.toString());
-        }
+      const members = group.members || [];
+      const studentIds = members.filter(m => m.status === 'accepted' && m.studentId).map(m => m.studentId.toString());
+      const students = await prisma.student.findMany({
+        where: { id: { in: studentIds }, isDeleted: false }
+      });
+      for (const s of students) {
+        if (s.userId) userIds.push(s.userId.toString());
       }
     }
   }
@@ -83,14 +42,9 @@ const logWorkflowEvent = async ({
   action,
   reason = '',
   metadata = {},
-}) => WorkflowEvent.create({ entityType, entityId, fromStatus, toStatus, actorId, actorRoles, action, reason, metadata });
-
-const ensureStudentInGroup = async (groupId, studentId) => {
-  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
-  if (!group || !group.members.some((m) => m.studentId.toString() === studentId.toString() && m.status === 'accepted')) {
-    throw { status: 403, message: 'Bạn không thuộc nhóm sinh viên thực hiện dự án này.' };
-  }
-  return group;
+}) => {
+  const WorkflowEvent = require('../../utils/workflow-event');
+  return WorkflowEvent.create({ entityType, entityId, fromStatus, toStatus, actorId, actorRoles, action, reason, metadata });
 };
 
 // ─── Create extension request ─────────────────────────────────────────────────
@@ -98,12 +52,13 @@ const ensureStudentInGroup = async (groupId, studentId) => {
 const createExtensionRequest = async (requestData, actorUserId, actorStudentId) => {
   const { projectId } = requestData;
 
-  const project = await Project.findById(projectId);
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, isDeleted: false }
+  });
   if (!project) throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
 
   await assertOwnerAccess(project, { studentId: actorStudentId, roles: ['STUDENT'] });
 
-  // Kiểm tra unique pending trên Postgres
   const existing = await prisma.extensionRequest.findFirst({
     where: {
       targetType: requestData.targetType,
@@ -114,7 +69,7 @@ const createExtensionRequest = async (requestData, actorUserId, actorStudentId) 
   if (existing) throw { status: 400, message: 'Đối tượng này đang có một yêu cầu gia hạn chờ xử lý.' };
 
   const owner = resolveProjectOwner(project);
-  const newId = new mongoose.Types.ObjectId().toString();
+  const newId = randomBytes(12).toString('hex');
   const now = new Date();
 
   const data = {
@@ -135,36 +90,27 @@ const createExtensionRequest = async (requestData, actorUserId, actorStudentId) 
     updatedAt: now,
   };
 
-  await prisma.extensionRequest.create({ data });
-
-  // Mirror về MongoDB
-  const request = await ExtensionRequest.create({
-    _id: newId,
-    ...data,
-    targetId: requestData.targetId,
-    projectId,
-    ownerId: owner?.ownerId,
-    studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
-    groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : undefined,
-    evidenceFileIds: requestData.evidenceFileIds || [],
-  });
+  const created = await prisma.extensionRequest.create({ data });
 
   await logWorkflowEvent({
-    entityId: request._id,
+    entityId: created.id,
     toStatus: 'pending',
     actorId: actorUserId,
     actorRoles: ['STUDENT'],
     action: 'CREATE_EXTENSION_REQUEST',
-    reason: request.reason,
+    reason: created.reason,
     metadata: {
       projectId,
       groupId: project.groupId,
-      targetType: request.targetType,
-      targetId: request.targetId,
+      targetType: created.targetType,
+      targetId: created.targetId,
     },
   });
 
-  return request;
+  return {
+    ...created,
+    _id: created.id
+  };
 };
 
 // ─── Supervisor recommend ─────────────────────────────────────────────────────
@@ -174,7 +120,9 @@ const supervisorRecommend = async (requestId, status, note, actorUserId, actorLe
   if (!pgReq) throw { status: 404, message: 'Yêu cầu gia hạn không tồn tại.' };
   if (pgReq.status !== 'pending') throw { status: 400, message: 'Chỉ xử lý được yêu cầu gia hạn đang chờ duyệt.' };
 
-  const project = await Project.findById(pgReq.projectId);
+  const project = await prisma.project.findFirst({
+    where: { id: pgReq.projectId, isDeleted: false }
+  });
   if (!project) throw { status: 404, message: 'Dự án đồ án liên kết không tồn tại.' };
 
   if (!actorLecturerId || project.supervisorId.toString() !== actorLecturerId.toString()) {
@@ -185,7 +133,7 @@ const supervisorRecommend = async (requestId, status, note, actorUserId, actorLe
   const supervisorApproval = {
     status,
     by: actorUserId.toString(),
-    at: new Date(),
+    at: new Date().toISOString(),
     note: note.trim(),
   };
 
@@ -198,10 +146,6 @@ const supervisorRecommend = async (requestId, status, note, actorUserId, actorLe
     },
   });
 
-  await syncMongoMirror(updated);
-
-  const request = await ExtensionRequest.findById(requestId);
-
   await logWorkflowEvent({
     entityId: requestId,
     fromStatus: pgReq.status,
@@ -213,7 +157,7 @@ const supervisorRecommend = async (requestId, status, note, actorUserId, actorLe
   });
 
   try {
-    const studentUserIds = await getRequestStudentUserIds(request);
+    const studentUserIds = await getRequestStudentUserIds(updated);
     const actionLabel = status === 'approved' ? 'đồng ý' : 'từ chối';
     for (const studentUserId of studentUserIds) {
       await notificationsService.createNotification({
@@ -230,7 +174,10 @@ const supervisorRecommend = async (requestId, status, note, actorUserId, actorLe
     console.error('Lỗi khi gửi thông báo GVHD duyệt đơn gia hạn:', notifyErr.message);
   }
 
-  return request;
+  return {
+    ...updated,
+    _id: updated.id
+  };
 };
 
 // ─── Apply approved extension (cập nhật deadline target) ─────────────────────
@@ -241,12 +188,6 @@ const applyApprovedExtension = async (request) => {
       where: { id: request.targetId.toString(), isDeleted: false },
       data: { deadline: request.requestedTo },
     });
-
-    const milestone = await Milestone.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
-    if (milestone) {
-      milestone.deadline = request.requestedTo;
-      await milestone.save();
-    }
     return;
   }
 
@@ -255,12 +196,6 @@ const applyApprovedExtension = async (request) => {
       where: { id: request.targetId.toString(), isDeleted: false },
       data: { deadline: request.requestedTo },
     });
-
-    const pkg = await SubmissionPackage.findOne({ _id: request.targetId, isDeleted: { $ne: true } });
-    if (pkg) {
-      pkg.deadline = request.requestedTo;
-      await pkg.save();
-    }
     return;
   }
 
@@ -269,12 +204,6 @@ const applyApprovedExtension = async (request) => {
       where: { id: request.projectId.toString(), isDeleted: false },
       data: { extendedUntil: request.requestedTo },
     });
-
-    const project = await Project.findById(request.projectId);
-    if (project) {
-      project.extendedUntil = request.requestedTo;
-      await project.save();
-    }
     return;
   }
 };
@@ -294,7 +223,7 @@ const facultyDecide = async (requestId, status, note, actorUserId, actorRoles = 
   const facultyDecision = {
     status,
     by: actorUserId.toString(),
-    at: new Date(),
+    at: new Date().toISOString(),
     note: note.trim(),
   };
 
@@ -307,12 +236,8 @@ const facultyDecide = async (requestId, status, note, actorUserId, actorRoles = 
     },
   });
 
-  await syncMongoMirror(updated);
-
-  const request = await ExtensionRequest.findById(requestId);
-
   if (status === 'approved') {
-    await applyApprovedExtension(request);
+    await applyApprovedExtension(updated);
   }
 
   await logWorkflowEvent({
@@ -331,7 +256,7 @@ const facultyDecide = async (requestId, status, note, actorUserId, actorRoles = 
   });
 
   try {
-    const studentUserIds = await getRequestStudentUserIds(request);
+    const studentUserIds = await getRequestStudentUserIds(updated);
     const actionLabel = status === 'approved' ? 'phê duyệt' : 'từ chối';
     for (const studentUserId of studentUserIds) {
       await notificationsService.createNotification({
@@ -345,27 +270,34 @@ const facultyDecide = async (requestId, status, note, actorUserId, actorRoles = 
       });
     }
 
-    const Lecturer = require('../../models/Lecturer');
-    const project = await Project.findById(pgReq.projectId).populate({
-      path: 'supervisorId',
-      populate: { path: 'userId' },
+    const project = await prisma.project.findFirst({
+      where: { id: pgReq.projectId }
     });
-    if (project && project.supervisorId && project.supervisorId.userId) {
-      await notificationsService.createNotification({
-        recipientId: project.supervisorId.userId._id,
-        type: status === 'approved' ? 'EXTENSION_FACULTY_APPROVED_SUPERVISOR' : 'EXTENSION_FACULTY_REJECTED_SUPERVISOR',
-        title: `Khoa đã ${actionLabel} đơn gia hạn của sinh viên`,
-        body: `Yêu cầu gia hạn của đồ án do thầy/cô hướng dẫn đã được Khoa ${actionLabel}.`,
-        entityType: 'ExtensionRequest',
-        entityId: requestId,
-        actionUrl: `/dashboard/extensions`,
+    if (project && project.supervisorId) {
+      const supervisor = await prisma.lecturer.findFirst({
+        where: { id: project.supervisorId },
+        include: { user: true }
       });
+      if (supervisor && supervisor.user) {
+        await notificationsService.createNotification({
+          recipientId: supervisor.user.id,
+          type: status === 'approved' ? 'EXTENSION_FACULTY_APPROVED_SUPERVISOR' : 'EXTENSION_FACULTY_REJECTED_SUPERVISOR',
+          title: `Khoa đã ${actionLabel} đơn gia hạn của sinh viên`,
+          body: `Yêu cầu gia hạn của đồ án do thầy/cô hướng dẫn đã được Khoa ${actionLabel}.`,
+          entityType: 'ExtensionRequest',
+          entityId: requestId,
+          actionUrl: `/dashboard/extensions`,
+        });
+      }
     }
   } catch (notifyErr) {
     console.error('Lỗi khi gửi thông báo Khoa duyệt đơn gia hạn:', notifyErr.message);
   }
 
-  return request;
+  return {
+    ...updated,
+    _id: updated.id
+  };
 };
 
 // ─── Cancel request ───────────────────────────────────────────────────────────
@@ -377,9 +309,12 @@ const cancelRequest = async (requestId, user = {}) => {
 
   if (!isStaff(user)) {
     if (!user.studentId) throw { status: 403, message: 'Bạn không có quyền hủy yêu cầu gia hạn này.' };
-    // Lấy Mongo doc để dùng assertOwnerAccess
-    const mongoReq = await ExtensionRequest.findById(requestId);
-    if (mongoReq) await assertOwnerAccess(mongoReq, user);
+    const project = await prisma.project.findFirst({
+      where: { id: pgReq.projectId, isDeleted: false }
+    });
+    if (project) {
+      await assertOwnerAccess(project, user);
+    }
   }
 
   const now = new Date();
@@ -393,10 +328,6 @@ const cancelRequest = async (requestId, user = {}) => {
     },
   });
 
-  await syncMongoMirror(updated);
-
-  const request = await ExtensionRequest.findById(requestId);
-
   await logWorkflowEvent({
     entityId: requestId,
     fromStatus: 'pending',
@@ -407,102 +338,184 @@ const cancelRequest = async (requestId, user = {}) => {
     reason: 'Hủy yêu cầu gia hạn',
   });
 
-  return request;
+  return {
+    ...updated,
+    _id: updated.id
+  };
 };
 
 // ─── Get requests (list) ──────────────────────────────────────────────────────
 
 const getRequests = async (queryParams = {}, actor = {}) => {
   const { search = '', status = '', page = 1, limit = 10 } = queryParams;
-  const filter = {};
+  const where = {};
 
-  if (status) filter.status = status;
+  if (status) where.status = status;
 
   const roles = actor.roles || [];
 
   if (roles.includes('STUDENT') && actor.studentId) {
-    const groups = await ProjectGroup.find({
-      isDeleted: { $ne: true },
-      members: { $elemMatch: { studentId: actor.studentId, status: 'accepted' } },
-    }).select('_id');
-    filter.$or = [
-      { studentId: actor.studentId },
-      { groupId: { $in: groups.map((group) => group._id) } },
+    const activeGroups = await prisma.projectGroup.findMany({
+      where: { isDeleted: false }
+    });
+    const studentGroupIds = activeGroups
+      .filter(g => (g.members || []).some(m => m.studentId === actor.studentId.toString() && m.status === 'accepted'))
+      .map(g => g.id);
+
+    where.OR = [
+      { studentId: actor.studentId.toString() },
+      { groupId: { in: studentGroupIds } }
     ];
   } else if (roles.includes('LECTURER') && actor.lecturerId) {
-    const projects = await Project.find({ supervisorId: actor.lecturerId }).select('_id');
-    filter.projectId = { $in: projects.map((project) => project._id) };
+    const projects = await prisma.project.findMany({
+      where: { supervisorId: actor.lecturerId.toString(), isDeleted: false },
+      select: { id: true }
+    });
+    where.projectId = { in: projects.map(p => p.id) };
   } else if (!isStaff(actor)) {
-    filter._id = { $exists: false };
+    where.id = 'none';
   }
 
   if (search) {
-    const groups = await ProjectGroup.find({
-      name: { $regex: search, $options: 'i' },
-      isDeleted: { $ne: true },
-    }).select('_id');
+    const groups = await prisma.projectGroup.findMany({
+      where: { name: { contains: search, mode: 'insensitive' }, isDeleted: false },
+      select: { id: true }
+    });
 
-    const ProjectTopic = require('../../models/ProjectTopic');
-    const topics = await ProjectTopic.find({
-      title: { $regex: search, $options: 'i' },
-      isDeleted: { $ne: true },
-    }).select('_id');
+    const topics = await prisma.projectTopic.findMany({
+      where: { title: { contains: search, mode: 'insensitive' }, isDeleted: false },
+      select: { id: true }
+    });
 
-    const projects = await Project.find({
-      topicId: { $in: topics.map((t) => t._id) },
-    }).select('_id');
+    const projects = await prisma.project.findMany({
+      where: { topicId: { in: topics.map((t) => t.id) }, isDeleted: false },
+      select: { id: true }
+    });
 
     const searchFilter = [];
-    if (groups.length > 0) searchFilter.push({ groupId: { $in: groups.map((g) => g._id) } });
-    if (projects.length > 0) searchFilter.push({ projectId: { $in: projects.map((p) => p._id) } });
+    if (groups.length > 0) searchFilter.push({ groupId: { in: groups.map((g) => g.id) } });
+    if (projects.length > 0) searchFilter.push({ projectId: { in: projects.map((p) => p.id) } });
 
-    if (searchFilter.length > 0) filter.$or = searchFilter;
-    else filter._id = { $exists: false };
+    if (searchFilter.length > 0) {
+      if (where.OR) {
+        where.AND = [
+          { OR: where.OR },
+          { OR: searchFilter }
+        ];
+        delete where.OR;
+      } else {
+        where.OR = searchFilter;
+      }
+    } else {
+      where.id = 'none';
+    }
   }
 
   const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
 
   const [requests, total] = await Promise.all([
-    ExtensionRequest.find(filter)
-      .populate({
-        path: 'projectId',
-        select: 'status topicId supervisorId',
-        populate: [
-          { path: 'topicId', select: 'title' },
-          { path: 'supervisorId', populate: { path: 'userId', select: 'fullName email' } },
-        ],
-      })
-      .populate({ path: 'groupId', select: 'name' })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit)),
-    ExtensionRequest.countDocuments(filter),
+    prisma.extensionRequest.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: Number(limit)
+    }),
+    prisma.extensionRequest.count({ where }),
   ]);
 
-  return { requests, total, page: Number(page), pages: Math.ceil(total / Number(limit)), limit: Number(limit) };
+  const mappedRequests = [];
+  for (const req of requests) {
+    const project = await prisma.project.findFirst({
+      where: { id: req.projectId }
+    });
+    let topic = null;
+    let supervisor = null;
+    if (project) {
+      topic = await prisma.projectTopic.findUnique({
+        where: { id: project.topicId },
+        select: { title: true }
+      });
+      supervisor = await prisma.lecturer.findUnique({
+        where: { id: project.supervisorId },
+        include: { user: { select: { fullName: true, email: true } } }
+      });
+    }
+
+    const group = req.groupId ? await prisma.projectGroup.findUnique({
+      where: { id: req.groupId },
+      select: { name: true }
+    }) : null;
+
+    mappedRequests.push({
+      ...req,
+      _id: req.id,
+      projectId: project ? {
+        ...project,
+        _id: project.id,
+        topicId: topic ? { ...topic, _id: project.topicId } : null,
+        supervisorId: supervisor ? {
+          ...supervisor,
+          _id: project.supervisorId,
+          userId: supervisor.user ? { ...supervisor.user, _id: supervisor.user.id } : null
+        } : null
+      } : null,
+      groupId: group ? { ...group, _id: req.groupId } : null
+    });
+  }
+
+  return { requests: mappedRequests, total, page: Number(page), pages: Math.ceil(total / Number(limit)), limit: Number(limit) };
 };
 
 // ─── Get request by ID ────────────────────────────────────────────────────────
 
 const getRequestById = async (id, actor = {}) => {
-  const request = await ExtensionRequest.findById(id)
-    .populate({
-      path: 'projectId',
-      select: 'status topicId supervisorId',
-      populate: [
-        { path: 'topicId', select: 'title' },
-        { path: 'supervisorId', populate: { path: 'userId', select: 'fullName email' } },
-      ],
-    })
-    .populate({ path: 'groupId', select: 'name' });
+  const req = await prisma.extensionRequest.findUnique({
+    where: { id: id.toString() }
+  });
+  if (!req) throw { status: 404, message: 'Yêu cầu gia hạn không tồn tại.' };
 
-  if (!request) throw { status: 404, message: 'Yêu cầu gia hạn không tồn tại.' };
+  const project = await prisma.project.findFirst({
+    where: { id: req.projectId }
+  });
+  let topic = null;
+  let supervisor = null;
+  if (project) {
+    topic = await prisma.projectTopic.findUnique({
+      where: { id: project.topicId },
+      select: { title: true }
+    });
+    supervisor = await prisma.lecturer.findUnique({
+      where: { id: project.supervisorId },
+      include: { user: { select: { fullName: true, email: true } } }
+    });
+  }
+
+  const group = req.groupId ? await prisma.projectGroup.findUnique({
+    where: { id: req.groupId },
+    select: { name: true }
+  }) : null;
+
+  const requestWithMirrorProps = {
+    ...req,
+    _id: req.id,
+    projectId: project ? {
+      ...project,
+      _id: project.id,
+      topicId: topic ? { ...topic, _id: project.topicId } : null,
+      supervisorId: supervisor ? {
+        ...supervisor,
+        _id: project.supervisorId,
+        userId: supervisor.user ? { ...supervisor.user, _id: supervisor.user.id } : null
+      } : null
+    } : null,
+    groupId: group ? { ...group, _id: req.groupId } : null
+  };
 
   const roles = actor.roles || [];
   if (roles.includes('STUDENT') && actor.studentId) {
-    await assertOwnerAccess(request, actor);
+    await assertOwnerAccess(project, actor);
   } else if (roles.includes('LECTURER') && actor.lecturerId) {
-    const supervisorId = request.projectId?.supervisorId?._id || request.projectId?.supervisorId;
+    const supervisorId = requestWithMirrorProps.projectId?.supervisorId?._id || requestWithMirrorProps.projectId?.supervisorId;
     if (!supervisorId || supervisorId.toString() !== actor.lecturerId.toString()) {
       throw { status: 403, message: 'Bạn không có quyền xem yêu cầu gia hạn này.' };
     }
@@ -510,7 +523,7 @@ const getRequestById = async (id, actor = {}) => {
     throw { status: 403, message: 'Bạn không có quyền xem yêu cầu gia hạn này.' };
   }
 
-  return request;
+  return requestWithMirrorProps;
 };
 
 module.exports = {

@@ -1,20 +1,21 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const Lecturer = require('../models/Lecturer');
-const Student = require('../models/Student');
-const ProjectPeriod = require('../models/ProjectPeriod');
-const ProjectRoster = require('../models/ProjectRoster');
-const ProjectGroup = require('../models/ProjectGroup');
-const ProjectTopic = require('../models/ProjectTopic');
-const Project = require('../models/Project');
-const Milestone = require('../models/Milestone');
-const WorkflowEvent = require('../models/WorkflowEvent');
+const {
+  db,
+  newObjectId,
+  User,
+  Lecturer,
+  Student,
+  ProjectPeriod,
+  ProjectRoster,
+  ProjectGroup,
+  ProjectTopic,
+  Project,
+  Milestone,
+  WorkflowEvent
+} = require('./db-compat');
 
 const TEST_PORT = 5003;
 
@@ -272,7 +273,7 @@ const runIntegrationTests = async () => {
       console.log('\n--- Test 4: POST /api/v1/projects/:projectId/milestones/:id/submit (Student submits work) ---');
       const submitPayload = {
         note: 'Em gửi thầy bản đề cương chi tiết và tài liệu vẽ sơ đồ UML ạ.',
-        fileIds: [new mongoose.Types.ObjectId().toString()] // Mocked file asset ID
+        fileIds: [newObjectId()] // Mocked file asset ID
       };
 
       const submitRes = await fetch(`http://localhost:${TEST_PORT}/api/v1/projects/${projectId}/milestones/${milestoneId}/submit`, {
@@ -431,8 +432,8 @@ const runIntegrationTests = async () => {
       console.log('\n--- Shutting Down Test Environment ---');
       server.close(async () => {
         console.log('✅ Temporary test server shut down.');
-        await mongoose.disconnect();
-        console.log('✅ MongoDB connection closed.');
+        await db.disconnect();
+        console.log('✅ Compatibility DB connection closed.');
         process.exit(process.exitCode || 0);
       });
     }

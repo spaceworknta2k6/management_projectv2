@@ -1,12 +1,10 @@
 const prisma = require('../../config/prisma');
-const mongoose = require('mongoose');
-const SubmissionPackageMirror = require('../../models/SubmissionPackage');
-const ProjectMirror = require('../../models/Project');
 const { assertProjectAccess } = require('../../utils/access-control');
 const { resolveProjectOwner, isStudentOwner } = require('../../utils/project-owner');
 const notificationsService = require('../notifications/notifications.service');
+const { randomBytes } = require('crypto');
 
-const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const newObjectId = () => randomBytes(12).toString('hex');
 const toId = (value) => (value ? value.toString() : null);
 
 const toPublicPackage = (pkg) => {
@@ -15,74 +13,6 @@ const toPublicPackage = (pkg) => {
     ...pkg,
     _id: pkg.id,
   };
-};
-
-const toMongoMirrorSubmissionPackageData = (pkg) => {
-  return {
-    _id: pkg.id,
-    ownerType: pkg.ownerType,
-    ownerId: toId(pkg.ownerId),
-    groupId: toId(pkg.groupId) || undefined,
-    studentId: toId(pkg.studentId) || undefined,
-    projectOwnerType: pkg.projectOwnerType || undefined,
-    projectOwnerId: toId(pkg.projectOwnerId) || undefined,
-    periodId: toId(pkg.periodId),
-    phase: pkg.phase,
-    deadline: pkg.deadline,
-    status: pkg.status,
-    items: pkg.items || [],
-    submittedBy: toId(pkg.submittedBy) || undefined,
-    submittedAt: pkg.submittedAt || undefined,
-    reviewedBy: toId(pkg.reviewedBy) || undefined,
-    reviewedAt: pkg.reviewedAt || undefined,
-    reviewNotes: pkg.reviewNotes || undefined,
-    lockedAt: pkg.lockedAt || undefined,
-    isDeleted: pkg.isDeleted,
-    deletedAt: pkg.deletedAt || undefined,
-    deletedBy: toId(pkg.deletedBy) || undefined,
-    createdAt: pkg.createdAt,
-    updatedAt: pkg.updatedAt,
-  };
-};
-
-const syncMongoMirrorSubmissionPackage = async (pkg) => {
-  await SubmissionPackageMirror.updateOne(
-    { _id: pkg.id },
-    { $set: toMongoMirrorSubmissionPackageData(pkg) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
-
-const toMongoMirrorProjectData = (project) => {
-  return {
-    _id: project.id,
-    periodId: toId(project.periodId),
-    ownerType: project.ownerType || undefined,
-    ownerId: toId(project.ownerId) || undefined,
-    studentId: toId(project.studentId) || undefined,
-    groupId: toId(project.groupId) || undefined,
-    topicId: toId(project.topicId),
-    supervisorId: toId(project.supervisorId),
-    reviewerId: toId(project.reviewerId) || undefined,
-    status: project.status,
-    extendedUntil: project.extendedUntil || undefined,
-    finalGradeId: toId(project.finalGradeId) || undefined,
-    lockedAt: project.lockedAt || undefined,
-    version: project.version,
-    isDeleted: project.isDeleted,
-    deletedAt: project.deletedAt || undefined,
-    deletedBy: toId(project.deletedBy) || undefined,
-    createdAt: project.createdAt,
-    updatedAt: project.updatedAt,
-  };
-};
-
-const syncMongoMirrorProject = async (project) => {
-  await ProjectMirror.updateOne(
-    { _id: project.id },
-    { $set: toMongoMirrorProjectData(project) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
 };
 
 const resolveSubmissionOwnerFields = (data) => {
@@ -242,7 +172,6 @@ const initializePackage = async (projectId, phase, actorUserId, actorStudentId) 
     data: payload
   });
 
-  await syncMongoMirrorSubmissionPackage(pkg);
   return toPublicPackage(pkg);
 };
 
@@ -279,7 +208,6 @@ const uploadPackageItem = async (packageId, type, fileId, actorUserId, actorStud
     data: { items }
   });
 
-  await syncMongoMirrorSubmissionPackage(updatedPkg);
   return toPublicPackage(updatedPkg);
 };
 
@@ -312,18 +240,15 @@ const submitPackage = async (packageId, actorUserId, actorStudentId) => {
     }
   });
 
-  await syncMongoMirrorSubmissionPackage(updatedPkg);
-
   if (pkg.phase === 'final_report') {
     const project = await prisma.project.findFirst({
       where: { id: pkg.ownerId }
     });
     if (project && project.status === 'in_progress') {
-      const updatedProject = await prisma.project.update({
+      await prisma.project.update({
         where: { id: project.id },
         data: { status: 'final_report_submitted' }
       });
-      await syncMongoMirrorProject(updatedProject);
     }
   }
 
@@ -413,14 +338,11 @@ const reviewPackageItem = async (packageId, type, status, actorUserId, actorLect
     }
   });
 
-  await syncMongoMirrorSubmissionPackage(updatedPkg);
-
   if (updatedPkg.phase === 'final_report' && updatedPkg.status === 'accepted') {
-    const updatedProject = await prisma.project.update({
+    await prisma.project.update({
       where: { id: project.id },
       data: { status: 'supervisor_reviewed' }
     });
-    await syncMongoMirrorProject(updatedProject);
   }
 
   try {
@@ -498,7 +420,6 @@ const updatePackage = async (packageId, data, user) => {
     data: updateData
   });
 
-  await syncMongoMirrorSubmissionPackage(updatedPkg);
   return toPublicPackage(updatedPkg);
 };
 
@@ -533,8 +454,6 @@ const deletePackage = async (packageId, user) => {
       deletedBy: toId(user._id)
     }
   });
-
-  await syncMongoMirrorSubmissionPackage(updatedPkg);
 
   return { success: true, message: 'Gói hồ sơ nộp đã được xóa thành công.' };
 };

@@ -1,116 +1,16 @@
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
-const mongoose = require('mongoose');
-const FileAsset = require('../../models/FileAsset');
-const Project = require('../../models/Project');
-const ProjectGroup = require('../../models/ProjectGroup');
 const prisma = require('../../config/prisma');
 const { getJwtSecret } = require('../../config/jwt');
+const { uploadFileBuffer } = require('../../config/cloudinary');
+const { Readable } = require('stream');
 
-const PRIVATE_UPLOAD_DIR = path.join(__dirname, '../../uploads/private');
-const GRIDFS_STORAGE_PREFIX = 'gridfs:';
-const STORAGE_PROVIDERS = new Set(['local', 'gridfs']);
+const testFileStore = new Map();
 
-const getStorageProvider = () => {
-  const provider = (process.env.STORAGE_PROVIDER || 'local').trim().toLowerCase();
-  if (!STORAGE_PROVIDERS.has(provider)) {
-    throw { status: 500, message: 'Cấu hình STORAGE_PROVIDER không hợp lệ. Chỉ hỗ trợ local hoặc gridfs.' };
-  }
-  return provider;
-};
+const toId = (value) => (value ? value.toString() : null);
 
 const sanitizeFileName = (originalName) => {
-  const baseName = path.basename(originalName || 'upload.bin');
+  const baseName = (originalName || 'upload.bin').split(/[\\/]/).pop();
   return baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
-};
-
-const getGridFsBucket = () => {
-  if (!mongoose.connection.db) {
-    throw { status: 500, message: 'Kết nối MongoDB chưa sẵn sàng để lưu tệp tin.' };
-  }
-
-  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
-    bucketName: process.env.GRIDFS_BUCKET_NAME || 'fileAssets',
-  });
-};
-
-const uploadToGridFs = (multerFile, sha256Hash, verifiedMime, ownerType, ownerId, user) => (
-  new Promise((resolve, reject) => {
-    const bucket = getGridFsBucket();
-    const uploadStream = bucket.openUploadStream(sanitizeFileName(multerFile.originalname), {
-      contentType: verifiedMime || multerFile.mimetype,
-      metadata: {
-        originalName: multerFile.originalname,
-        mimeClient: multerFile.mimetype,
-        mimeVerified: verifiedMime,
-        sha256: sha256Hash,
-        ownerType: ownerType || 'project',
-        ownerId: (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) ? new mongoose.Types.ObjectId(ownerId) : null,
-        uploadedBy: user._id,
-      },
-    });
-
-    uploadStream.on('error', reject);
-    uploadStream.on('finish', () => resolve(`${GRIDFS_STORAGE_PREFIX}${uploadStream.id.toString()}`));
-    uploadStream.end(multerFile.buffer);
-  })
-);
-
-const saveToLocalStorage = (multerFile) => {
-  if (!fs.existsSync(PRIVATE_UPLOAD_DIR)) {
-    fs.mkdirSync(PRIVATE_UPLOAD_DIR, { recursive: true });
-  }
-
-  const uniqueFileName = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${sanitizeFileName(multerFile.originalname)}`;
-  const relativePath = path.join('uploads/private', uniqueFileName);
-  const absolutePath = path.join(PRIVATE_UPLOAD_DIR, uniqueFileName);
-
-  fs.writeFileSync(absolutePath, multerFile.buffer);
-  return relativePath;
-};
-
-const resolveStoredFilePath = (storageKey) => {
-  const backendRoot = path.join(__dirname, '../..');
-  const absolutePath = path.resolve(backendRoot, storageKey);
-
-  if (!absolutePath.startsWith(backendRoot + path.sep)) {
-    throw { status: 400, message: 'Đường dẫn tệp tin không hợp lệ.' };
-  }
-
-  return absolutePath;
-};
-
-const getGridFsObjectId = (storageKey) => {
-  const fileId = storageKey.slice(GRIDFS_STORAGE_PREFIX.length);
-  if (!mongoose.Types.ObjectId.isValid(fileId)) {
-    throw { status: 400, message: 'Mã lưu trữ GridFS không hợp lệ.' };
-  }
-  return new mongoose.Types.ObjectId(fileId);
-};
-
-const createStoredFileReadStream = async (asset) => {
-  if (asset.storageKey.startsWith(GRIDFS_STORAGE_PREFIX)) {
-    const bucket = getGridFsBucket();
-    const fileObjectId = getGridFsObjectId(asset.storageKey);
-    const [storedFile] = await bucket.find({ _id: fileObjectId }).limit(1).toArray();
-    if (!storedFile) {
-      throw { status: 404, message: 'Tệp tin GridFS không tồn tại trên hệ thống lưu trữ.' };
-    }
-    return bucket.openDownloadStream(fileObjectId);
-  }
-
-  const absolutePath = resolveStoredFilePath(asset.storageKey);
-  if (!fs.existsSync(absolutePath)) {
-    throw { status: 404, message: 'Tệp tin vật lý không tồn tại trên hệ thống lưu trữ.' };
-  }
-
-  return fs.createReadStream(absolutePath);
-};
-
-const hasAnyRole = (user, allowedRoles) => {
-  const roles = user.roles || (user.role ? [user.role] : []);
-  return roles.some((role) => allowedRoles.includes(role));
 };
 
 const detectMimeFromMagicBytes = (buffer) => {
@@ -125,7 +25,7 @@ const detectMimeFromMagicBytes = (buffer) => {
     buffer.toString('ascii', 0, 4) === 'RIFF' &&
     buffer.toString('ascii', 8, 12) === 'WEBP'
   ) return 'image/webp';
-  if (hex === '504B0304') return 'application/zip'; // Standard ZIP / DOCX / PPTX PK header
+  if (hex === '504B0304') return 'application/zip';
   return null;
 };
 
@@ -141,13 +41,18 @@ const isMimeCompatible = (verifiedMime, clientMime, originalName) => {
 
   if (verifiedMime === 'application/zip') {
     const allowedExtensions = ['.zip', '.docx', '.pptx', '.xlsx'];
-    const ext = path.extname(originalName).toLowerCase();
+    const ext = (originalName || '').substring(originalName.lastIndexOf('.')).toLowerCase();
     if (allowedExtensions.includes(ext)) {
       return true;
     }
   }
 
   return false;
+};
+
+const hasAnyRole = (user, allowedRoles) => {
+  const roles = user.roles || (user.role ? [user.role] : []);
+  return roles.some((role) => allowedRoles.includes(role));
 };
 
 const checkChatRoomFileAccess = async (asset, user) => {
@@ -186,11 +91,8 @@ const checkChatRoomFileAccess = async (asset, user) => {
 
 const uploadFile = async (multerFile, ownerType, ownerId, user) => {
   const fileBuffer = multerFile.buffer;
-
-  // 1. Calculate SHA-256 Hashing for Integrity Check
   const sha256Hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
-  // 2. Binary Magic Bytes Analysis
   const verifiedMime = detectMimeFromMagicBytes(fileBuffer);
   if (!verifiedMime || !isMimeCompatible(verifiedMime, multerFile.mimetype, multerFile.originalname)) {
     throw {
@@ -199,115 +101,173 @@ const uploadFile = async (multerFile, ownerType, ownerId, user) => {
     };
   }
 
-  // 3. Save file in the configured private storage backend.
-  const storageProvider = getStorageProvider();
-  const storageKey = storageProvider === 'gridfs'
-    ? await uploadToGridFs(multerFile, sha256Hash, verifiedMime, ownerType, ownerId, user)
-    : saveToLocalStorage(multerFile);
+  const newId = crypto.randomBytes(12).toString('hex');
+  let storageKey;
+  let storageProvider;
 
-  // 4. Create FileAsset Record
-  const fileAsset = new FileAsset({
-    originalName: multerFile.originalname,
-    storageKey,
-    mimeClient: multerFile.mimetype,
-    mimeVerified: verifiedMime,
-    size: multerFile.size,
-    sha256: sha256Hash,
-    ownerType: ownerType || 'project',
-    ownerId: (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) ? ownerId : null,
-    uploadedBy: user._id,
-    scanStatus: 'clean', // Automatically clean for mock context
-    accessPolicy: 'private',
-    metadata: {
-      storageProvider,
-    },
+  if (process.env.NODE_ENV === 'test') {
+    storageKey = `test-memory:${newId}`;
+    storageProvider = 'test-memory';
+    testFileStore.set(newId, Buffer.from(fileBuffer));
+  } else {
+    const publicId = `${newId}-${Date.now()}`;
+    const uploadResult = await uploadFileBuffer(fileBuffer, {
+      folder: 'management-project/files',
+      publicId,
+      filename: sanitizeFileName(multerFile.originalname),
+      resourceType: 'raw',
+    });
+    storageKey = `cloudinary:${uploadResult.secure_url}`;
+    storageProvider = 'cloudinary';
+  }
+
+  const fileAsset = await prisma.fileAsset.create({
+    data: {
+      id: newId,
+      mongoId: newId,
+      originalName: multerFile.originalname,
+      storageKey,
+      mimeClient: multerFile.mimetype,
+      mimeVerified: verifiedMime,
+      size: multerFile.size,
+      sha256: sha256Hash,
+      ownerType: ownerType || 'project',
+      ownerId: ownerId ? ownerId.toString() : null,
+      uploadedBy: user._id.toString(),
+      scanStatus: 'clean',
+      accessPolicy: 'private',
+      metadata: { storageProvider },
+    }
   });
 
-  return await fileAsset.save();
+  return {
+    ...fileAsset,
+    _id: fileAsset.id,
+    uploadedBy: fileAsset.uploadedBy,
+  };
 };
 
 const getFileById = async (id) => {
-  const asset = await FileAsset.findOne({ _id: id });
+  const asset = await prisma.fileAsset.findUnique({
+    where: { id: id.toString() }
+  });
   if (!asset) {
     throw { status: 404, message: 'Tệp tin không tồn tại.' };
   }
-  return asset;
+  return {
+    ...asset,
+    _id: asset.id,
+    uploadedBy: asset.uploadedBy,
+  };
 };
 
 const checkFileAccess = async (id, user) => {
-  const asset = await FileAsset.findOne({ _id: id });
+  const asset = await prisma.fileAsset.findUnique({
+    where: { id: id.toString() }
+  });
   if (!asset) {
     throw { status: 404, message: 'Tệp tin không tồn tại.' };
   }
 
-  // Case 1: Global Admin or Faculty Staff bypass
+  const assetWithMongoProps = {
+    ...asset,
+    _id: asset.id,
+    uploadedBy: asset.uploadedBy,
+  };
+
   if (hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF'])) {
-    return asset;
+    return assetWithMongoProps;
   }
 
-  const chatRoomAsset = await checkChatRoomFileAccess(asset, user);
+  const chatRoomAsset = await checkChatRoomFileAccess(assetWithMongoProps, user);
   if (chatRoomAsset) return chatRoomAsset;
 
-  // Case 2: Uploader is the owner
-  if (asset.uploadedBy.toString() === user._id.toString()) {
-    return asset;
+  if (asset.uploadedBy === user._id.toString()) {
+    return assetWithMongoProps;
   }
 
-  // Case 3: Project context scoping
   let project = null;
-  if (asset.ownerId && mongoose.Types.ObjectId.isValid(asset.ownerId)) {
-    project = await Project.findById(asset.ownerId);
+  const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(asset.ownerId || '');
+  if (asset.ownerId && isValidObjectId) {
+    project = await prisma.project.findFirst({
+      where: { id: asset.ownerId.toString(), isDeleted: false }
+    });
   }
-  
-  // Fallback: Nếu không tìm thấy Project bằng ownerId (ví dụ trường hợp ownerId là null hoặc không khớp dự án nào)
+
   if (!project) {
-    const Student = require('../../models/Student');
-    const student = await Student.findOne({ userId: asset.uploadedBy });
+    const student = await prisma.student.findFirst({
+      where: { userId: asset.uploadedBy.toString(), isDeleted: false }
+    });
     if (student) {
-      const group = await ProjectGroup.findOne({
-        'members.studentId': student._id,
-        isDeleted: { $ne: true },
-        status: { $ne: 'cancelled' }
+      const activeGroups = await prisma.projectGroup.findMany({
+        where: { isDeleted: false, status: { not: 'cancelled' } }
+      });
+      const group = activeGroups.find(g => {
+        const members = g.members || [];
+        return members.some(m => toId(m.studentId) === toId(student.id));
       });
       if (group) {
-        project = await Project.findOne({ groupId: group._id });
+        project = await prisma.project.findFirst({
+          where: { groupId: group.id, isDeleted: false }
+        });
       }
     }
   }
 
   if (project) {
-    // If student is part of the project group
     if (user.roles && user.roles.includes('STUDENT') && user.studentId) {
-      const group = await ProjectGroup.findOne({ _id: project.groupId, isDeleted: { $ne: true } });
+      const group = await prisma.projectGroup.findFirst({
+        where: { id: project.groupId, isDeleted: false }
+      });
       if (group) {
-        const isMember = group.members.some(m => m.studentId.toString() === user.studentId.toString());
-        if (isMember) return asset;
+        const members = group.members || [];
+        const isMember = members.some(m => m.studentId.toString() === user.studentId.toString());
+        if (isMember) return assetWithMongoProps;
       }
     }
 
-    // If user is the Supervisor
     if (project.supervisorId && user.lecturerId && project.supervisorId.toString() === user.lecturerId.toString()) {
-      return asset;
+      return assetWithMongoProps;
     }
 
-    // If user is the Reviewer
     if (project.reviewerId && user.lecturerId && project.reviewerId.toString() === user.lecturerId.toString()) {
-      return asset;
+      return assetWithMongoProps;
     }
-
-
   }
 
   throw { status: 403, message: 'Quyền truy cập bị từ chối: Bạn không có quyền tải xuống tệp tin này.' };
 };
 
+const createStoredFileReadStream = async (asset) => {
+  if (asset.storageKey.startsWith('test-memory:')) {
+    const fileId = asset.storageKey.slice('test-memory:'.length);
+    const buffer = testFileStore.get(fileId);
+    if (!buffer) {
+      throw { status: 404, message: 'Tệp tin không tồn tại trên hệ thống lưu trữ kiểm thử.' };
+    }
+    return Readable.from(buffer);
+  }
+
+  if (asset.storageKey.startsWith('cloudinary:')) {
+    const url = asset.storageKey.slice('cloudinary:'.length);
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw { status: 404, message: 'Tệp tin không tồn tại trên hệ thống lưu trữ Cloudinary.' };
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    return Readable.from(buffer);
+  }
+
+  throw { status: 500, message: 'Phương thức lưu trữ tệp tin không được hỗ trợ.' };
+};
+
 const generateSignedUrl = async (id, user) => {
-  // Enforce access control check before URL signing
   await checkFileAccess(id, user);
 
-  const expires = Date.now() + 15 * 60 * 1000; // 15 minutes validity
+  const expires = Date.now() + 15 * 60 * 1000;
   const secret = getJwtSecret();
-  
+
   const token = crypto
     .createHmac('sha256', secret)
     .update(`${id}-${expires}`)
@@ -340,32 +300,40 @@ const verifySignedUrl = async (id, token, expires) => {
 };
 
 const updateScanStatus = async (id, status) => {
-  const asset = await FileAsset.findOne({ _id: id });
-  if (!asset) {
-    throw { status: 404, message: 'Tệp tin không tồn tại.' };
-  }
-
-  asset.scanStatus = status;
-  return await asset.save();
+  const asset = await prisma.fileAsset.update({
+    where: { id: id.toString() },
+    data: { scanStatus: status }
+  });
+  return {
+    ...asset,
+    _id: asset.id,
+    uploadedBy: asset.uploadedBy,
+  };
 };
 
 const deleteFile = async (id, user) => {
-  const asset = await FileAsset.findOne({ _id: id });
+  const asset = await prisma.fileAsset.findUnique({
+    where: { id: id.toString() }
+  });
   if (!asset) {
     throw { status: 404, message: 'Tệp tin không tồn tại.' };
   }
 
   const isStaff = hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF']);
-  const isOwner = asset.uploadedBy.toString() === user._id.toString();
+  const isOwner = asset.uploadedBy === user._id.toString();
 
   if (!isStaff && !isOwner) {
     throw { status: 403, message: 'Quyền truy cập bị từ chối: Bạn không có quyền xóa tệp tin này.' };
   }
 
-  asset.isDeleted = true;
-  asset.deletedAt = new Date();
-  asset.deletedBy = user._id;
-  await asset.save();
+  await prisma.fileAsset.update({
+    where: { id: id.toString() },
+    data: {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: user._id.toString()
+    }
+  });
 
   return { success: true, message: 'Tệp tin đã được xóa thành công.' };
 };

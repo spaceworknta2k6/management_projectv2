@@ -1,28 +1,30 @@
-const mongoose = require('mongoose');
-const ProjectGroup = require('../../models/ProjectGroup');
-const ProjectRoster = require('../../models/ProjectRoster');
-const Lecturer = require('../../models/Lecturer');
-const User = require('../../models/User');
+const { isObjectId } = require('../../utils/object-id');
+const prisma = require('../../config/prisma');
 const { ACADEMIC_UNITS, TOPIC_DOMAINS } = require('../../constants/academic-units');
 
 const OWNER_TYPES = ['student', 'group'];
+const toId = (value) => (value ? value.toString() : null);
 
 const resolveLecturerByEmail = async (email) => {
   const value = String(email || '').trim().toLowerCase();
   if (!value) return null;
 
-  const user = await User.findOne({
-    email: value,
-    roles: 'LECTURER',
-    status: 'active',
-    isDeleted: { $ne: true },
+  const user = await prisma.user.findFirst({
+    where: {
+      email: value,
+      roles: { has: 'LECTURER' },
+      status: 'active',
+      isDeleted: false,
+    }
   });
   if (!user) return null;
 
-  return Lecturer.findOne({
-    userId: user._id,
-    status: 'active',
-    isDeleted: { $ne: true },
+  return prisma.lecturer.findFirst({
+    where: {
+      userId: user.id,
+      status: 'active',
+      isDeleted: false,
+    }
   });
 };
 
@@ -36,21 +38,21 @@ const validateTopicPropose = async (req, res, next) => {
       }
 
       if (req.body.ownerType !== 'student' && !req.body.groupId && req.user.studentId) {
-        const group = await ProjectGroup.findOne({
-          periodId: req.body.periodId,
-          isDeleted: { $ne: true },
-          status: { $ne: 'cancelled' },
-          members: {
-            $elemMatch: {
-              studentId: req.user.studentId,
-              status: 'accepted',
-            },
-          },
+        const activeGroups = await prisma.projectGroup.findMany({
+          where: {
+            periodId: req.body.periodId ? req.body.periodId.toString() : '',
+            status: { not: 'cancelled' },
+            isDeleted: false,
+          }
+        });
+        const group = activeGroups.find(g => {
+          const members = g.members || [];
+          return members.some(m => toId(m.studentId) === toId(req.user.studentId) && m.status === 'accepted');
         });
 
         if (group) {
           req.body.ownerType = 'group';
-          req.body.groupId = group._id.toString();
+          req.body.groupId = group.id;
         }
       }
 
@@ -72,7 +74,7 @@ const validateTopicPropose = async (req, res, next) => {
 
     const errors = [];
 
-    if (!periodId || !mongoose.Types.ObjectId.isValid(periodId)) {
+    if (!periodId || !isObjectId(periodId)) {
       errors.push({ field: 'periodId', code: 'PERIOD_ID_INVALID', message: 'Ma dot do an (periodId) khong hop le.' });
     }
     if (academicUnit !== undefined && !ACADEMIC_UNITS.includes(academicUnit)) {
@@ -90,16 +92,18 @@ const validateTopicPropose = async (req, res, next) => {
       if (ownerType === 'group') {
         if (!groupId) {
           errors.push({ field: 'groupId', code: 'GROUP_REQUIRED', message: 'Ban can chon mot nhom da tham gia trong dot do an nay truoc khi de xuat de tai.' });
-        } else if (!mongoose.Types.ObjectId.isValid(groupId)) {
+        } else if (!isObjectId(groupId)) {
           errors.push({ field: 'groupId', code: 'GROUP_ID_INVALID', message: 'Ma nhom do an (groupId) khong hop le.' });
         }
       }
 
-      if (ownerType === 'student' && periodId && mongoose.Types.ObjectId.isValid(periodId) && req.user.studentId) {
-        const roster = await ProjectRoster.findOne({
-          periodId,
-          studentId: req.user.studentId,
-          status: 'active',
+      if (ownerType === 'student' && periodId && isObjectId(periodId) && req.user.studentId) {
+        const roster = await prisma.projectRoster.findFirst({
+          where: {
+            periodId: periodId.toString(),
+            studentId: req.user.studentId.toString(),
+            status: 'active',
+          }
         });
 
         if (!roster) {
@@ -110,22 +114,22 @@ const validateTopicPropose = async (req, res, next) => {
       if (!proposedSupervisorId && proposedSupervisorEmail) {
         const lecturer = await resolveLecturerByEmail(proposedSupervisorEmail);
         if (lecturer) {
-          req.body.proposedSupervisorId = lecturer._id.toString();
+          req.body.proposedSupervisorId = lecturer.id;
         }
       }
 
-      if (!req.body.proposedSupervisorId || !mongoose.Types.ObjectId.isValid(req.body.proposedSupervisorId)) {
+      if (!req.body.proposedSupervisorId || !isObjectId(req.body.proposedSupervisorId)) {
         errors.push({ field: 'proposedSupervisorEmail', code: 'SUPERVISOR_EMAIL_INVALID', message: 'Email giang vien huong dan khong hop le hoac khong ton tai.' });
       }
     } else {
       if (!proposedSupervisorId && proposedSupervisorEmail) {
         const lecturer = await resolveLecturerByEmail(proposedSupervisorEmail);
         if (lecturer) {
-          req.body.proposedSupervisorId = lecturer._id.toString();
+          req.body.proposedSupervisorId = lecturer.id;
         }
       }
 
-      if (req.body.proposedSupervisorId && !mongoose.Types.ObjectId.isValid(req.body.proposedSupervisorId)) {
+      if (req.body.proposedSupervisorId && !isObjectId(req.body.proposedSupervisorId)) {
         errors.push({ field: 'proposedSupervisorEmail', code: 'SUPERVISOR_EMAIL_INVALID', message: 'Email giang vien huong dan khong hop le hoac khong ton tai.' });
       }
     }
@@ -166,17 +170,18 @@ const validateTopicPropose = async (req, res, next) => {
 
 const validateTopicUpdate = async (req, res, next) => {
   try {
-    const ProjectTopic = require('../../models/ProjectTopic');
-    const topic = await ProjectTopic.findById(req.params.id);
-    if (!topic) {
+    const topic = await prisma.projectTopic.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!topic || topic.isDeleted) {
       return res.status(404).json({ success: false, message: 'De tai khong ton tai.' });
     }
 
-    if (!req.body.periodId) req.body.periodId = topic.periodId.toString();
+    if (!req.body.periodId) req.body.periodId = topic.periodId;
     if (!req.body.ownerType) req.body.ownerType = topic.ownerType || (topic.groupId ? 'group' : 'student');
-    if (!req.body.groupId && topic.groupId) req.body.groupId = topic.groupId.toString();
+    if (!req.body.groupId && topic.groupId) req.body.groupId = topic.groupId;
     if (!req.body.proposedSupervisorId && topic.proposedSupervisorId) {
-      req.body.proposedSupervisorId = topic.proposedSupervisorId.toString();
+      req.body.proposedSupervisorId = topic.proposedSupervisorId;
     }
 
     return validateTopicPropose(req, res, next);

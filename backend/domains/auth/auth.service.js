@@ -1,6 +1,5 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const mongoose = require('mongoose');
 const crypto = require('crypto');
 const prisma = require('../../config/prisma');
 const { getJwtSecret } = require('../../config/jwt');
@@ -8,7 +7,7 @@ const { uploadImageBuffer } = require('../../config/cloudinary');
 
 const ALLOWED_DOMAIN = 'st.phenikaa-uni.edu.vn';
 
-const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const newObjectId = () => crypto.randomBytes(12).toString('hex');
 
 const normalizeUser = (user) => {
   if (!user) return null;

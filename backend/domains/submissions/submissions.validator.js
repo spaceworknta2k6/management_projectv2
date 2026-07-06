@@ -1,10 +1,10 @@
-const mongoose = require('mongoose');
+const { isObjectId } = require('../../utils/object-id');
 
 const validatePackageInitialize = (req, res, next) => {
   const { projectId, phase } = req.body;
   const errors = [];
 
-  if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
+  if (!projectId || !isObjectId(projectId)) {
     errors.push({ field: 'projectId', code: 'PROJECT_ID_INVALID', message: 'Mã dự án (projectId) không hợp lệ.' });
   }
 
@@ -31,7 +31,7 @@ const validateItemUpload = (req, res, next) => {
     errors.push({ field: 'type', code: 'ITEM_TYPE_REQUIRED', message: 'Loại tài liệu nộp là bắt buộc.' });
   }
 
-  if (!fileId || !mongoose.Types.ObjectId.isValid(fileId)) {
+  if (!fileId || !isObjectId(fileId)) {
     errors.push({ field: 'fileId', code: 'FILE_ID_INVALID', message: 'Mã tệp tin nộp (fileId) không hợp lệ.' });
   }
 

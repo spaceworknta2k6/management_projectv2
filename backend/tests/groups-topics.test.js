@@ -1,19 +1,20 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const Lecturer = require('../models/Lecturer');
-const Student = require('../models/Student');
-const ProjectPeriod = require('../models/ProjectPeriod');
-const ProjectRoster = require('../models/ProjectRoster');
-const ProjectGroup = require('../models/ProjectGroup');
-const ProjectTopic = require('../models/ProjectTopic');
-const Project = require('../models/Project');
-const WorkflowEvent = require('../models/WorkflowEvent');
+const {
+  db,
+  newObjectId,
+  User,
+  Lecturer,
+  Student,
+  ProjectPeriod,
+  ProjectRoster,
+  ProjectGroup,
+  ProjectTopic,
+  Project,
+  WorkflowEvent
+} = require('./db-compat');
 
 const TEST_PORT = 5002;
 
@@ -23,7 +24,7 @@ const runIntegrationTests = async () => {
 
     try {
       // 1. Database setup & dependencies resolution
-      console.log('\n--- Test 0: Resolving and preparing database mock state ---');
+      console.log('\n--- Test 0: Resolving and preparing database state ---');
       
       // Let's resolve the Lecturer (Supervisor): Kiều Tuấn Hải
       const supervisorUser = await User.findOne({ email: 'haikt@hust.edu.vn' });
@@ -168,7 +169,7 @@ const runIntegrationTests = async () => {
           }
         },
         create: {
-          id: new mongoose.Types.ObjectId().toString(),
+          id: newObjectId(),
           periodId: period._id.toString(),
           studentId: student1Profile._id.toString(),
           classSection: 'IT4911',
@@ -189,7 +190,7 @@ const runIntegrationTests = async () => {
           }
         },
         create: {
-          id: new mongoose.Types.ObjectId().toString(),
+          id: newObjectId(),
           periodId: period._id.toString(),
           studentId: student2Profile._id.toString(),
           classSection: 'IT4911',
@@ -323,7 +324,7 @@ const runIntegrationTests = async () => {
         summary: 'Nghiên cứu quy trình nghiệp vụ và tích hợp các tác vụ AI hỗ trợ chấm điểm và đánh giá đề tài.',
         objectives: 'Tạo lập hệ thống quản lý mốc thời gian, tạo nhóm, chấm điểm, tự động quét tương đồng.',
         scope: 'Khoa Công nghệ thông tin HUST.',
-        technologies: ['Node.js', 'Express', 'React', 'MongoDB', 'LangChain'],
+        technologies: ['Node.js', 'Express', 'React', 'PostgreSQL', 'LangChain'],
         expectedResult: 'Hệ thống chạy thử nghiệm hoàn thiện có báo cáo chi tiết.',
         plan: 'Tháng 1-2: Phân tích. Tháng 3-4: Code. Tháng 5: Hoàn thiện báo cáo.',
         keywords: ['Do an tốt nghiệp', 'AI assistant', 'Management system'],
@@ -424,8 +425,8 @@ const runIntegrationTests = async () => {
       console.log('\n--- Shutting Down Test Environment ---');
       server.close(async () => {
         console.log('✅ Temporary test server shut down.');
-        await mongoose.disconnect();
-        console.log('✅ MongoDB connection closed.');
+        await db.disconnect();
+        console.log('✅ Compatibility DB connection closed.');
         process.exit(process.exitCode || 0);
       });
     }

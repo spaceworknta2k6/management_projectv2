@@ -5,13 +5,9 @@ require('./config/env').loadEnv();
 const express = require('express');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const connectDB = require('./config/db');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-// Connect to MongoDB
-connectDB();
 
 // Global Middlewares
 app.use(cors({

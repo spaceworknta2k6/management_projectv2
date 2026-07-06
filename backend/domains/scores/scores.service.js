@@ -1,13 +1,9 @@
 const prisma = require('../../config/prisma');
-const mongoose = require('mongoose');
-const ScoreSheetMirror = require('../../models/ScoreSheet');
-const FinalGradeMirror = require('../../models/FinalGrade');
-const EvaluationRubricMirror = require('../../models/EvaluationRubric');
-const ProjectMirror = require('../../models/Project');
 const { assertProjectAccess, canAccessProject, isStaff } = require('../../utils/access-control');
 const { resolveProjectOwner } = require('../../utils/project-owner');
+const { randomBytes } = require('crypto');
 
-const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const newObjectId = () => randomBytes(12).toString('hex');
 const toId = (value) => (value ? value.toString() : null);
 
 const populateGrader = async (graderId) => {
@@ -122,128 +118,11 @@ const toPublicScoreSheet = async (sheet) => {
   };
 };
 
-const toMongoMirrorRubricData = (rubric) => {
-  return {
-    _id: rubric.id,
-    name: rubric.name,
-    description: rubric.description || '',
-    version: rubric.version,
-    criteria: rubric.criteria || {},
-    isDeleted: rubric.isDeleted,
-    deletedAt: rubric.deletedAt || undefined,
-    deletedBy: toId(rubric.deletedBy) || undefined,
-    createdAt: rubric.createdAt,
-    updatedAt: rubric.updatedAt,
-  };
-};
 
-const syncMongoMirrorRubric = async (rubric) => {
-  await EvaluationRubricMirror.updateOne(
-    { _id: rubric.id },
-    { $set: toMongoMirrorRubricData(rubric) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
 
-const toMongoMirrorScoreSheetData = (sheet) => {
-  return {
-    _id: sheet.id,
-    rubricId: toId(sheet.rubricId) || undefined,
-    rubricRole: sheet.rubricRole,
-    rubricVersion: sheet.rubricVersion,
-    targetType: sheet.targetType,
-    targetId: toId(sheet.targetId),
-    projectId: toId(sheet.projectId),
-    ownerType: sheet.ownerType || undefined,
-    ownerId: toId(sheet.ownerId) || undefined,
-    studentId: toId(sheet.studentId) || undefined,
-    groupId: toId(sheet.groupId) || undefined,
-    periodId: toId(sheet.periodId),
-    graderId: toId(sheet.graderId),
-    graderRole: sheet.graderRole,
-    criteriaScores: sheet.criteriaScores || [],
-    rawTotal: sheet.rawTotal,
-    roundedTotal: sheet.roundedTotal,
-    comment: sheet.comment || '',
-    consentForDefense: sheet.consentForDefense,
-    lockedAt: sheet.lockedAt || undefined,
-    digitalSignature: sheet.digitalSignature || undefined,
-    version: sheet.version,
-    createdAt: sheet.createdAt,
-    updatedAt: sheet.updatedAt,
-  };
-};
 
-const syncMongoMirrorScoreSheet = async (sheet) => {
-  await ScoreSheetMirror.updateOne(
-    { _id: sheet.id },
-    { $set: toMongoMirrorScoreSheetData(sheet) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
 
-const toMongoMirrorFinalGradeData = (grade) => {
-  return {
-    _id: grade.id,
-    projectId: toId(grade.projectId),
-    ownerType: grade.ownerType || undefined,
-    ownerId: toId(grade.ownerId) || undefined,
-    studentId: toId(grade.studentId) || undefined,
-    groupId: toId(grade.groupId) || undefined,
-    periodId: toId(grade.periodId),
-    evaluationMode: grade.evaluationMode,
-    componentScores: grade.componentScores || {},
-    finalScore: grade.finalScore,
-    letterGrade: grade.letterGrade,
-    passStatus: grade.passStatus,
-    varianceFlags: grade.varianceFlags || [],
-    formulaVersion: grade.formulaVersion,
-    publishedAt: grade.publishedAt || undefined,
-    lockedAt: grade.lockedAt || undefined,
-    createdAt: grade.createdAt,
-    updatedAt: grade.updatedAt,
-  };
-};
 
-const syncMongoMirrorFinalGrade = async (grade) => {
-  await FinalGradeMirror.updateOne(
-    { _id: grade.id },
-    { $set: toMongoMirrorFinalGradeData(grade) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
-
-const toMongoMirrorProjectData = (project) => {
-  return {
-    _id: project.id,
-    periodId: toId(project.periodId),
-    ownerType: project.ownerType || undefined,
-    ownerId: toId(project.ownerId) || undefined,
-    studentId: toId(project.studentId) || undefined,
-    groupId: toId(project.groupId) || undefined,
-    topicId: toId(project.topicId),
-    supervisorId: toId(project.supervisorId),
-    reviewerId: toId(project.reviewerId) || undefined,
-    status: project.status,
-    extendedUntil: project.extendedUntil || undefined,
-    finalGradeId: toId(project.finalGradeId) || undefined,
-    lockedAt: project.lockedAt || undefined,
-    version: project.version,
-    isDeleted: project.isDeleted,
-    deletedAt: project.deletedAt || undefined,
-    deletedBy: toId(project.deletedBy) || undefined,
-    createdAt: project.createdAt,
-    updatedAt: project.updatedAt,
-  };
-};
-
-const syncMongoMirrorProject = async (project) => {
-  await ProjectMirror.updateOne(
-    { _id: project.id },
-    { $set: toMongoMirrorProjectData(project) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
 
 const resolveScoreSheetOwnerFields = (data) => {
   const resolved = { ...data };
@@ -276,11 +155,12 @@ const assertScoreSheetPermission = async (project, rubricRole, user) => {
   if ((rubricRole === 'REVIEWER' || rubricRole === 'SECOND_MARKER') && reviewerId === lecturerId) return;
 
   if (rubricRole === 'RECHECK') {
-    const AppealRequest = require('../../models/AppealRequest');
-    const appeal = await AppealRequest.findOne({
-      projectId: project.id,
-      recheckGraderId: user.lecturerId,
-      status: 'grading',
+    const appeal = await prisma.appealRequest.findFirst({
+      where: {
+        projectId: project.id,
+        recheckGraderId: user.lecturerId.toString(),
+        status: 'grading',
+      }
     });
     if (appeal) return;
   }
@@ -366,7 +246,7 @@ const submitScoreSheet = async (data, user) => {
   const roundedTotal = Math.round(rawTotal * 100) / 100;
 
   const existing = await prisma.scoreSheet.findFirst({
-    where: { targetType, targetId: toId(targetId), graderId: toId(graderId) }
+    where: { targetType, targetId: toId(targetId), graderId: toId(graderId), rubricRole }
   });
 
   if (existing) {
@@ -400,7 +280,6 @@ const submitScoreSheet = async (data, user) => {
       }
     });
 
-    await syncMongoMirrorScoreSheet(updated);
     return await toPublicScoreSheet(updated);
   } else {
     let graderRole = data.graderRole;
@@ -447,19 +326,19 @@ const submitScoreSheet = async (data, user) => {
       data: payload
     });
 
-    await syncMongoMirrorScoreSheet(savedSheet);
 
     if (targetType === 'RECHECK') {
       try {
         const appealsService = require('../appeals/appeals.service');
-        const AppealRequest = require('../../models/AppealRequest');
-        const appeal = await AppealRequest.findOne({
-          projectId: toId(projectId),
-          recheckGraderId: toId(graderId),
-          status: 'grading',
+        const appeal = await prisma.appealRequest.findFirst({
+          where: {
+            projectId: toId(projectId),
+            recheckGraderId: toId(graderId),
+            status: 'grading',
+          }
         });
         if (appeal) {
-          await appealsService.linkRecheckScoreSheet(appeal._id, savedSheet.id);
+          await appealsService.linkRecheckScoreSheet(appeal.id, savedSheet.id);
         }
       } catch (linkErr) {
         console.error('Lỗi khi link phiếu RECHECK vào đơn phúc khảo:', linkErr.message);
@@ -641,7 +520,6 @@ const updateScoreSheet = async (id, data, user) => {
     data: updateData
   });
 
-  await syncMongoMirrorScoreSheet(updated);
   return await toPublicScoreSheet(updated);
 };
 
@@ -660,7 +538,6 @@ const lockScoreSheet = async (id, user = {}) => {
     data: { lockedAt: new Date() }
   });
 
-  await syncMongoMirrorScoreSheet(updated);
   return await toPublicScoreSheet(updated);
 };
 
@@ -797,7 +674,6 @@ const aggregateFinalGrade = async (projectId, user) => {
     });
   }
 
-  await syncMongoMirrorFinalGrade(grade);
   return { ...grade, _id: grade.id };
 };
 
@@ -857,17 +733,14 @@ const publishFinalGrade = async (id, userId) => {
     data: { publishedAt: new Date() }
   });
 
-  await syncMongoMirrorFinalGrade(updatedGrade);
-
   const project = await prisma.project.findFirst({
     where: { id: grade.projectId }
   });
   if (project) {
-    const updatedProject = await prisma.project.update({
+    await prisma.project.update({
       where: { id: project.id },
       data: { status: 'finalized' }
     });
-    await syncMongoMirrorProject(updatedProject);
   }
 
   return { ...updatedGrade, _id: updatedGrade.id };
@@ -886,7 +759,6 @@ const lockFinalGrade = async (id) => {
     data: { lockedAt: new Date() }
   });
 
-  await syncMongoMirrorFinalGrade(updatedGrade);
   return { ...updatedGrade, _id: updatedGrade.id };
 };
 
@@ -913,7 +785,6 @@ const resolveVariance = async (id, flagType, resolution, userId) => {
     data: { varianceFlags: flags }
   });
 
-  await syncMongoMirrorFinalGrade(updatedGrade);
   return { ...updatedGrade, _id: updatedGrade.id };
 };
 
@@ -1039,17 +910,15 @@ const publishFinalGradesByPeriod = async (periodId, userId) => {
           where: { id: grade.id },
           data: { publishedAt: new Date() }
         });
-        await syncMongoMirrorFinalGrade(updatedGrade);
 
         const project = await prisma.project.findFirst({
           where: { id: grade.projectId }
         });
         if (project) {
-          const updatedProject = await prisma.project.update({
+          await prisma.project.update({
             where: { id: project.id },
             data: { status: 'finalized' }
           });
-          await syncMongoMirrorProject(updatedProject);
         }
         publishedCount++;
       }
@@ -1075,17 +944,6 @@ const publishFinalGradesByPeriod = async (periodId, userId) => {
           resultPublishedAt: new Date()
         }
       });
-      // Synchronize period to MongoDB mirror
-      const ProjectPeriodMirror = require('../../models/ProjectPeriod');
-      await ProjectPeriodMirror.updateOne(
-        { _id: period.id },
-        {
-          $set: {
-            status: 'results_published',
-            resultPublishedAt: updatedPeriod.resultPublishedAt
-          }
-        }
-      );
     }
   }
 

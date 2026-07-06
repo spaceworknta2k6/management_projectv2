@@ -1,4 +1,4 @@
-const Project = require('../models/Project');
+const prisma = require('../config/prisma');
 
 const checkContextualAssignment = (requiredRole, paramName = 'projectId') => {
   return async (req, res, next) => {
@@ -18,7 +18,9 @@ const checkContextualAssignment = (requiredRole, paramName = 'projectId') => {
 
       // Case 1: Supervisor contextual check
       if (requiredRole === 'SUPERVISOR') {
-        const project = await Project.findById(entityId);
+        const project = await prisma.project.findFirst({
+          where: { id: entityId, isDeleted: false }
+        });
         if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
         
         if (project.supervisorId && project.supervisorId.toString() === lecturerId.toString()) {
@@ -29,7 +31,9 @@ const checkContextualAssignment = (requiredRole, paramName = 'projectId') => {
 
       // Case 2: Reviewer contextual check
       if (requiredRole === 'REVIEWER') {
-        const project = await Project.findById(entityId);
+        const project = await prisma.project.findFirst({
+          where: { id: entityId, isDeleted: false }
+        });
         if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
         
         if (project.reviewerId && project.reviewerId.toString() === lecturerId.toString()) {

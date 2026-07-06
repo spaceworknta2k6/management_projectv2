@@ -1,7 +1,7 @@
-const mongoose = require('mongoose');
 const prisma = require('../config/prisma');
+const { randomBytes } = require('crypto');
 
-const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const newObjectId = () => randomBytes(12).toString('hex');
 const toId = (value) => (value ? value.toString() : null);
 
 const toPublicEvent = (event) => {

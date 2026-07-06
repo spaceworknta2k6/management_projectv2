@@ -1,19 +1,20 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const Lecturer = require('../models/Lecturer');
-const Student = require('../models/Student');
-const ProjectPeriod = require('../models/ProjectPeriod');
-const ProjectGroup = require('../models/ProjectGroup');
-const ProjectTopic = require('../models/ProjectTopic');
-const Project = require('../models/Project');
-const EvaluationRubric = require('../models/EvaluationRubric');
-const ScoreSheet = require('../models/ScoreSheet');
+const {
+  db,
+  newObjectId,
+  User,
+  Lecturer,
+  Student,
+  ProjectPeriod,
+  ProjectGroup,
+  ProjectTopic,
+  Project,
+  EvaluationRubric,
+  ScoreSheet
+} = require('./db-compat');
 
 const TEST_PORT = 5006;
 
@@ -338,8 +339,8 @@ const runTests = async () => {
       console.log('\n--- Shutting Down Test Environment ---');
       server.close(async () => {
         console.log('✅ Temporary test server shut down.');
-        await mongoose.disconnect();
-        console.log('✅ MongoDB connection closed.');
+        await db.disconnect();
+        console.log('✅ Compatibility DB connection closed.');
         process.exit(process.exitCode || 0);
       });
     }

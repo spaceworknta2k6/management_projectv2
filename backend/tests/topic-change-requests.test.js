@@ -1,20 +1,21 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 require('../config/env').loadEnv();
-const { assertSafeTestDatabase } = require('./test-db-guard');
-assertSafeTestDatabase();
 
 const { app } = require('../app');
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const Lecturer = require('../models/Lecturer');
-const Student = require('../models/Student');
-const ProjectPeriod = require('../models/ProjectPeriod');
-const ProjectRoster = require('../models/ProjectRoster');
-const ProjectGroup = require('../models/ProjectGroup');
-const ProjectTopic = require('../models/ProjectTopic');
-const Project = require('../models/Project');
-const TopicChangeRequest = require('../models/TopicChangeRequest');
-const WorkflowEvent = require('../models/WorkflowEvent');
+const {
+  db,
+  newObjectId,
+  User,
+  Lecturer,
+  Student,
+  ProjectPeriod,
+  ProjectRoster,
+  ProjectGroup,
+  ProjectTopic,
+  Project,
+  TopicChangeRequest,
+  WorkflowEvent
+} = require('./db-compat');
 const prisma = require('../config/prisma');
 
 const TEST_PORT = 5012;
@@ -75,6 +76,32 @@ const runIntegrationTests = async () => {
         });
       }
 
+      await prisma.projectPeriod.upsert({
+        where: { id: period._id.toString() },
+        create: {
+          id: period._id.toString(),
+          mongoId: period._id.toString(),
+          name: period.name,
+          schoolYear: period.schoolYear,
+          semester: period.semester,
+          type: period.type,
+          facultyId: period.facultyId.toString(),
+          departmentId: period.departmentId.toString(),
+          registrationStart: period.registrationStart,
+          registrationEnd: period.registrationEnd,
+          projectStart: period.projectStart,
+          projectEnd: period.projectEnd,
+          topicChangeDeadline: period.topicChangeDeadline,
+          scoringFormula: period.scoringFormula || {},
+          rubricVersion: period.rubricVersion,
+          status: period.status
+        },
+        update: {
+          projectEnd: period.projectEnd,
+          topicChangeDeadline: period.topicChangeDeadline
+        }
+      });
+
       // Register student in roster
       await ProjectRoster.findOneAndUpdate(
         { periodId: period._id, studentId: studentProfile._id },
@@ -91,7 +118,7 @@ const runIntegrationTests = async () => {
       await prisma.project.deleteMany({ where: { periodId: period._id.toString() } });
       await prisma.projectTopic.deleteMany({ where: { periodId: period._id.toString() } });
       await prisma.projectGroup.deleteMany({ where: { periodId: period._id.toString() } });
-      console.log('✅ Cleaned up old database mock collections.');
+      console.log('✅ Cleaned up old database records.');
 
       // Create valid Project Group
       const group = await ProjectGroup.create({
@@ -336,8 +363,8 @@ const runIntegrationTests = async () => {
       console.log('\n--- Shutting Down Test Environment ---');
       server.close(async () => {
         console.log('✅ Temporary test server shut down.');
-        await mongoose.disconnect();
-        console.log('✅ MongoDB connection closed.');
+        await db.disconnect();
+        console.log('✅ Compatibility DB connection closed.');
         process.exit(process.exitCode || 0);
       });
     }

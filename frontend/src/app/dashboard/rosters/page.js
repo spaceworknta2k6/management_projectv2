@@ -67,6 +67,76 @@ export default function RostersPage() {
   const [search, setSearch] = useState(initialQuery.search);
 
   const { periods, selectedPeriodId, fetchPeriods, setSelectedPeriodId } = usePeriodStore();
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState('');
+  const [selectedSemester, setSelectedSemester] = useState('');
+
+  // Extract unique school years
+  const schoolYears = useMemo(() => {
+    const years = periods.map((p) => p.schoolYear);
+    return Array.from(new Set(years)).sort().reverse();
+  }, [periods]);
+
+  // Extract semesters based on selected school year
+  const semesters = useMemo(() => {
+    if (!selectedSchoolYear) return [];
+    const filtered = periods.filter((p) => p.schoolYear === selectedSchoolYear);
+    const sems = filtered.map((p) => p.semester);
+    return Array.from(new Set(sems)).sort();
+  }, [periods, selectedSchoolYear]);
+
+  // Filtered period list based on year and semester
+  const filteredPeriodsList = useMemo(() => {
+    if (!selectedSchoolYear) return [];
+    return periods.filter(
+      (p) =>
+        p.schoolYear === selectedSchoolYear &&
+        (!selectedSemester || p.semester === selectedSemester)
+    );
+  }, [periods, selectedSchoolYear, selectedSemester]);
+
+  // Sync selectedPeriodId to Year and Semester on initial load
+  useEffect(() => {
+    if (selectedPeriodId && periods.length > 0) {
+      const activePeriod = periods.find((p) => p._id === selectedPeriodId);
+      if (activePeriod) {
+        setSelectedSchoolYear(activePeriod.schoolYear);
+        setSelectedSemester(activePeriod.semester);
+      }
+    }
+  }, [selectedPeriodId, periods]);
+
+  const handleSchoolYearChange = (year) => {
+    setSelectedSchoolYear(year);
+    const matchedPeriods = periods.filter((p) => p.schoolYear === year);
+    if (matchedPeriods.length > 0) {
+      const firstSem = matchedPeriods.map((p) => p.semester).sort()[0];
+      setSelectedSemester(firstSem);
+      const matched = matchedPeriods.find((p) => p.semester === firstSem);
+      if (matched) {
+        setSelectedPeriodId(matched._id);
+      } else {
+        setSelectedPeriodId(matchedPeriods[0]._id);
+      }
+    } else {
+      setSelectedSemester('');
+      setSelectedPeriodId('');
+    }
+    setCurrentPage(1);
+  };
+
+  const handleSemesterChange = (semester) => {
+    setSelectedSemester(semester);
+    const matchedPeriods = periods.filter(
+      (p) => p.schoolYear === selectedSchoolYear && p.semester === semester
+    );
+    if (matchedPeriods.length > 0) {
+      setSelectedPeriodId(matchedPeriods[0]._id);
+    } else {
+      setSelectedPeriodId('');
+    }
+    setCurrentPage(1);
+  };
+
   const [roster, setRoster] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -372,6 +442,62 @@ export default function RostersPage() {
         </div>
       </div>
 
+      {/* Cascade Period Selector Panel */}
+      <div className={css.periodSelectorPanel}>
+        <div className={css.selectorGroup}>
+          <label className={css.selectLabel}>Năm học</label>
+          <select
+            value={selectedSchoolYear}
+            onChange={(e) => handleSchoolYearChange(e.target.value)}
+            className={css.selectField}
+          >
+            <option value="">Chọn năm học</option>
+            {schoolYears.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={css.selectorGroup}>
+          <label className={css.selectLabel}>Học kỳ</label>
+          <select
+            value={selectedSemester}
+            onChange={(e) => handleSemesterChange(e.target.value)}
+            disabled={!selectedSchoolYear}
+            className={css.selectField}
+          >
+            <option value="">Chọn học kỳ</option>
+            {semesters.map((sem) => (
+              <option key={sem} value={sem}>
+                Học kỳ {sem}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={css.selectorGroup}>
+          <label className={css.selectLabel}>Học phần đồ án</label>
+          <select
+            value={selectedPeriodId}
+            onChange={(e) => {
+              setSelectedPeriodId(e.target.value);
+              setCurrentPage(1);
+            }}
+            disabled={!selectedSchoolYear || !selectedSemester}
+            className={css.selectField}
+          >
+            <option value="">Chọn học phần</option>
+            {filteredPeriodsList.map((p) => (
+              <option key={p._id} value={p._id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Filter Card */}
       <FilterCard
         searchInput={searchInput}
@@ -379,26 +505,8 @@ export default function RostersPage() {
         onSearch={handleSearchSubmit}
         onReset={handleResetSearch}
         placeholder="Tìm theo mã sinh viên, họ tên, email, lớp..."
-        hasFilters={true}
-      >
-        <div>
-          <label className={css.selectLabel}>Đợt Đồ Án</label>
-          <select
-            value={selectedPeriodId}
-            onChange={(e) => {
-              setSelectedPeriodId(e.target.value);
-              setCurrentPage(1);
-            }}
-            className={css.selectField}
-          >
-            {periods.map((p) => (
-              <option key={p._id} value={p._id}>
-                {p.name} ({p.schoolYear})
-              </option>
-            ))}
-          </select>
-        </div>
-      </FilterCard>
+        hasFilters={false}
+      />
 
       {/* Table section */}
       {loading ? (

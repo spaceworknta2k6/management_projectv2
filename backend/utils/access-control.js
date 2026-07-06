@@ -1,4 +1,4 @@
-const ProjectGroup = require('../models/ProjectGroup');
+const prisma = require('../config/prisma');
 const { resolveProjectOwner, isStudentOwner } = require('./project-owner');
 
 const STAFF_ROLES = ['SYSTEM_ADMIN', 'FACULTY_STAFF'];
@@ -14,7 +14,7 @@ const isStaff = (user) => hasAnyRole(user, STAFF_ROLES);
 
 const isAcceptedGroupMember = (group, studentId) => {
   if (!group || !studentId) return false;
-  return group.members.some(
+  return (group.members || []).some(
     (member) =>
       member.studentId.toString() === studentId.toString() &&
       member.status === 'accepted'
@@ -31,9 +31,11 @@ const canAccessProject = async (project, user = {}) => {
 
     if (owner?.ownerType === 'group') {
       const groupId = owner.groupId || owner.ownerId;
-      const group = await ProjectGroup.findOne({
-        _id: groupId,
-        isDeleted: { $ne: true },
+      const group = await prisma.projectGroup.findFirst({
+        where: {
+          id: groupId.toString(),
+          isDeleted: false,
+        },
       });
       if (isAcceptedGroupMember(group, user.studentId)) return true;
     }

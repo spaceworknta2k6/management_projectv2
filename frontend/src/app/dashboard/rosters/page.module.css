@@ -302,3 +302,19 @@
     transform: scale(1);
   }
 }
+
+.periodSelectorPanel {
+  display: flex;
+  gap: 16px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.selectorGroup {
+  flex: 1;
+  min-width: 200px;
+}

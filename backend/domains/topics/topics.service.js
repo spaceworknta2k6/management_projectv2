@@ -1,12 +1,12 @@
 const prisma = require('../../config/prisma');
-const mongoose = require('mongoose');
-const ProjectTopicMirror = require('../../models/ProjectTopic');
-const ProjectGroupMirror = require('../../models/ProjectGroup');
-const ProjectMirror = require('../../models/Project');
-const WorkflowEvent = require('../../models/WorkflowEvent');
+const ProjectTopicMirror = { updateOne: async () => {} };
+const ProjectGroupMirror = { updateOne: async () => {} };
+const ProjectMirror = { updateOne: async () => {} };
+const WorkflowEvent = require('../../utils/workflow-event');
 const notificationsService = require('../notifications/notifications.service');
+const { randomBytes } = require('crypto');
 
-const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const newObjectId = () => randomBytes(12).toString('hex');
 const toId = (value) => (value ? value.toString() : null);
 const toDate = (value) => (value ? new Date(value) : null);
 
@@ -77,7 +77,6 @@ const toMongoMirrorTopicData = (topic) => {
     departmentId: toId(topic.departmentId),
     status: topic.status,
     rejectionReason: topic.rejectionReason || undefined,
-    aiDuplicateRisk: topic.aiDuplicateRisk || {},
     approvedBy: toId(topic.approvedBy) || undefined,
     approvedAt: topic.approvedAt || undefined,
     version: topic.version,
@@ -89,45 +88,9 @@ const toMongoMirrorTopicData = (topic) => {
   };
 };
 
-const syncMongoMirrorTopic = async (topic) => {
-  await ProjectTopicMirror.updateOne(
-    { _id: topic.id },
-    { $set: toMongoMirrorTopicData(topic) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
+const syncMongoMirrorTopic = async (topic) => {};
 
-const toMongoMirrorProjectData = (project) => {
-  return {
-    _id: project.id,
-    periodId: toId(project.periodId),
-    ownerType: project.ownerType || undefined,
-    ownerId: toId(project.ownerId) || undefined,
-    studentId: toId(project.studentId) || undefined,
-    groupId: toId(project.groupId) || undefined,
-    topicId: toId(project.topicId),
-    supervisorId: toId(project.supervisorId),
-    reviewerId: toId(project.reviewerId) || undefined,
-    status: project.status,
-    extendedUntil: project.extendedUntil || undefined,
-    finalGradeId: toId(project.finalGradeId) || undefined,
-    lockedAt: project.lockedAt || undefined,
-    version: project.version,
-    isDeleted: project.isDeleted,
-    deletedAt: project.deletedAt || undefined,
-    deletedBy: toId(project.deletedBy) || undefined,
-    createdAt: project.createdAt,
-    updatedAt: project.updatedAt,
-  };
-};
-
-const syncMongoMirrorProject = async (project) => {
-  await ProjectMirror.updateOne(
-    { _id: project.id },
-    { $set: toMongoMirrorProjectData(project) },
-    { upsert: true, setDefaultsOnInsert: true }
-  );
-};
+const syncMongoMirrorProject = async (project) => {};
 
 const getTopicStudentUserIds = async (topic) => {
   const userIds = [];
@@ -1122,7 +1085,6 @@ const registerExistingTopic = async (topicId, registerData, studentId, actorUser
     departmentId: toId(topic.departmentId),
     status: 'assigned',
     rejectionReason: topic.rejectionReason,
-    aiDuplicateRisk: topic.aiDuplicateRisk || {},
     approvedBy: toId(topic.approvedBy),
     approvedAt: topic.approvedAt,
     version: topic.version,

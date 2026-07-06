@@ -1,7 +1,5 @@
-const Project = require('../../models/Project');
-const ProjectGroup = require('../../models/ProjectGroup');
-const Lecturer = require('../../models/Lecturer');
-const WorkflowEvent = require('../../models/WorkflowEvent');
+const prisma = require('../../config/prisma');
+const WorkflowEvent = require('../../utils/workflow-event');
 const { canAccessProject, assertProjectAccess, isStaff } = require('../../utils/access-control');
 const { resolveProjectOwner, isStudentOwner } = require('../../utils/project-owner');
 
@@ -25,36 +23,117 @@ const logWorkflowEvent = async ({
   });
 };
 
+const populateProjects = async (projects) => {
+  if (!projects || projects.length === 0) return [];
+
+  const groupIds = Array.from(new Set(projects.map(p => p.groupId).filter(Boolean)));
+  const studentIds = Array.from(new Set(projects.map(p => p.studentId).filter(Boolean)));
+  const topicIds = Array.from(new Set(projects.map(p => p.topicId).filter(Boolean)));
+  const lecturerIds = Array.from(new Set(
+    projects.flatMap(p => [p.supervisorId, p.reviewerId]).filter(Boolean)
+  ));
+
+  const [groups, students, topics, lecturers] = await Promise.all([
+    prisma.projectGroup.findMany({
+      where: { id: { in: groupIds }, isDeleted: false },
+      select: { id: true, name: true, members: true, status: true }
+    }),
+    prisma.student.findMany({
+      where: { id: { in: studentIds }, isDeleted: false },
+      include: { user: { select: { id: true, fullName: true, email: true } } }
+    }),
+    prisma.projectTopic.findMany({
+      where: { id: { in: topicIds }, isDeleted: false },
+      select: { id: true, title: true, summary: true, objectives: true, scope: true, technologies: true }
+    }),
+    prisma.lecturer.findMany({
+      where: { id: { in: lecturerIds }, isDeleted: false },
+      include: { user: { select: { id: true, fullName: true, email: true } } }
+    })
+  ]);
+
+  const groupMap = new Map(groups.map(g => [g.id, { ...g, _id: g.id }]));
+  const studentMap = new Map(students.map(s => [s.id, {
+    ...s,
+    _id: s.id,
+    userId: s.user ? { ...s.user, _id: s.user.id } : null
+  }]));
+  const topicMap = new Map(topics.map(t => [t.id, { ...t, _id: t.id }]));
+  const lecturerMap = new Map(lecturers.map(l => [l.id, {
+    ...l,
+    _id: l.id,
+    userId: l.user ? { ...l.user, _id: l.user.id } : null
+  }]));
+
+  return projects.map(p => {
+    return {
+      ...p,
+      _id: p.id,
+      groupId: p.groupId ? groupMap.get(p.groupId) || null : null,
+      studentId: p.studentId ? studentMap.get(p.studentId) || null : null,
+      topicId: p.topicId ? topicMap.get(p.topicId) || null : null,
+      supervisorId: p.supervisorId ? lecturerMap.get(p.supervisorId) || null : null,
+      reviewerId: p.reviewerId ? lecturerMap.get(p.reviewerId) || null : null,
+    };
+  });
+};
+
+const populateProject = async (project) => {
+  if (!project) return null;
+  const populated = await populateProjects([project]);
+  return populated[0];
+};
+
+const buildProjectWhere = (query = {}) => {
+  const where = { isDeleted: false };
+  const allowedFields = [
+    'periodId',
+    'status',
+    'ownerType',
+    'ownerId',
+    'studentId',
+    'groupId',
+    'topicId',
+    'supervisorId',
+    'reviewerId'
+  ];
+
+  for (const field of allowedFields) {
+    if (query[field] !== undefined && query[field] !== null) {
+      if (typeof query[field] === 'object' && query[field] !== null) {
+        if (query[field].$ne !== undefined) {
+          where[field] = { not: query[field].$ne.toString() };
+        } else if (query[field].$in !== undefined) {
+          const list = Array.isArray(query[field].$in) ? query[field].$in : [query[field].$in];
+          where[field] = { in: list.map(x => x.toString()) };
+        } else if (query[field].$nin !== undefined) {
+          const list = Array.isArray(query[field].$nin) ? query[field].$nin : [query[field].$nin];
+          where[field] = { notIn: list.map(x => x.toString()) };
+        }
+      } else {
+        where[field] = query[field].toString();
+      }
+    }
+  }
+
+  return where;
+};
+
 const getProjects = async (query = {}, user = {}) => {
-  const projects = await Project.find(query)
-    .populate({
-      path: 'groupId',
-      select: 'name members status',
-    })
-    .populate({
-      path: 'studentId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'topicId',
-      select: 'title summary objectives scope technologies',
-    })
-    .populate({
-      path: 'supervisorId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'reviewerId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .sort({ createdAt: -1 });
+  const where = buildProjectWhere(query);
+  const projects = await prisma.project.findMany({
+    where,
+    orderBy: { createdAt: 'desc' }
+  });
+
+  const populatedProjects = await populateProjects(projects);
 
   if (isStaff(user)) {
-    return projects;
+    return populatedProjects;
   }
 
   const visibleProjects = [];
-  for (const project of projects) {
+  for (const project of populatedProjects) {
     if (await canAccessProject(project, user)) {
       visibleProjects.push(project);
     }
@@ -64,37 +143,33 @@ const getProjects = async (query = {}, user = {}) => {
 };
 
 const getProjectById = async (id, user = {}) => {
-  const project = await Project.findById(id)
-    .populate({
-      path: 'groupId',
-      select: 'name members status',
-    })
-    .populate({
-      path: 'studentId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'topicId',
-      select: 'title summary objectives scope technologies',
-    })
-    .populate({
-      path: 'supervisorId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'reviewerId',
-      populate: { path: 'userId', select: 'fullName email' },
-    });
+  if (!id) {
+    throw { status: 400, message: 'Thiếu ID dự án.' };
+  }
+
+  const project = await prisma.project.findFirst({
+    where: { id, isDeleted: false }
+  });
 
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
-  await assertProjectAccess(project, user);
-  return project;
+
+  const populated = await populateProject(project);
+
+  await assertProjectAccess(populated, user);
+  return populated;
 };
 
 const markInProgress = async (projectId, actorUserId, actorStudentId) => {
-  const project = await Project.findById(projectId);
+  if (!projectId) {
+    throw { status: 400, message: 'Thiếu ID dự án.' };
+  }
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, isDeleted: false }
+  });
+
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
@@ -110,15 +185,20 @@ const markInProgress = async (projectId, actorUserId, actorStudentId) => {
     if (isStudentOwner(owner, actorStudentId)) {
       isAuthorized = true;
     } else if (owner?.ownerType === 'group') {
-      const group = await ProjectGroup.findOne({ _id: owner.groupId || owner.ownerId, isDeleted: { $ne: true } });
+      const group = await prisma.projectGroup.findFirst({
+        where: { id: owner.groupId || owner.ownerId, isDeleted: false }
+      });
       if (group) {
-        isAuthorized = group.members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted');
+        const members = Array.isArray(group.members) ? group.members : [];
+        isAuthorized = members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted');
       }
     }
   } else {
     // Check if supervisor
-    const lecturer = await Lecturer.findOne({ userId: actorUserId });
-    if (lecturer && project.supervisorId.toString() === lecturer._id.toString()) {
+    const lecturer = await prisma.lecturer.findFirst({
+      where: { userId: actorUserId, isDeleted: false }
+    });
+    if (lecturer && (project.supervisorId.toString() === lecturer.id.toString() || (lecturer.mongoId && project.supervisorId.toString() === lecturer.mongoId.toString()))) {
       isAuthorized = true;
     }
   }
@@ -128,12 +208,14 @@ const markInProgress = async (projectId, actorUserId, actorStudentId) => {
   }
 
   const fromStatus = project.status;
-  project.status = 'in_progress';
-  await project.save();
+  const updatedProject = await prisma.project.update({
+    where: { id: project.id },
+    data: { status: 'in_progress' }
+  });
 
   await WorkflowEvent.create({
     entityType: 'Project',
-    entityId: project._id,
+    entityId: updatedProject.id,
     fromStatus,
     toStatus: 'in_progress',
     actorId: actorUserId,
@@ -142,11 +224,17 @@ const markInProgress = async (projectId, actorUserId, actorStudentId) => {
     reason: 'Chính thức bắt đầu thực hiện đồ án',
   });
 
-  return project;
+  return await populateProject(updatedProject);
 };
 
 const assignReviewer = async (projectId, reviewerId, actorUserId) => {
-  const project = await Project.findById(projectId);
+  if (!projectId) {
+    throw { status: 400, message: 'Thiếu ID dự án.' };
+  }
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, isDeleted: false }
+  });
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
@@ -155,16 +243,20 @@ const assignReviewer = async (projectId, reviewerId, actorUserId) => {
     throw { status: 400, message: 'Giảng viên chấm 2 không được trùng với giảng viên hướng dẫn.' };
   }
 
-  const reviewer = await Lecturer.findById(reviewerId);
+  const reviewer = await prisma.lecturer.findFirst({
+    where: { id: reviewerId, isDeleted: false }
+  });
   if (!reviewer) {
     throw { status: 404, message: 'Giảng viên chấm 2 được chỉ định không tồn tại.' };
   }
 
-  project.reviewerId = reviewerId;
-  await project.save();
+  const updatedProject = await prisma.project.update({
+    where: { id: project.id },
+    data: { reviewerId }
+  });
 
   await logWorkflowEvent({
-    entityId: project._id,
+    entityId: updatedProject.id,
     fromStatus: project.status,
     toStatus: project.status,
     actorId: actorUserId,
@@ -172,11 +264,17 @@ const assignReviewer = async (projectId, reviewerId, actorUserId) => {
     reason: `Phân công giảng viên chấm 2 ID ${reviewerId}`,
   });
 
-  return project;
+  return await populateProject(updatedProject);
 };
 
 const markReadyForGrading = async (projectId, actorUserId) => {
-  const project = await Project.findById(projectId);
+  if (!projectId) {
+    throw { status: 400, message: 'Thiếu ID dự án.' };
+  }
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, isDeleted: false }
+  });
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
@@ -187,11 +285,13 @@ const markReadyForGrading = async (projectId, actorUserId) => {
   }
 
   const fromStatus = project.status;
-  project.status = 'ready_for_grading';
-  await project.save();
+  const updatedProject = await prisma.project.update({
+    where: { id: project.id },
+    data: { status: 'ready_for_grading' }
+  });
 
   await logWorkflowEvent({
-    entityId: project._id,
+    entityId: updatedProject.id,
     fromStatus,
     toStatus: 'ready_for_grading',
     actorId: actorUserId,
@@ -199,21 +299,29 @@ const markReadyForGrading = async (projectId, actorUserId) => {
     reason: 'Đánh dấu dự án sẵn sàng chấm',
   });
 
-  return project;
+  return await populateProject(updatedProject);
 };
 
 const finalizeProject = async (projectId, actorUserId) => {
-  const project = await Project.findById(projectId);
+  if (!projectId) {
+    throw { status: 400, message: 'Thiếu ID dự án.' };
+  }
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, isDeleted: false }
+  });
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
 
   const fromStatus = project.status;
-  project.status = 'finalized';
-  await project.save();
+  const updatedProject = await prisma.project.update({
+    where: { id: project.id },
+    data: { status: 'finalized' }
+  });
 
   await logWorkflowEvent({
-    entityId: project._id,
+    entityId: updatedProject.id,
     fromStatus,
     toStatus: 'finalized',
     actorId: actorUserId,
@@ -221,21 +329,29 @@ const finalizeProject = async (projectId, actorUserId) => {
     reason: 'Hoàn tất và chốt kết quả dự án đồ án',
   });
 
-  return project;
+  return await populateProject(updatedProject);
 };
 
 const cancelProject = async (projectId, actorUserId) => {
-  const project = await Project.findById(projectId);
+  if (!projectId) {
+    throw { status: 400, message: 'Thiếu ID dự án.' };
+  }
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, isDeleted: false }
+  });
   if (!project) {
     throw { status: 404, message: 'Dự án đồ án không tồn tại.' };
   }
 
   const fromStatus = project.status;
-  project.status = 'cancelled';
-  await project.save();
+  const updatedProject = await prisma.project.update({
+    where: { id: project.id },
+    data: { status: 'cancelled' }
+  });
 
   await logWorkflowEvent({
-    entityId: project._id,
+    entityId: updatedProject.id,
     fromStatus,
     toStatus: 'cancelled',
     actorId: actorUserId,
@@ -243,7 +359,7 @@ const cancelProject = async (projectId, actorUserId) => {
     reason: 'Hủy bỏ dự án đồ án tốt nghiệp',
   });
 
-  return project;
+  return await populateProject(updatedProject);
 };
 
 module.exports = {
