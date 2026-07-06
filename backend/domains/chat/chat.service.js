@@ -1,42 +1,37 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
-const ChatRoom = require('../../models/ChatRoom');
-const ChatMessage = require('../../models/ChatMessage');
 const ProjectGroup = require('../../models/ProjectGroup');
 const Lecturer = require('../../models/Lecturer');
+const FileAsset = require('../../models/FileAsset');
 const filesService = require('../files/files.service');
 const notificationsService = require('../notifications/notifications.service');
-const WorkflowEvent = require('../../models/WorkflowEvent');
 const { uploadImageBuffer } = require('../../config/cloudinary');
+const prisma = require('../../config/prisma');
 
 const toId = (value) => String(value?._id || value || '');
 
-const hasRoomAccess = (room, user) => {
-  return (room.memberIds || []).some((memberId) => toId(memberId) === toId(user._id));
+const getAttachmentKind = (mimeType) => {
+  return String(mimeType || '').startsWith('image/') ? 'image' : 'file';
 };
 
-const populateRoom = (query) => query
-  .populate('groupId', 'name status avatarUrl')
-  .populate('memberIds', 'fullName email avatarUrl roles')
-  .populate('groupTeacherInvites.lecturerUserId', 'fullName email avatarUrl roles')
-  .populate('requestedBy', 'fullName email avatarUrl roles')
-  .populate('acceptedBy', 'fullName email avatarUrl roles');
-
-const populateMessage = (query) => query
-  .populate('senderId', 'fullName email avatarUrl roles')
-  .populate('attachments.fileId', 'originalName mimeClient mimeVerified size scanStatus accessPolicy');
+// ─── AUDIT EVENTS ────────────────────────────────────────────────────────────
 
 const createChatAuditEvent = async ({ roomId, user, action, reason, metadata = {} }) => {
   try {
-    await WorkflowEvent.create({
-      entityType: 'ChatRoom',
-      entityId: roomId,
-      toStatus: 'active',
-      actorId: user._id,
-      actorRoles: user.roles || [],
-      action,
-      reason,
-      metadata,
+    const id = new mongoose.Types.ObjectId().toString();
+    await prisma.workflowEvent.create({
+      data: {
+        id,
+        mongoId: id,
+        entityType: 'ChatRoom',
+        entityId: roomId,
+        toStatus: 'active',
+        actorId: user._id.toString(),
+        actorRoles: user.roles || [],
+        action,
+        reason,
+        metadata,
+      },
     });
   } catch (error) {
     console.error('Chat audit event failed:', error.message);
@@ -68,6 +63,161 @@ const notifyRoomMembers = async (room, sender, message) => {
   }
 };
 
+// ─── SHAPE MAPPER FOR COMPATIBILITY ──────────────────────────────────────────
+
+const mapRoomToOldShape = async (room, currentUserId) => {
+  if (!room) return null;
+
+  const pgMembers = await prisma.chatRoomMember.findMany({
+    where: { roomId: room.id },
+  });
+
+  const userIds = [...new Set([
+    ...pgMembers.map(m => m.userId),
+    ...pgMembers.map(m => m.invitedBy).filter(Boolean),
+    room.requestedBy,
+    room.acceptedBy
+  ].filter(Boolean))];
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      avatarUrl: true,
+      roles: true
+    }
+  });
+
+  const userMap = new Map(users.map(u => [u.id, {
+    _id: u.id,
+    id: u.id,
+    fullName: u.fullName,
+    email: u.email,
+    avatarUrl: u.avatarUrl || '',
+    roles: u.roles
+  }]));
+
+  let groupPopulated = null;
+  if (room.groupId) {
+    const pgGroup = await prisma.projectGroup.findUnique({
+      where: { id: room.groupId },
+      select: { id: true, name: true, status: true, avatarUrl: true }
+    });
+    if (pgGroup) {
+      groupPopulated = {
+        _id: pgGroup.id,
+        id: pgGroup.id,
+        name: pgGroup.name,
+        status: pgGroup.status,
+        avatarUrl: pgGroup.avatarUrl || ''
+      };
+    }
+  }
+
+  const activeMembers = pgMembers.filter(m =>
+    m.status === 'active' || m.status === 'accepted'
+  );
+  const populatedMemberIds = activeMembers.map(m => userMap.get(m.userId)).filter(Boolean);
+
+  const teacherInvites = pgMembers.filter(m => m.role === 'teacher');
+  const populatedTeacherInvites = teacherInvites.map(m => ({
+    lecturerUserId: userMap.get(m.userId) || null,
+    requestedBy: m.invitedBy ? userMap.get(m.invitedBy) || null : null,
+    status: m.status,
+    respondedAt: m.lastReadAt
+  }));
+
+  const requestedByPopulated = room.requestedBy ? userMap.get(room.requestedBy) || null : null;
+  const acceptedByPopulated = room.acceptedBy ? userMap.get(room.acceptedBy) || null : null;
+
+  return {
+    _id: room.id,
+    id: room.id,
+    type: room.type,
+    name: room.name,
+    groupId: groupPopulated,
+    projectId: room.projectId,
+    status: room.status,
+    requestedBy: requestedByPopulated,
+    acceptedBy: acceptedByPopulated,
+    acceptedAt: room.acceptedAt,
+    memberIds: populatedMemberIds,
+    groupTeacherInvites: populatedTeacherInvites,
+    lastMessageAt: room.lastMessageAt,
+    isDeleted: room.isDeleted,
+    createdAt: room.createdAt,
+    updatedAt: room.updatedAt
+  };
+};
+
+const mapMessageToOldShape = async (msg) => {
+  if (!msg) return null;
+
+  const sender = await prisma.user.findUnique({
+    where: { id: msg.senderId },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      avatarUrl: true,
+      roles: true
+    }
+  });
+
+  const attachments = [];
+  if (Array.isArray(msg.attachments)) {
+    for (const att of msg.attachments) {
+      let filePopulated = null;
+      if (att.fileId) {
+        const asset = await FileAsset.findById(att.fileId).lean();
+        if (asset) {
+          filePopulated = {
+            _id: asset._id,
+            id: asset._id.toString(),
+            originalName: asset.originalName,
+            mimeClient: asset.mimeClient,
+            mimeVerified: asset.mimeVerified,
+            size: asset.size,
+            scanStatus: asset.scanStatus,
+            accessPolicy: asset.accessPolicy
+          };
+        }
+      }
+      attachments.push({
+        fileId: filePopulated,
+        originalName: att.originalName,
+        mimeType: att.mimeType,
+        size: att.size,
+        kind: att.kind || 'file'
+      });
+    }
+  }
+
+  return {
+    _id: msg.id,
+    id: msg.id,
+    roomId: msg.roomId,
+    senderId: sender ? {
+      _id: sender.id,
+      id: sender.id,
+      fullName: sender.fullName,
+      email: sender.email,
+      avatarUrl: sender.avatarUrl || '',
+      roles: sender.roles
+    } : null,
+    body: msg.body,
+    attachments,
+    isDeleted: msg.isDeleted,
+    deletedAt: msg.deletedAt,
+    deletedBy: msg.deletedBy,
+    createdAt: msg.createdAt
+  };
+};
+
+// ─── SERVICES ────────────────────────────────────────────────────────────────
+
 const getAcceptedGroupMemberUserIds = async (group) => {
   const populatedGroup = await ProjectGroup.findById(group._id)
     .populate({
@@ -83,28 +233,44 @@ const getAcceptedGroupMemberUserIds = async (group) => {
 
 const ensureGroupRoom = async (group) => {
   const memberIds = await getAcceptedGroupMemberUserIds(group);
-  const existingRoom = await ChatRoom.findOne({ type: 'group', groupId: group._id, isDeleted: false });
-  const acceptedTeacherIds = (existingRoom?.groupTeacherInvites || [])
-    .filter((invite) => invite.status === 'accepted' && invite.lecturerUserId)
-    .map((invite) => invite.lecturerUserId);
-  const allMemberIds = [...new Set([...memberIds, ...acceptedTeacherIds].map(toId))]
-    .filter(Boolean)
-    .map((id) => new mongoose.Types.ObjectId(id));
-  return await ChatRoom.findOneAndUpdate(
-    { type: 'group', groupId: group._id, isDeleted: false },
-    {
-      $set: {
-        name: group.name,
-        memberIds: allMemberIds,
-        status: 'active',
-      },
-      $setOnInsert: {
+  const roomId = group._id.toString();
+
+  let room = await prisma.chatRoom.findUnique({ where: { id: roomId } });
+  if (!room) {
+    room = await prisma.chatRoom.create({
+      data: {
+        id: roomId,
+        mongoId: roomId,
         type: 'group',
-        groupId: group._id,
+        name: group.name,
+        groupId: roomId,
+        status: 'active'
+      }
+    });
+  } else {
+    room = await prisma.chatRoom.update({
+      where: { id: roomId },
+      data: { name: group.name }
+    });
+  }
+
+  for (const mId of memberIds) {
+    const studentUserId = mId.toString();
+    await prisma.chatRoomMember.upsert({
+      where: { roomId_userId: { roomId, userId: studentUserId } },
+      create: {
+        roomId,
+        userId: studentUserId,
+        role: 'member',
+        status: 'active'
       },
-    },
-    { returnDocument: 'after', upsert: true }
-  );
+      update: {
+        status: 'active'
+      }
+    });
+  }
+
+  return room;
 };
 
 const syncGroupRoomsForUser = async (user) => {
@@ -126,44 +292,62 @@ const syncGroupRoomsForUser = async (user) => {
 const getRooms = async (user) => {
   await syncGroupRoomsForUser(user);
 
-  const rooms = await populateRoom(
-    ChatRoom.find({
-      isDeleted: false,
-      type: { $in: ['group', 'direct'] },
-      $or: [
-        { memberIds: user._id },
-        { 'groupTeacherInvites.lecturerUserId': user._id },
+  const pgMembers = await prisma.chatRoomMember.findMany({
+    where: {
+      userId: user._id.toString(),
+      OR: [
+        { status: { in: ['active', 'accepted'] } },
+        { role: 'teacher', status: 'pending' },
       ],
-    })
-      .sort({ lastMessageAt: -1, updatedAt: -1 })
-  ).lean();
-  const roomIds = rooms.map((room) => room._id);
-  const latestMessages = await ChatMessage.aggregate([
-    { $match: { roomId: { $in: roomIds }, isDeleted: false } },
-    { $sort: { createdAt: -1 } },
-    { $group: { _id: '$roomId', latest: { $first: '$$ROOT' } } },
-  ]);
-  const latestByRoom = new Map(latestMessages.map((item) => [toId(item._id), item.latest]));
-  const unreadCounts = await ChatMessage.aggregate([
-    {
-      $match: {
-        roomId: { $in: roomIds },
-        isDeleted: false,
-        senderId: { $ne: user._id },
-        readBy: { $not: { $elemMatch: { userId: user._id } } },
-      },
-    },
-    { $group: { _id: '$roomId', count: { $sum: 1 } } },
-  ]);
-  const unreadByRoom = new Map(unreadCounts.map((item) => [toId(item._id), item.count]));
+    }
+  });
+  const roomIds = pgMembers.map(m => m.roomId);
 
-  return rooms.map((room) => ({
-    ...room,
-    latestMessage: (room.groupTeacherInvites || []).some(
-      (invite) => toId(invite.lecturerUserId) === toId(user._id) && invite.status === 'pending'
-    ) ? null : latestByRoom.get(toId(room._id)) || null,
-    unreadCount: unreadByRoom.get(toId(room._id)) || 0,
-  }));
+  const rooms = await prisma.chatRoom.findMany({
+    where: {
+      id: { in: roomIds },
+      isDeleted: false,
+      type: { in: ['group', 'direct'] }
+    },
+    orderBy: [
+      { lastMessageAt: 'desc' },
+      { updatedAt: 'desc' }
+    ]
+  });
+
+  const mappedRooms = [];
+  for (const room of rooms) {
+    const member = pgMembers.find(m => m.roomId === room.id);
+    const lastReadAt = member?.lastReadAt;
+
+    const unreadCount = await prisma.chatMessage.count({
+      where: {
+        roomId: room.id,
+        isDeleted: false,
+        senderId: { not: user._id.toString() },
+        createdAt: { gt: lastReadAt || new Date(0) }
+      }
+    });
+
+    const latestMessage = await prisma.chatMessage.findFirst({
+      where: {
+        roomId: room.id,
+        isDeleted: false
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const isPendingInvite = member?.role === 'teacher' && member?.status === 'pending';
+
+    const oldShapeRoom = await mapRoomToOldShape(room, user._id.toString());
+    mappedRooms.push({
+      ...oldShapeRoom,
+      latestMessage: isPendingInvite ? null : await mapMessageToOldShape(latestMessage),
+      unreadCount
+    });
+  }
+
+  return mappedRooms;
 };
 
 const getRoomForUser = async (roomId, user) => {
@@ -171,19 +355,22 @@ const getRoomForUser = async (roomId, user) => {
     throw { status: 422, message: 'Mã phòng chat không hợp lệ.' };
   }
 
-  const room = await populateRoom(ChatRoom.findOne({ _id: roomId, isDeleted: false, type: { $in: ['group', 'direct'] } }));
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false, type: { in: ['group', 'direct'] } }
+  });
   if (!room) {
     throw { status: 404, message: 'Phòng chat không tồn tại.' };
   }
-  if (!hasRoomAccess(room, user)) {
-    const pendingGroupInvite = room.type === 'group' && (room.groupTeacherInvites || [])
-      .some((invite) => toId(invite.lecturerUserId) === toId(user._id));
-    if (!pendingGroupInvite) {
-      throw { status: 403, message: 'Bạn không có quyền truy cập phòng chat này.' };
-    }
+
+  const member = await prisma.chatRoomMember.findUnique({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } }
+  });
+
+  if (!member || ['rejected', 'cancelled'].includes(member.status)) {
+    throw { status: 403, message: 'Bạn không có quyền truy cập phòng chat này.' };
   }
 
-  return room;
+  return await mapRoomToOldShape(room, user._id.toString());
 };
 
 const ensureStudentCanRequestDirect = (user) => {
@@ -197,76 +384,115 @@ const getLecturerUserId = async ({ lecturerId, lecturerUserId }) => {
     const lecturer = await Lecturer.findOne({ userId: lecturerUserId, isDeleted: false });
     if (lecturer) return lecturer.userId;
   }
-
   if (lecturerId && mongoose.Types.ObjectId.isValid(lecturerId)) {
     const lecturer = await Lecturer.findOne({ _id: lecturerId, isDeleted: false });
     if (lecturer) return lecturer.userId;
   }
-
   throw { status: 404, message: 'Không tìm thấy giảng viên.' };
 };
-
-const getDirectMemberKey = (userA, userB) => [toId(userA), toId(userB)].sort();
 
 const requestDirectRoom = async (user, payload = {}) => {
   ensureStudentCanRequestDirect(user);
 
-  const lecturerUserId = await getLecturerUserId(payload);
-  if (toId(lecturerUserId) === toId(user._id)) {
+  const lecturerUserIdObj = await getLecturerUserId(payload);
+  const lecturerUserId = lecturerUserIdObj.toString();
+  if (lecturerUserId === user._id.toString()) {
     throw { status: 422, message: 'Không thể tự tạo chat với chính mình.' };
   }
 
-  const [firstMemberId, secondMemberId] = getDirectMemberKey(user._id, lecturerUserId)
-    .map((id) => new mongoose.Types.ObjectId(id));
-  const existingRoom = await ChatRoom.findOne({
-    type: 'direct',
-    isDeleted: false,
-    memberIds: { $all: [firstMemberId, secondMemberId], $size: 2 },
+  const directKey = [user._id.toString(), lecturerUserId].sort().join(':');
+
+  const existingRoom = await prisma.chatRoom.findUnique({
+    where: { directKey }
   });
 
   if (existingRoom) {
-    return await populateRoom(ChatRoom.findById(existingRoom._id)).lean();
+    return await mapRoomToOldShape(existingRoom, user._id.toString());
   }
 
-  const room = await ChatRoom.create({
-    type: 'direct',
-    name: 'Chat riêng',
-    status: 'pending',
-    memberIds: [firstMemberId, secondMemberId],
-    requestedBy: user._id,
+  const roomId = new mongoose.Types.ObjectId().toString();
+  const now = new Date();
+
+  const room = await prisma.chatRoom.create({
+    data: {
+      id: roomId,
+      mongoId: roomId,
+      type: 'direct',
+      name: 'Chat riêng',
+      status: 'pending',
+      requestedBy: user._id.toString(),
+      directKey,
+      createdAt: now,
+      updatedAt: now
+    }
   });
 
-  return await populateRoom(ChatRoom.findById(room._id)).lean();
+  await prisma.chatRoomMember.create({
+    data: {
+      roomId,
+      userId: user._id.toString(),
+      role: 'member',
+      status: 'active',
+      joinedAt: now
+    }
+  });
+
+  await prisma.chatRoomMember.create({
+    data: {
+      roomId,
+      userId: lecturerUserId,
+      role: 'teacher',
+      status: 'pending',
+      joinedAt: now,
+      invitedBy: user._id.toString()
+    }
+  });
+
+  return await mapRoomToOldShape(room, user._id.toString());
 };
 
 const acceptDirectRoom = async (roomId, user) => {
-  const room = await getRoomForUser(roomId, user);
-  if (room.type !== 'direct') {
-    throw { status: 422, message: 'Chỉ chat riêng mới cần xác nhận lời mời.' };
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false, type: 'direct' }
+  });
+  if (!room) throw { status: 404, message: 'Phòng chat không tồn tại.' };
+
+  const member = await prisma.chatRoomMember.findUnique({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } }
+  });
+  if (!member) throw { status: 403, message: 'Bạn không có quyền truy cập phòng chat này.' };
+
+  if (room.status === 'accepted') {
+    return await mapRoomToOldShape(room, user._id.toString());
   }
-  if (room.status === 'accepted') return room;
-  if (toId(room.requestedBy) === toId(user._id)) {
+
+  if (room.requestedBy === user._id.toString()) {
     throw { status: 403, message: 'Người gửi lời mời không thể tự xác nhận.' };
   }
 
-  room.status = 'accepted';
-  room.acceptedBy = user._id;
-  room.acceptedAt = new Date();
-  await room.save();
-  return await populateRoom(ChatRoom.findById(room._id)).lean();
-};
+  const now = new Date();
+  const updatedRoom = await prisma.chatRoom.update({
+    where: { id: roomId },
+    data: {
+      status: 'accepted',
+      acceptedBy: user._id.toString(),
+      acceptedAt: now
+    }
+  });
 
-const getPendingGroupInvite = (room, user) => {
-  if (room.type !== 'group') return null;
-  return (room.groupTeacherInvites || [])
-    .find((invite) => toId(invite.lecturerUserId) === toId(user._id) && invite.status === 'pending');
+  await prisma.chatRoomMember.update({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } },
+    data: { status: 'accepted' }
+  });
+
+  return await mapRoomToOldShape(updatedRoom, user._id.toString());
 };
 
 const assertGroupLeader = async (room, user) => {
-  if (room.type !== 'group' || !room.groupId?._id) {
+  if (room.type !== 'group' || !room.groupId) {
     throw { status: 422, message: 'Chỉ phòng nhóm mới có cấu hình nhóm.' };
   }
-  const group = await ProjectGroup.findOne({ _id: room.groupId._id, isDeleted: { $ne: true } });
+  const group = await ProjectGroup.findOne({ _id: room.groupId, isDeleted: { $ne: true } });
   if (!group) {
     throw { status: 404, message: 'Nhóm không tồn tại.' };
   }
@@ -277,16 +503,18 @@ const assertGroupLeader = async (room, user) => {
 };
 
 const updateGroupSettings = async (roomId, user, payload = {}) => {
-  const room = await getRoomForUser(roomId, user);
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false }
+  });
+  if (!room) throw { status: 404, message: 'Phòng chat không tồn tại.' };
+
   const group = await assertGroupLeader(room, user);
 
+  let nextName = room.name;
   if (payload.name !== undefined) {
-    const nextName = String(payload.name || '').trim();
-    if (!nextName) {
-      throw { status: 422, message: 'Tên nhóm không hợp lệ.' };
-    }
+    nextName = String(payload.name || '').trim();
+    if (!nextName) throw { status: 422, message: 'Tên nhóm không hợp lệ.' };
     group.name = nextName;
-    room.name = nextName;
   }
 
   if (payload.avatarUrl !== undefined) {
@@ -298,17 +526,24 @@ const updateGroupSettings = async (roomId, user, payload = {}) => {
   }
 
   await group.save();
-  await room.save();
-  return await populateRoom(ChatRoom.findById(room._id)).lean();
+
+  const updatedRoom = await prisma.chatRoom.update({
+    where: { id: roomId },
+    data: { name: nextName }
+  });
+
+  return await mapRoomToOldShape(updatedRoom, user._id.toString());
 };
 
 const uploadGroupAvatar = async (roomId, user, file) => {
-  const room = await getRoomForUser(roomId, user);
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false }
+  });
+  if (!room) throw { status: 404, message: 'Phòng chat không tồn tại.' };
+
   const group = await assertGroupLeader(room, user);
 
-  if (!file) {
-    throw { status: 400, message: 'Vui lòng chọn ảnh nhóm.' };
-  }
+  if (!file) throw { status: 400, message: 'Vui lòng chọn ảnh nhóm.' };
 
   const allowedMime = {
     'image/jpeg': '.jpg',
@@ -331,107 +566,134 @@ const uploadGroupAvatar = async (roomId, user, file) => {
   group.avatarUrl = uploadResult.secure_url;
   await group.save();
 
-  return await populateRoom(ChatRoom.findById(room._id)).lean();
+  return await mapRoomToOldShape(room, user._id.toString());
 };
 
 const inviteLecturerToGroup = async (roomId, user, payload = {}) => {
-  const room = await getRoomForUser(roomId, user);
-  await assertGroupLeader(room, user);
-  const lecturerUserId = await getLecturerUserId(payload);
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false }
+  });
+  if (!room) throw { status: 404, message: 'Phòng chat không tồn tại.' };
 
-  const invite = (room.groupTeacherInvites || [])
-    .find((item) => toId(item.lecturerUserId) === toId(lecturerUserId));
+  await assertGroupLeader(room, user);
+  const lecturerUserIdObj = await getLecturerUserId(payload);
+  const lecturerUserId = lecturerUserIdObj.toString();
+
+  const invite = await prisma.chatRoomMember.findUnique({
+    where: { roomId_userId: { roomId, userId: lecturerUserId } }
+  });
+
   if (invite) {
     if (invite.status === 'accepted') {
       throw { status: 400, message: 'Thầy/cô đã ở trong nhóm chat này.' };
     }
-    invite.status = 'pending';
-    invite.requestedBy = user._id;
-    invite.respondedAt = undefined;
+    await prisma.chatRoomMember.update({
+      where: { roomId_userId: { roomId, userId: lecturerUserId } },
+      data: {
+        status: 'pending',
+        invitedBy: user._id.toString(),
+        lastReadAt: null
+      }
+    });
   } else {
-    room.groupTeacherInvites.push({
-      lecturerUserId,
-      requestedBy: user._id,
-      status: 'pending',
+    await prisma.chatRoomMember.create({
+      data: {
+        roomId,
+        userId: lecturerUserId,
+        role: 'teacher',
+        status: 'pending',
+        invitedBy: user._id.toString()
+      }
     });
   }
 
-  await room.save();
   await createChatAuditEvent({
     roomId,
     user,
     action: 'INVITE_LECTURER_TO_CHAT_GROUP',
     reason: 'Mời giảng viên vào nhóm chat.',
-    metadata: { lecturerUserId: toId(lecturerUserId) },
+    metadata: { lecturerUserId },
   });
-  return await populateRoom(ChatRoom.findById(room._id)).lean();
+
+  return await mapRoomToOldShape(room, user._id.toString());
 };
 
 const acceptGroupInvite = async (roomId, user) => {
-  const room = await getRoomForUser(roomId, user);
-  const invite = getPendingGroupInvite(room, user);
-  if (!invite) {
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false }
+  });
+  if (!room) throw { status: 404, message: 'Phòng chat không tồn tại.' };
+
+  const invite = await prisma.chatRoomMember.findUnique({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } }
+  });
+
+  if (!invite || invite.role !== 'teacher' || invite.status !== 'pending') {
     throw { status: 404, message: 'Không tìm thấy lời mời vào nhóm chat.' };
   }
 
-  invite.status = 'accepted';
-  invite.respondedAt = new Date();
-  if (!(room.memberIds || []).some((memberId) => toId(memberId) === toId(user._id))) {
-    room.memberIds.push(user._id);
-  }
-  await room.save();
-  return await populateRoom(ChatRoom.findById(room._id)).lean();
-};
-
-const assertRoomCanSend = (room, user) => {
-  if (room.type === 'direct' && room.status !== 'accepted') {
-    if (toId(room.requestedBy) === toId(user._id)) {
-      throw { status: 403, message: 'Vui lòng chờ thầy cô xác nhận lời mời chat.' };
+  await prisma.chatRoomMember.update({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } },
+    data: {
+      status: 'accepted',
+      lastReadAt: new Date()
     }
-    throw { status: 403, message: 'Bạn cần xác nhận lời mời trước khi nhắn tin.' };
-  }
-  if (getPendingGroupInvite(room, user)) {
-    throw { status: 403, message: 'Bạn cần chấp nhận lời mời vào nhóm trước khi nhắn tin.' };
-  }
+  });
+
+  return await mapRoomToOldShape(room, user._id.toString());
 };
 
 const getMessages = async (roomId, user, { limit = 50, before } = {}) => {
-  const room = await getRoomForUser(roomId, user);
-  if ((room.type === 'direct' && room.status !== 'accepted') || getPendingGroupInvite(room, user)) {
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false }
+  });
+  if (!room) return [];
+
+  const member = await prisma.chatRoomMember.findUnique({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } }
+  });
+  if (!member || ['rejected', 'pending'].includes(member.status)) {
     return [];
   }
 
-  const filter = { roomId, isDeleted: false };
+  const where = { roomId, isDeleted: false };
   if (before && !Number.isNaN(Date.parse(before))) {
-    filter.createdAt = { $lt: new Date(before) };
+    where.createdAt = { lt: new Date(before) };
   }
 
-  const messages = await populateMessage(
-    ChatMessage.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(Math.min(Number(limit) || 50, 100))
-  ).lean();
+  const messages = await prisma.chatMessage.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    take: Math.min(Number(limit) || 50, 100)
+  });
 
-  return messages.reverse();
+  const mappedMessages = [];
+  for (const msg of messages) {
+    mappedMessages.push(await mapMessageToOldShape(msg));
+  }
+
+  return mappedMessages.reverse();
 };
 
 const markRoomRead = async (roomId, user) => {
-  const room = await getRoomForUser(roomId, user);
-  if ((room.type === 'direct' && room.status !== 'accepted') || getPendingGroupInvite(room, user)) {
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false }
+  });
+  if (!room) return { modifiedCount: 0 };
+
+  const member = await prisma.chatRoomMember.findUnique({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } }
+  });
+  if (!member || ['rejected', 'pending'].includes(member.status)) {
     return { modifiedCount: 0 };
   }
 
-  const result = await ChatMessage.updateMany(
-    {
-      roomId,
-      isDeleted: false,
-      senderId: { $ne: user._id },
-      readBy: { $not: { $elemMatch: { userId: user._id } } },
-    },
-    { $push: { readBy: { userId: user._id, readAt: new Date() } } }
-  );
+  await prisma.chatRoomMember.update({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } },
+    data: { lastReadAt: new Date() }
+  });
 
-  return { modifiedCount: result.modifiedCount || 0 };
+  return { modifiedCount: 1 };
 };
 
 const sendMessage = async (roomId, user, body) => {
@@ -443,24 +705,54 @@ const sendMessage = async (roomId, user, body) => {
     throw { status: 422, message: 'Tin nhắn không được vượt quá 4000 ký tự.' };
   }
 
-  const room = await getRoomForUser(roomId, user);
-  assertRoomCanSend(room, user);
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false }
+  });
+  if (!room) throw { status: 404, message: 'Phòng chat không tồn tại.' };
 
-  const message = await ChatMessage.create({
-    roomId,
-    senderId: user._id,
-    body: text,
-    readBy: [{ userId: user._id }],
+  const member = await prisma.chatRoomMember.findUnique({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } }
+  });
+  if (!member || member.status === 'rejected' || (member.role === 'teacher' && member.status === 'pending')) {
+    throw { status: 403, message: 'Bạn không có quyền nhắn tin trong phòng này.' };
+  }
+
+  if (room.type === 'direct' && room.status !== 'accepted') {
+    if (room.requestedBy === user._id.toString()) {
+      throw { status: 403, message: 'Vui lòng chờ thầy cô xác nhận lời mời chat.' };
+    }
+    throw { status: 403, message: 'Bạn cần xác nhận lời mời trước khi nhắn tin.' };
+  }
+
+  const messageId = new mongoose.Types.ObjectId().toString();
+  const now = new Date();
+
+  const msg = await prisma.chatMessage.create({
+    data: {
+      id: messageId,
+      mongoId: messageId,
+      roomId,
+      senderId: user._id.toString(),
+      body: text,
+      attachments: [],
+      createdAt: now
+    }
   });
 
-  await ChatRoom.findByIdAndUpdate(roomId, { lastMessageAt: message.createdAt });
-  const populatedMessage = await populateMessage(ChatMessage.findById(message._id)).lean();
-  await notifyRoomMembers(room, user, populatedMessage);
-  return populatedMessage;
-};
+  await prisma.chatRoom.update({
+    where: { id: roomId },
+    data: { lastMessageAt: now }
+  });
 
-const getAttachmentKind = (mimeType) => {
-  return String(mimeType || '').startsWith('image/') ? 'image' : 'file';
+  await prisma.chatRoomMember.update({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } },
+    data: { lastReadAt: now }
+  });
+
+  const oldShapeRoom = await mapRoomToOldShape(room, user._id.toString());
+  const populatedMessage = await mapMessageToOldShape(msg);
+  await notifyRoomMembers(oldShapeRoom, user, populatedMessage);
+  return populatedMessage;
 };
 
 const sendAttachmentMessage = async (roomId, user, { body, file } = {}) => {
@@ -472,73 +764,126 @@ const sendAttachmentMessage = async (roomId, user, { body, file } = {}) => {
     throw { status: 422, message: 'Tin nhắn không được vượt quá 4000 ký tự.' };
   }
 
-  const room = await getRoomForUser(roomId, user);
-  assertRoomCanSend(room, user);
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false }
+  });
+  if (!room) throw { status: 404, message: 'Phòng chat không tồn tại.' };
+
+  const member = await prisma.chatRoomMember.findUnique({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } }
+  });
+  if (!member || member.status === 'rejected' || (member.role === 'teacher' && member.status === 'pending')) {
+    throw { status: 403, message: 'Bạn không có quyền nhắn tin trong phòng này.' };
+  }
+
+  if (room.type === 'direct' && room.status !== 'accepted') {
+    if (room.requestedBy === user._id.toString()) {
+      throw { status: 403, message: 'Vui lòng chờ thầy cô xác nhận lời mời chat.' };
+    }
+    throw { status: 403, message: 'Bạn cần xác nhận lời mời trước khi nhắn tin.' };
+  }
 
   const asset = await filesService.uploadFile(file, 'chat_room', roomId, user);
   const mimeType = asset.mimeVerified || asset.mimeClient;
-  const message = await ChatMessage.create({
-    roomId,
-    senderId: user._id,
-    body: text,
-    attachments: [{
-      fileId: asset._id,
-      originalName: asset.originalName,
-      mimeType,
-      size: asset.size,
-      kind: getAttachmentKind(mimeType),
-    }],
-    readBy: [{ userId: user._id }],
+  const messageId = new mongoose.Types.ObjectId().toString();
+  const now = new Date();
+
+  const msg = await prisma.chatMessage.create({
+    data: {
+      id: messageId,
+      mongoId: messageId,
+      roomId,
+      senderId: user._id.toString(),
+      body: text,
+      attachments: [{
+        fileId: asset._id.toString(),
+        originalName: asset.originalName,
+        mimeType,
+        size: asset.size,
+        kind: getAttachmentKind(mimeType)
+      }],
+      createdAt: now
+    }
   });
 
-  await ChatRoom.findByIdAndUpdate(roomId, { lastMessageAt: message.createdAt });
-  const populatedMessage = await populateMessage(ChatMessage.findById(message._id)).lean();
-  await notifyRoomMembers(room, user, populatedMessage);
+  await prisma.chatRoom.update({
+    where: { id: roomId },
+    data: { lastMessageAt: now }
+  });
+
+  await prisma.chatRoomMember.update({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } },
+    data: { lastReadAt: now }
+  });
+
+  const oldShapeRoom = await mapRoomToOldShape(room, user._id.toString());
+  const populatedMessage = await mapMessageToOldShape(msg);
+  await notifyRoomMembers(oldShapeRoom, user, populatedMessage);
+
   await createChatAuditEvent({
     roomId,
     user,
     action: 'CHAT_SEND_ATTACHMENT',
     reason: 'Gửi tệp trong phòng chat.',
     metadata: {
-      messageId: toId(message._id),
+      messageId,
       fileName: asset.originalName,
       fileSize: asset.size,
-      mimeType,
-    },
+      mimeType
+    }
   });
+
   return populatedMessage;
 };
 
 const deleteMessage = async (roomId, messageId, user) => {
-  const room = await getRoomForUser(roomId, user);
-  if ((room.type === 'direct' && room.status !== 'accepted') || getPendingGroupInvite(room, user)) {
+  const room = await prisma.chatRoom.findFirst({
+    where: { id: roomId, isDeleted: false }
+  });
+  if (!room) throw { status: 404, message: 'Phòng chat không tồn tại.' };
+
+  const member = await prisma.chatRoomMember.findUnique({
+    where: { roomId_userId: { roomId, userId: user._id.toString() } }
+  });
+  if (!member || ['rejected', 'pending'].includes(member.status)) {
     throw { status: 403, message: 'Bạn không có quyền thu hồi tin nhắn trong phòng này.' };
   }
-  if (!mongoose.Types.ObjectId.isValid(messageId)) {
-    throw { status: 422, message: 'Mã tin nhắn không hợp lệ.' };
-  }
 
-  const message = await ChatMessage.findOne({ _id: messageId, roomId, isDeleted: false });
-  if (!message) {
-    throw { status: 404, message: 'Tin nhắn không tồn tại.' };
-  }
-  if (toId(message.senderId) !== toId(user._id)) {
+  const message = await prisma.chatMessage.findFirst({
+    where: { id: messageId, roomId, isDeleted: false }
+  });
+  if (!message) throw { status: 404, message: 'Tin nhắn không tồn tại.' };
+
+  if (message.senderId !== user._id.toString()) {
     throw { status: 403, message: 'Bạn chỉ có thể thu hồi tin nhắn của chính mình.' };
   }
 
-  message.isDeleted = true;
-  message.deletedAt = new Date();
-  message.deletedBy = user._id;
-  await message.save();
+  await prisma.chatMessage.update({
+    where: { id: messageId },
+    data: {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: user._id.toString()
+    }
+  });
 
-  const latest = await ChatMessage.findOne({ roomId, isDeleted: false }).sort({ createdAt: -1 }).select('createdAt');
-  await ChatRoom.findByIdAndUpdate(roomId, { lastMessageAt: latest?.createdAt || null });
+  const latest = await prisma.chatMessage.findFirst({
+    where: { roomId, isDeleted: false },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true }
+  });
+
+  await prisma.chatRoom.update({
+    where: { id: roomId },
+    data: { lastMessageAt: latest?.createdAt || null }
+  });
+
   await createChatAuditEvent({
     roomId,
     user,
     action: 'CHAT_RECALL_MESSAGE',
     reason: 'Thu hồi tin nhắn trong phòng chat.',
-    metadata: { messageId },
+    metadata: { messageId }
   });
 
   return { roomId, messageId };

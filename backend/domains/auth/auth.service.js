@@ -2,38 +2,76 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const crypto = require('crypto');
-const User = require('../../models/User');
-const Student = require('../../models/Student');
-const Lecturer = require('../../models/Lecturer');
+const prisma = require('../../config/prisma');
 const { getJwtSecret } = require('../../config/jwt');
 const { uploadImageBuffer } = require('../../config/cloudinary');
 
-const buildAuthResult = async (user) => {
+const ALLOWED_DOMAIN = 'st.phenikaa-uni.edu.vn';
+
+const newObjectId = () => new mongoose.Types.ObjectId().toString();
+
+const normalizeUser = (user) => {
+  if (!user) return null;
+  return {
+    ...user,
+    _id: user.id,
+    roles: user.roles || [],
+  };
+};
+
+const getUserByIdForAuth = async (userId) => {
+  const user = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      isDeleted: false,
+    },
+    include: {
+      student: true,
+      lecturer: true,
+    },
+  });
+
+  return normalizeUser(user);
+};
+
+const assertActiveUser = (user) => {
+  if (!user || user.isDeleted) {
+    throw { status: 404, message: 'Người dùng không tồn tại.' };
+  }
+  if (user.status === 'locked') {
+    throw { status: 403, message: 'Tài khoản của bạn đã bị khóa.' };
+  }
+  if (user.status === 'inactive') {
+    throw { status: 403, message: 'Tài khoản của bạn hiện đang ngưng hoạt động.' };
+  }
+};
+
+const buildAuthResult = async (inputUser) => {
+  const user = inputUser.student !== undefined || inputUser.lecturer !== undefined
+    ? normalizeUser(inputUser)
+    : await getUserByIdForAuth(inputUser.id || inputUser._id);
+
+  assertActiveUser(user);
+
   let studentId = undefined;
   let lecturerId = undefined;
   let studentCode = undefined;
   let lecturerCode = undefined;
   let cohort = user.cohort || '';
 
-  if (user.roles.includes('STUDENT')) {
-    const student = await Student.findOne({ userId: user._id, isDeleted: false });
-    if (student) {
-      studentId = student._id;
-      studentCode = student.studentCode;
-      cohort = cohort || student.cohort || '';
-    }
+  if (user.roles.includes('STUDENT') && user.student && !user.student.isDeleted) {
+    studentId = user.student.id;
+    studentCode = user.student.studentCode;
+    cohort = cohort || user.student.cohort || '';
   }
 
-  if (user.roles.includes('LECTURER')) {
-    const lecturer = await Lecturer.findOne({ userId: user._id, isDeleted: false });
-    if (lecturer) {
-      lecturerId = lecturer._id;
-      lecturerCode = lecturer.lecturerCode;
-    }
+  if (user.roles.includes('LECTURER') && user.lecturer && !user.lecturer.isDeleted) {
+    lecturerId = user.lecturer.id;
+    lecturerCode = user.lecturer.lecturerCode;
   }
 
   const tokenPayload = {
-    id: user._id,
+    id: user.id,
     roles: user.roles,
   };
 
@@ -44,7 +82,7 @@ const buildAuthResult = async (user) => {
   );
 
   const refreshToken = jwt.sign(
-    { id: user._id, type: 'refresh' },
+    { id: user.id, type: 'refresh' },
     getJwtSecret(),
     { expiresIn: '7d' }
   );
@@ -53,8 +91,8 @@ const buildAuthResult = async (user) => {
     accessToken,
     refreshToken,
     user: {
-      _id: user._id,
-      id: user._id,
+      _id: user.id,
+      id: user.id,
       fullName: user.fullName,
       email: user.email,
       roles: user.roles,
@@ -72,12 +110,23 @@ const buildAuthResult = async (user) => {
   };
 };
 
-const ALLOWED_DOMAIN = 'st.phenikaa-uni.edu.vn';
+const getFallbackFacultyId = async () => {
+  const lecturer = await prisma.lecturer.findFirst({
+    where: { isDeleted: false },
+    select: { facultyId: true },
+  });
+  if (lecturer?.facultyId) return lecturer.facultyId;
+
+  const student = await prisma.student.findFirst({
+    where: { isDeleted: false },
+    select: { facultyId: true },
+  });
+  return student?.facultyId || newObjectId();
+};
 
 const loginWithGoogleEmail = async (email, fullName = '') => {
   const normalizedEmail = email.toLowerCase();
 
-  // Chỉ cho phép email nội bộ Phenikaa
   if (!normalizedEmail.endsWith(`@${ALLOWED_DOMAIN}`)) {
     throw {
       status: 403,
@@ -85,99 +134,76 @@ const loginWithGoogleEmail = async (email, fullName = '') => {
     };
   }
 
-  let user = await User.findOne({ email: normalizedEmail, isDeleted: false });
+  let user = await prisma.user.findFirst({
+    where: { email: normalizedEmail, isDeleted: false },
+    include: { student: true, lecturer: true },
+  });
+
   if (!user) {
-    // Tự động tạo user mới nếu chưa tồn tại
+    const userId = newObjectId();
+    const studentId = newObjectId();
     const salt = await bcrypt.genSalt(10);
-    // password ngẫu nhiên vì login qua Google không dùng password
     const passwordHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), salt);
-    
-    // Tìm facultyId từ giảng viên/sinh viên hiện tại để tránh ObjectId ngẫu nhiên không thuộc khoa nào
-    let facultyId;
-    const existingLecturer = await Lecturer.findOne({ isDeleted: false });
-    if (existingLecturer) {
-      facultyId = existingLecturer.facultyId;
-    } else {
-      const existingStudent = await Student.findOne({ isDeleted: false });
-      if (existingStudent) {
-        facultyId = existingStudent.facultyId;
-      } else {
-        facultyId = new mongoose.Types.ObjectId();
-      }
-    }
+    const facultyId = await getFallbackFacultyId();
 
-    user = await User.create({
-      fullName: fullName || email.split('@')[0],
-      email: normalizedEmail,
-      passwordHash,
-      roles: ['STUDENT'],
-      status: 'active',
-      cohort: 'K67',
-    });
-
-    // Tạo thông tin Student profile
     const emailPrefix = normalizedEmail.split('@')[0];
     let studentCode = emailPrefix;
-    const isCodeExists = await Student.findOne({ studentCode, isDeleted: false });
+    const isCodeExists = await prisma.student.findFirst({
+      where: { studentCode, isDeleted: false },
+      select: { id: true },
+    });
     if (isCodeExists) {
       studentCode = `${emailPrefix}_${Date.now()}`;
     }
 
-    await Student.create({
-      userId: user._id,
-      studentCode,
-      className: 'CNTT-K67',
-      cohort: 'K67',
-      major: 'Công nghệ thông tin',
-      facultyId,
+    user = await prisma.user.create({
+      data: {
+        id: userId,
+        mongoId: userId,
+        fullName: fullName || emailPrefix,
+        email: normalizedEmail,
+        passwordHash,
+        roles: ['STUDENT'],
+        status: 'active',
+        cohort: 'K67',
+        student: {
+          create: {
+            id: studentId,
+            mongoId: studentId,
+            studentCode,
+            className: 'CNTT-K67',
+            cohort: 'K67',
+            major: 'Công nghệ thông tin',
+            facultyId,
+          },
+        },
+      },
+      include: { student: true, lecturer: true },
     });
-
-    // Gửi thông báo cho Admin hệ thống
-    try {
-      const Notification = require('../../models/Notification');
-      const admins = await User.find({ roles: 'SYSTEM_ADMIN', isDeleted: false });
-      for (const admin of admins) {
-        await Notification.create({
-          recipientId: admin._id,
-          type: 'USER_REGISTER_GOOGLE',
-          title: 'Thành viên mới đăng ký qua Google',
-          body: `Tài khoản sinh viên mới ${user.fullName} (${normalizedEmail}) đã tự động đăng ký vào hệ thống qua Google. Vui lòng duyệt lại vai trò nếu cần.`,
-          entityType: 'User',
-          entityId: user._id,
-          actionUrl: '/dashboard/users',
-        });
-      }
-    } catch (notifyErr) {
-      console.error('Không gửi được thông báo cho Admin:', notifyErr);
-    }
   }
 
-  if (user.status === 'locked') {
-    throw { status: 403, message: 'Tài khoản của bạn đã bị khóa.' };
-  }
-  if (user.status === 'inactive') {
-    throw { status: 403, message: 'Tài khoản của bạn hiện đang ngưng hoạt động.' };
-  }
-
+  assertActiveUser(user);
   return buildAuthResult(user);
 };
 
 const login = async (email, password) => {
-  // Find non-deleted user
-  const user = await User.findOne({ email: email.toLowerCase(), isDeleted: false });
+  const user = await prisma.user.findFirst({
+    where: {
+      email: email.toLowerCase(),
+      isDeleted: false,
+    },
+    include: {
+      student: true,
+      lecturer: true,
+    },
+  });
+
   if (!user) {
     throw { status: 400, message: 'Email hoặc mật khẩu không chính xác.' };
   }
 
-  // Account status validation
-  if (user.status === 'locked') {
-    throw { status: 403, message: 'Tài khoản của bạn đã bị khóa.' };
-  }
-  if (user.status === 'inactive') {
-    throw { status: 403, message: 'Tài khoản của bạn hiện đang ngưng hoạt động.' };
-  }
+  assertActiveUser(user);
 
-  // Password matching
   const isMatch = await bcrypt.compare(password, user.passwordHash);
   if (!isMatch) {
     throw { status: 400, message: 'Email hoặc mật khẩu không chính xác.' };
@@ -187,53 +213,55 @@ const login = async (email, password) => {
 };
 
 const changePassword = async (userId, oldPassword, newPassword) => {
-  const user = await User.findById(userId);
-  if (!user || user.isDeleted) {
-    throw { status: 404, message: 'Người dùng không tồn tại.' };
-  }
+  const user = await getUserByIdForAuth(userId);
+  assertActiveUser(user);
 
-  // Compare old password hash
   const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
   if (!isMatch) {
     throw { status: 400, message: 'Mật khẩu cũ không chính xác.' };
   }
 
-  // Hash new password and save
   const salt = await bcrypt.genSalt(10);
-  user.passwordHash = await bcrypt.hash(newPassword, salt);
-  await user.save();
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: await bcrypt.hash(newPassword, salt),
+    },
+  });
 
   return { success: true };
 };
 
 const updateProfile = async (userId, { fullName, phoneNumber = '', cohort = '' }) => {
-  const user = await User.findById(userId);
-  if (!user || user.isDeleted) {
-    throw { status: 404, message: 'Người dùng không tồn tại.' };
-  }
+  const currentUser = await getUserByIdForAuth(userId);
+  assertActiveUser(currentUser);
 
-  user.fullName = fullName.trim();
-  user.phoneNumber = phoneNumber.trim();
-  if (user.roles.includes('STUDENT')) {
-    user.cohort = cohort.trim().toUpperCase();
-  }
-  await user.save();
+  const nextCohort = currentUser.roles.includes('STUDENT')
+    ? cohort.trim().toUpperCase()
+    : currentUser.cohort;
 
-  if (user.roles.includes('STUDENT')) {
-    await Student.findOneAndUpdate(
-      { userId: user._id, isDeleted: false },
-      { cohort: user.cohort }
-    );
-  }
+  const user = await prisma.user.update({
+    where: { id: currentUser.id },
+    data: {
+      fullName: fullName.trim(),
+      phoneNumber: phoneNumber.trim(),
+      cohort: nextCohort,
+      ...(currentUser.roles.includes('STUDENT') && currentUser.student
+        ? { student: { update: { cohort: nextCohort } } }
+        : {}),
+    },
+    include: {
+      student: true,
+      lecturer: true,
+    },
+  });
 
   return buildAuthResult(user);
 };
 
 const updateAvatar = async (userId, file) => {
-  const user = await User.findById(userId);
-  if (!user || user.isDeleted) {
-    throw { status: 404, message: 'Người dùng không tồn tại.' };
-  }
+  const user = await getUserByIdForAuth(userId);
+  assertActiveUser(user);
 
   if (!file) {
     throw { status: 400, message: 'Vui lòng chọn ảnh đại diện.' };
@@ -249,7 +277,7 @@ const updateAvatar = async (userId, file) => {
     throw { status: 400, message: 'Ảnh đại diện chỉ hỗ trợ JPG, PNG hoặc WEBP.' };
   }
 
-  const publicId = `${user._id}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const publicId = `${user.id}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const fileName = `${publicId}${extension}`;
   const uploadResult = await uploadImageBuffer(file.buffer, {
     folder: 'management-project/avatars',
@@ -257,10 +285,16 @@ const updateAvatar = async (userId, file) => {
     filename: fileName,
   });
 
-  user.avatarUrl = uploadResult.secure_url;
-  await user.save();
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: { avatarUrl: uploadResult.secure_url },
+    include: {
+      student: true,
+      lecturer: true,
+    },
+  });
 
-  return buildAuthResult(user);
+  return buildAuthResult(updatedUser);
 };
 
 module.exports = {
@@ -269,4 +303,6 @@ module.exports = {
   changePassword,
   updateProfile,
   updateAvatar,
+  getUserByIdForAuth,
+  buildAuthResult,
 };

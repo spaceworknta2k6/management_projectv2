@@ -35,6 +35,9 @@ const runTests = async () => {
       // Clean up previous runs
       await ProjectPeriod.deleteMany({ name: 'Đợt Đồ Án Chấm Rubric Test' });
       await EvaluationRubric.deleteMany({ name: 'Rubric Đồ Án CNTT Test' });
+      const prisma = require('../config/prisma');
+      await prisma.projectPeriod.deleteMany({ where: { name: 'Đợt Đồ Án Chấm Rubric Test' } });
+      await prisma.evaluationRubric.deleteMany({ where: { name: 'Rubric Đồ Án CNTT Test' } });
       console.log('✅ Cleaned up previous test collections.');
 
       // 2. Create Rubric
@@ -53,6 +56,15 @@ const runTests = async () => {
         },
         createdBy: staffUser._id,
         updatedBy: staffUser._id
+      });
+      await prisma.evaluationRubric.create({
+        data: {
+          id: rubric._id.toString(),
+          mongoId: rubric._id.toString(),
+          name: rubric.name,
+          version: rubric.version,
+          criteria: JSON.parse(JSON.stringify(rubric.criteria)),
+        }
       });
       console.log(`✅ Rubric created successfully: ID = ${rubric._id}`);
 
@@ -81,6 +93,34 @@ const runTests = async () => {
         scoringFormula: { supervisor: 0.5, reviewer: 0.5 },
         status: 'in_progress',
       });
+      await prisma.projectPeriod.create({
+        data: {
+          id: period._id.toString(),
+          mongoId: period._id.toString(),
+          name: period.name,
+          schoolYear: period.schoolYear,
+          semester: period.semester,
+          type: period.type,
+          facultyId: period.facultyId.toString(),
+          departmentId: period.departmentId.toString(),
+          registrationStart: period.registrationStart,
+          registrationEnd: period.registrationEnd,
+          projectStart: period.projectStart,
+          projectEnd: period.projectEnd,
+          topicChangeDeadline: period.topicChangeDeadline,
+          finalSubmissionDeadline: period.finalSubmissionDeadline,
+          gradingStart: period.gradingStart,
+          gradingEnd: period.gradingEnd,
+          revisionDeadline: period.revisionDeadline,
+          archiveDeadline: period.archiveDeadline,
+          minGroupSize: period.minGroupSize,
+          maxGroupSize: period.maxGroupSize,
+          rubricVersion: period.rubricVersion,
+          rubricId: period.rubricId.toString(),
+          scoringFormula: JSON.parse(JSON.stringify(period.scoringFormula || {})),
+          status: 'in_progress',
+        }
+      });
       console.log(`✅ ProjectPeriod created with Rubric link. Rubric ID = ${period.rubricId}`);
 
       // Create valid Project Group
@@ -95,6 +135,17 @@ const runTests = async () => {
           contributionWeight: 1.0
         }],
         status: 'locked'
+      });
+      await prisma.projectGroup.create({
+        data: {
+          id: group._id.toString(),
+          mongoId: group._id.toString(),
+          periodId: group.periodId.toString(),
+          name: group.name,
+          leaderStudentId: group.leaderStudentId.toString(),
+          members: JSON.parse(JSON.stringify(group.members)),
+          status: group.status,
+        }
       });
 
       // Create valid Topic
@@ -113,6 +164,25 @@ const runTests = async () => {
         departmentId: period.departmentId,
         status: 'assigned'
       });
+      await prisma.projectTopic.create({
+        data: {
+          id: topic._id.toString(),
+          mongoId: topic._id.toString(),
+          periodId: topic.periodId.toString(),
+          groupId: topic.groupId.toString(),
+          proposedByStudentId: topic.proposedByStudentId.toString(),
+          title: topic.title,
+          summary: topic.summary,
+          objectives: topic.objectives,
+          scope: topic.scope,
+          expectedResult: topic.expectedResult,
+          plan: topic.plan,
+          proposedSupervisorId: topic.proposedSupervisorId.toString(),
+          supervisorId: topic.supervisorId.toString(),
+          departmentId: topic.departmentId.toString(),
+          status: topic.status,
+        }
+      });
 
       // Create Project
       const project = await Project.create({
@@ -121,6 +191,17 @@ const runTests = async () => {
         topicId: topic._id,
         supervisorId: supervisorLecturer._id,
         status: 'in_progress'
+      });
+      await prisma.project.create({
+        data: {
+          id: project._id.toString(),
+          mongoId: project._id.toString(),
+          periodId: project.periodId.toString(),
+          groupId: project.groupId.toString(),
+          topicId: project.topicId.toString(),
+          supervisorId: project.supervisorId.toString(),
+          status: project.status,
+        }
       });
       console.log(`✅ Project workspace created: ID = ${project._id}`);
 
@@ -230,6 +311,17 @@ const runTests = async () => {
       }
       const originalHash = resultVerify.data.integrityHash;
       await ScoreSheet.findByIdAndUpdate(sheetId, { $set: { 'criteriaScores.0.score': 4.5 } });
+      const currentSheet = await prisma.scoreSheet.findFirst({ where: { id: sheetId } });
+      if (currentSheet) {
+        const scores = Array.isArray(currentSheet.criteriaScores) ? [...currentSheet.criteriaScores] : [];
+        if (scores[0]) {
+          scores[0].score = 4.5;
+          await prisma.scoreSheet.update({
+            where: { id: sheetId },
+            data: { criteriaScores: scores }
+          });
+        }
+      }
       const resVerifyAfterScoreEdit = await fetch(`http://localhost:${TEST_PORT}/api/v1/scores/score-sheets/${sheetId}/public-verify`);
       const resultVerifyAfterScoreEdit = await resVerifyAfterScoreEdit.json();
       if (resultVerifyAfterScoreEdit.data.integrityHash === originalHash) {

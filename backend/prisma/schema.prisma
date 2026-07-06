@@ -1,0 +1,597 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SYSTEM_ADMIN
+  FACULTY_STAFF
+  LECTURER
+  STUDENT
+}
+
+enum UserStatus {
+  active
+  inactive
+  locked
+}
+
+enum AcademicDegree {
+  bachelor
+  master
+  phd
+  professor
+  associate_professor
+}
+
+enum LecturerStatus {
+  active
+  inactive
+}
+
+model User {
+  id           String     @id @default(cuid())
+  mongoId      String?    @unique @map("mongo_id")
+  fullName     String     @map("full_name")
+  email        String
+  passwordHash String     @map("password_hash")
+  roles        UserRole[] @default([STUDENT])
+  status       UserStatus @default(active)
+  phoneNumber  String     @default("") @map("phone_number")
+  cohort       String     @default("")
+  avatarUrl    String     @default("") @map("avatar_url")
+  isDeleted    Boolean    @default(false) @map("is_deleted")
+  deletedAt    DateTime?  @map("deleted_at")
+  deletedBy    String?    @map("deleted_by")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  student  Student?
+  lecturer Lecturer?
+
+  @@unique([email, isDeleted])
+  @@index([email])
+  @@map("users")
+}
+
+model Student {
+  id           String   @id @default(cuid())
+  mongoId      String?  @unique @map("mongo_id")
+  userId       String   @unique @map("user_id")
+  studentCode  String   @unique @map("student_code")
+  className    String   @map("class_name")
+  cohort       String
+  major        String
+  facultyId    String   @map("faculty_id")
+  skills       String[] @default([])
+  interests    String[] @default([])
+  technologies String[] @default([])
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  deletedAt    DateTime? @map("deleted_at")
+  deletedBy    String?  @map("deleted_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("students")
+}
+
+model Lecturer {
+  id             String         @id @default(cuid())
+  mongoId        String?        @unique @map("mongo_id")
+  userId         String         @unique @map("user_id")
+  lecturerCode   String         @unique @map("lecturer_code")
+  facultyId      String         @map("faculty_id")
+  departmentId   String         @map("department_id")
+  academicDegree AcademicDegree @default(master) @map("academic_degree")
+  expertise      String[]       @default([])
+  maxProjects    Int            @default(5) @map("max_projects")
+  isExternal     Boolean        @default(false) @map("is_external")
+  organization   String         @default("PHENIKAA")
+  status         LecturerStatus @default(active)
+  isDeleted      Boolean        @default(false) @map("is_deleted")
+  deletedAt      DateTime?      @map("deleted_at")
+  deletedBy      String?        @map("deleted_by")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("lecturers")
+}
+
+model GoogleLoginSession {
+  code      String   @id
+  payload   Json
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("google_login_sessions")
+}
+
+model Notification {
+  id          String    @id @default(cuid())
+  mongoId     String?   @unique @map("mongo_id")
+  recipientId String    @map("recipient_id")
+  type        String
+  title       String
+  body        String
+  entityType  String?   @map("entity_type")
+  entityId    String?   @map("entity_id")
+  actionUrl   String?   @map("action_url")
+  deadlineAt  DateTime? @map("deadline_at")
+  readAt      DateTime? @map("read_at")
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedBy   String?   @map("deleted_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([recipientId, isDeleted, readAt, createdAt])
+  @@map("notifications")
+}
+
+model WorkflowEvent {
+  id         String   @id @default(cuid())
+  mongoId    String?  @unique @map("mongo_id")
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  actorId    String   @map("actor_id")
+  actorRoles String[] @default([]) @map("actor_roles")
+  action     String
+  reason     String?
+  metadata   Json     @default("{}")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId, createdAt])
+  @@index([createdAt])
+  @@index([entityType, action, createdAt])
+  @@index([actorId, createdAt])
+  @@map("workflow_events")
+}
+
+model ProjectPeriod {
+  id                     String   @id @default(cuid())
+  mongoId                String?  @unique @map("mongo_id")
+  name                   String
+  schoolYear             String   @map("school_year")
+  semester               String
+  facultyId              String   @map("faculty_id")
+  departmentId           String   @map("department_id")
+  type                   String?
+  courseCode             String?  @map("course_code")
+  courseName             String?  @map("course_name")
+  projectType            String?  @map("project_type")
+  academicUnit           String   @default("computer_science") @map("academic_unit")
+  programId              String?  @map("program_id")
+  programName            String?  @map("program_name")
+  coordinatorLecturerId  String?  @map("coordinator_lecturer_id")
+  allowIndividual        Boolean  @default(true) @map("allow_individual")
+  allowGroup             Boolean  @default(true) @map("allow_group")
+  groupMinSize           Int      @default(2) @map("group_min_size")
+  groupMaxSize           Int      @default(5) @map("group_max_size")
+  registrationStart      DateTime @map("registration_start")
+  registrationEnd        DateTime @map("registration_end")
+  projectStart           DateTime @map("project_start")
+  projectEnd             DateTime @map("project_end")
+  revisionDeadline       DateTime? @map("revision_deadline")
+  archiveDeadline        DateTime? @map("archive_deadline")
+  finalSubmissionDeadline DateTime? @map("final_submission_deadline")
+  gradingStart           DateTime? @map("grading_start")
+  gradingEnd             DateTime? @map("grading_end")
+  appealDaysAfterPublish Int      @default(7) @map("appeal_days_after_publish")
+  appealProcessingDays   Int      @default(7) @map("appeal_processing_days")
+  resultPublishedAt      DateTime? @map("result_published_at")
+  minGroupSize           Int      @default(1) @map("min_group_size")
+  maxGroupSize           Int      @default(3) @map("max_group_size")
+  topicChangeDeadline    DateTime @map("topic_change_deadline")
+  varianceThreshold      Float    @default(2.0) @map("variance_threshold")
+  passScore              Float    @default(5.0) @map("pass_score")
+  rubricVersion          String   @map("rubric_version")
+  rubricId               String?  @map("rubric_id")
+  scoringFormula         Json     @map("scoring_formula")
+  status                 String   @default("draft")
+  lockedAt               DateTime? @map("locked_at")
+  createdBy              String?  @map("created_by")
+  updatedBy              String?  @map("updated_by")
+  isDeleted              Boolean  @default(false) @map("is_deleted")
+  deletedAt              DateTime? @map("deleted_at")
+  deletedBy              String?  @map("deleted_by")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@index([status, isDeleted])
+  @@index([academicUnit])
+  @@map("project_periods")
+}
+
+model ProjectRoster {
+  id           String   @id @default(cuid())
+  mongoId      String?  @unique @map("mongo_id")
+  periodId     String   @map("period_id")
+  studentId    String   @map("student_id")
+  classSection String   @map("class_section")
+  status       String   @default("active")
+  importedBy   String   @map("imported_by")
+  importedAt   DateTime @default(now()) @map("imported_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([periodId, studentId])
+  @@index([periodId, status])
+  @@map("project_rosters")
+}
+
+model ProjectGroup {
+  id              String    @id
+  mongoId         String?   @unique @map("mongo_id")
+  periodId        String    @map("period_id")
+  name            String
+  avatarUrl       String    @default("") @map("avatar_url")
+  leaderStudentId String    @map("leader_student_id")
+  members         Json      // Array of objects: { studentId, role, contributionWeight, status }
+  status          String    @default("draft")
+  isDeleted       Boolean   @default(false) @map("is_deleted")
+  deletedAt       DateTime? @map("deleted_at")
+  deletedBy       String?   @map("deleted_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([periodId, status])
+  @@index([periodId, isDeleted])
+  @@map("project_groups")
+}
+
+model ProjectTopic {
+  id                    String    @id
+  mongoId               String?   @unique @map("mongo_id")
+  periodId              String    @map("period_id")
+  ownerType             String?   @map("owner_type")
+  ownerId               String?   @map("owner_id")
+  studentId             String?   @map("student_id")
+  groupId               String?   @map("group_id")
+  proposedByStudentId   String?   @map("proposed_by_student_id")
+  createdByRole         String    @default("student") @map("created_by_role")
+  createdByUserId       String?   @map("created_by_user_id")
+  proposedByLecturerId  String?   @map("proposed_by_lecturer_id")
+  approvedByLecturerId  String?   @map("approved_by_lecturer_id")
+  capacityMaxStudents   Int       @default(1) @map("capacity_max_students")
+  capacityMaxGroups     Int       @default(1) @map("capacity_max_groups")
+  currentStudentCount   Int       @default(0) @map("current_student_count")
+  currentGroupCount     Int       @default(0) @map("current_group_count")
+  allowedOwnerTypes     String[]  @default(["student", "group"]) @map("allowed_owner_types")
+  allowIndividual       Boolean?  @map("allow_individual")
+  allowGroup            Boolean?  @map("allow_group")
+  minGroupSize          Int?      @map("min_group_size")
+  maxGroupSize          Int?      @map("max_group_size")
+  publishedByStaffId    String?   @map("published_by_staff_id")
+  publishedAt           DateTime? @map("published_at")
+  title                 String
+  summary               String
+  objectives            String
+  scope                 String
+  technologies          String[]  @default([])
+  expectedResult        String    @map("expected_result")
+  plan                  String
+  keywords              String[]  @default([])
+  academicUnit          String    @default("computer_science") @map("academic_unit")
+  topicDomain           String    @default("software_development") @map("topic_domain")
+  supervisorId          String?   @map("supervisor_id")
+  proposedSupervisorId  String?   @map("proposed_supervisor_id")
+  departmentId          String    @map("department_id")
+  status                String    @default("draft")
+  rejectionReason       String?   @map("rejection_reason")
+  aiDuplicateRisk       Json      @default("{\"checked\":false,\"maxSimilarityScore\":0,\"riskLevel\":\"low\"}") @map("ai_duplicate_risk")
+  approvedBy            String?   @map("approved_by")
+  approvedAt            DateTime? @map("approved_at")
+  version               Int       @default(1)
+  isDeleted             Boolean   @default(false) @map("is_deleted")
+  deletedAt             DateTime? @map("deleted_at")
+  deletedBy             String?   @map("deleted_by")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@index([periodId, status])
+  @@index([periodId, isDeleted])
+  @@map("project_topics")
+}
+
+model Project {
+  id            String    @id
+  mongoId       String?   @unique @map("mongo_id")
+  periodId      String    @map("period_id")
+  ownerType     String?   @map("owner_type")
+  ownerId       String?   @map("owner_id")
+  studentId     String?   @map("student_id")
+  groupId       String?   @map("group_id")
+  topicId       String    @map("topic_id")
+  supervisorId  String    @map("supervisor_id")
+  reviewerId    String?   @map("reviewer_id")
+  status        String    @default("assigned")
+  extendedUntil DateTime? @map("extended_until")
+  finalGradeId  String?   @map("final_grade_id")
+  lockedAt      DateTime? @map("locked_at")
+  version       Int       @default(1)
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  deletedAt     DateTime? @map("deleted_at")
+  deletedBy     String?   @map("deleted_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([periodId, status])
+  @@index([periodId, isDeleted])
+  @@map("projects")
+}
+
+model Milestone {
+  id          String    @id
+  mongoId     String?   @unique @map("mongo_id")
+  projectId   String    @map("project_id")
+  title       String
+  description String?   @default("")
+  deadline    DateTime
+  status      String    @default("open")
+  submissions Json      @default("[]")
+  feedback    Json      @default("[]")
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedBy   String?   @map("deleted_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([projectId])
+  @@index([projectId, isDeleted])
+  @@map("milestones")
+}
+
+model SubmissionPackage {
+  id               String    @id
+  mongoId          String?   @unique @map("mongo_id")
+  ownerType        String    @map("owner_type")
+  ownerId          String    @map("owner_id")
+  groupId          String?   @map("group_id")
+  studentId        String?   @map("student_id")
+  projectOwnerType String?   @map("project_owner_type")
+  projectOwnerId   String?   @map("project_owner_id")
+  periodId         String    @map("period_id")
+  phase            String
+  deadline         DateTime
+  status           String    @default("draft")
+  items            Json      @default("[]")
+  submittedBy      String?   @map("submitted_by")
+  submittedAt      DateTime? @map("submitted_at")
+  reviewedBy       String?   @map("reviewed_by")
+  reviewedAt       DateTime? @map("reviewed_at")
+  reviewNotes      String?   @map("review_notes")
+  lockedAt         DateTime? @map("locked_at")
+  isDeleted        Boolean   @default(false) @map("is_deleted")
+  deletedAt        DateTime? @map("deleted_at")
+  deletedBy        String?   @map("deleted_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([ownerType, ownerId, phase])
+  @@index([periodId])
+  @@map("submission_packages")
+}
+
+model EvaluationRubric {
+  id          String    @id
+  mongoId     String?   @unique @map("mongo_id")
+  name        String
+  description String?   @default("")
+  version     String
+  criteria    Json      @default("{}")
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedBy   String?   @map("deleted_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("evaluation_rubrics")
+}
+
+model ScoreSheet {
+  id               String    @id
+  mongoId          String?   @unique @map("mongo_id")
+  rubricId         String?   @map("rubric_id")
+  rubricRole       String    @map("rubric_role")
+  rubricVersion    String    @map("rubric_version")
+  targetType       String    @map("target_type")
+  targetId         String    @map("target_id")
+  projectId        String    @map("project_id")
+  ownerType        String?   @map("owner_type")
+  ownerId          String?   @map("owner_id")
+  studentId        String?   @map("student_id")
+  groupId          String?   @map("group_id")
+  periodId         String    @map("period_id")
+  graderId         String    @map("grader_id")
+  graderRole       String    @map("grader_role")
+  criteriaScores   Json      @default("[]")
+  rawTotal         Float     @default(0) @map("raw_total")
+  roundedTotal     Float     @default(0) @map("rounded_total")
+  comment          String?   @default("")
+  consentForDefense Boolean  @default(true) @map("consent_for_defense")
+  lockedAt         DateTime? @map("locked_at")
+  digitalSignature String?   @map("digital_signature")
+  version          Int       @default(0)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@unique([targetType, targetId, graderId])
+  @@index([projectId])
+  @@index([periodId])
+  @@map("score_sheets")
+}
+
+model FinalGrade {
+  id              String    @id
+  mongoId         String?   @unique @map("mongo_id")
+  projectId       String    @unique @map("project_id")
+  ownerType       String?   @map("owner_type")
+  ownerId         String?   @map("owner_id")
+  studentId       String?   @map("student_id")
+  groupId         String?   @map("group_id")
+  periodId        String    @map("period_id")
+  evaluationMode  String    @default("standard") @map("evaluation_mode")
+  componentScores Json      @map("component_scores")
+  finalScore      Float     @map("final_score")
+  letterGrade     String    @map("letter_grade")
+  passStatus      String    @default("pending") @map("pass_status")
+  varianceFlags   Json      @default("[]") @map("variance_flags")
+  formulaVersion  String    @map("formula_version")
+  publishedAt     DateTime? @map("published_at")
+  lockedAt        DateTime? @map("locked_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([periodId])
+  @@map("final_grades")
+}
+
+model AppealRequest {
+  id                  String    @id
+  mongoId             String?   @unique @map("mongo_id")
+  projectId           String    @map("project_id")
+  studentId           String    @map("student_id")
+  periodId            String    @map("period_id")
+  finalGradeId        String    @map("final_grade_id")
+  reason              String
+  status              String    @default("pending")
+  feePaidAt           DateTime? @map("fee_paid_at")
+  recheckGraderId     String?   @map("recheck_grader_id")
+  recheckScoreSheetId String?   @map("recheck_score_sheet_id")
+  adminNote           String?   @map("admin_note")
+  resolvedAt          DateTime? @map("resolved_at")
+  isDeleted           Boolean   @default(false) @map("is_deleted")
+  deletedAt           DateTime? @map("deleted_at")
+  deletedBy           String?   @map("deleted_by")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@unique([projectId, studentId, periodId])
+  @@index([periodId])
+  @@map("appeal_requests")
+}
+
+model ExtensionRequest {
+  id                 String    @id
+  mongoId            String?   @unique @map("mongo_id")
+  targetType         String    @map("target_type")
+  targetId           String    @map("target_id")
+  projectId          String    @map("project_id")
+  ownerType          String?   @map("owner_type")
+  ownerId            String?   @map("owner_id")
+  studentId          String?   @map("student_id")
+  groupId            String?   @map("group_id")
+  reason             String
+  evidenceFileIds    Json      @default("[]") @map("evidence_file_ids")
+  requestedTo        DateTime  @map("requested_to")
+  supervisorApproval Json      @default("{}") @map("supervisor_approval")
+  facultyDecision    Json      @default("{}") @map("faculty_decision")
+  status             String    @default("pending")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancelledBy        String?   @map("cancelled_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([projectId])
+  @@index([targetType, targetId])
+  @@map("extension_requests")
+}
+
+model TopicChangeRequest {
+  id                 String    @id
+  mongoId            String?   @unique @map("mongo_id")
+  topicId            String    @map("topic_id")
+  ownerType          String?   @map("owner_type")
+  ownerId            String?   @map("owner_id")
+  studentId          String?   @map("student_id")
+  groupId            String?   @map("group_id")
+  oldTitle           String    @map("old_title")
+  newTitle           String    @map("new_title")
+  newScope           String    @map("new_scope")
+  newPlan            String    @map("new_plan")
+  reason             String
+  supervisorApproval Json      @default("{}") @map("supervisor_approval")
+  facultyApproval    Json      @default("{}") @map("faculty_approval")
+  requestedAt        DateTime  @default(now()) @map("requested_at")
+  status             String    @default("pending")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancelledBy        String?   @map("cancelled_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([topicId])
+  @@map("topic_change_requests")
+}
+
+model ChatRoom {
+  id            String    @id
+  mongoId       String?   @unique @map("mongo_id")
+  type          String
+  name          String
+  groupId       String?   @map("group_id")
+  projectId     String?   @map("project_id")
+  status        String    @default("active")
+  requestedBy   String?   @map("requested_by")
+  acceptedBy    String?   @map("accepted_by")
+  acceptedAt    DateTime? @map("accepted_at")
+  directKey     String?   @unique @map("direct_key")
+  lastMessageAt DateTime? @map("last_message_at")
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  deletedAt     DateTime? @map("deleted_at")
+  deletedBy     String?   @map("deleted_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  members  ChatRoomMember[]
+  messages ChatMessage[]
+
+  @@index([groupId])
+  @@map("chat_rooms")
+}
+
+model ChatRoomMember {
+  id         String    @id @default(cuid())
+  roomId     String    @map("room_id")
+  userId     String    @map("user_id")
+  role       String    @default("member")
+  status     String    @default("active")
+  lastReadAt DateTime? @map("last_read_at")
+  joinedAt   DateTime  @default(now()) @map("joined_at")
+  invitedBy  String?   @map("invited_by")
+
+  room ChatRoom @relation(fields: [roomId], references: [id])
+
+  @@unique([roomId, userId])
+  @@index([userId])
+  @@map("chat_room_members")
+}
+
+model ChatMessage {
+  id          String    @id
+  mongoId     String?   @unique @map("mongo_id")
+  roomId      String    @map("room_id")
+  senderId    String    @map("sender_id")
+  body        String    @default("")
+  attachments Json      @default("[]")
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedBy   String?   @map("deleted_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  room ChatRoom @relation(fields: [roomId], references: [id])
+
+  @@index([roomId, createdAt(sort: Desc)])
+  @@map("chat_messages")
+}
+

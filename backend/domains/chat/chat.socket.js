@@ -1,33 +1,30 @@
 const jwt = require('jsonwebtoken');
-const User = require('../../models/User');
-const Student = require('../../models/Student');
-const Lecturer = require('../../models/Lecturer');
 const chatService = require('./chat.service');
 const { getJwtSecret } = require('../../config/jwt');
+const authService = require('../auth/auth.service');
 
 const buildSocketUser = async (token) => {
   const decoded = jwt.verify(token, getJwtSecret());
-  const user = await User.findById(decoded.id || decoded.userId);
+  const user = await authService.getUserByIdForAuth(decoded.id || decoded.userId);
   if (!user || user.isDeleted || user.status === 'locked' || user.status === 'inactive') {
     throw new Error('Unauthorized');
   }
 
   const socketUser = {
-    _id: user._id,
+    _id: user.id,
+    id: user.id,
     fullName: user.fullName,
     email: user.email,
     roles: user.roles,
     avatarUrl: user.avatarUrl || '',
   };
 
-  if (user.roles.includes('STUDENT')) {
-    const student = await Student.findOne({ userId: user._id, isDeleted: false });
-    if (student) socketUser.studentId = student._id;
+  if (user.roles.includes('STUDENT') && user.student && !user.student.isDeleted) {
+    socketUser.studentId = user.student.id;
   }
 
-  if (user.roles.includes('LECTURER')) {
-    const lecturer = await Lecturer.findOne({ userId: user._id, isDeleted: false });
-    if (lecturer) socketUser.lecturerId = lecturer._id;
+  if (user.roles.includes('LECTURER') && user.lecturer && !user.lecturer.isDeleted) {
+    socketUser.lecturerId = user.lecturer.id;
   }
 
   return socketUser;

@@ -4,10 +4,12 @@ const multer = require('multer');
 const router = express.Router();
 
 const authController = require('./auth.controller');
+const authService = require('./auth.service');
 const authValidator = require('./auth.validator');
 const { protect } = require('../../middlewares/auth.middleware');
 const { getJwtSecret } = require('../../config/jwt');
 const { authLimiter } = require('../../config/rate-limit');
+const prisma = require('../../config/prisma');
 
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
@@ -51,8 +53,7 @@ router.post('/refresh', async (req, res, next) => {
     }
 
     // Find User and check constraints
-    const User = require('../../models/User');
-    const user = await User.findById(decoded.id);
+    const user = await authService.getUserByIdForAuth(decoded.id);
     if (!user || user.isDeleted || user.status === 'locked' || user.status === 'inactive') {
       return res.status(401).json({
         success: false,
@@ -62,7 +63,7 @@ router.post('/refresh', async (req, res, next) => {
 
     // Generate new Access Token
     const accessToken = jwt.sign(
-      { id: user._id, roles: user.roles },
+      { id: user.id, roles: user.roles },
       getJwtSecret(),
       { expiresIn: '15m' }
     );
@@ -95,11 +96,36 @@ router.post('/change-password', protect, authValidator.validateChangePassword, a
 // Fetch all lecturers
 router.get('/lecturers', protect, async (req, res, next) => {
   try {
-    const Lecturer = require('../../models/Lecturer');
-    const lecturers = await Lecturer.find({ isDeleted: false }).populate('userId', 'fullName email');
+    const lecturers = await prisma.lecturer.findMany({
+      where: { isDeleted: false },
+      include: {
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { lecturerCode: 'asc' },
+    });
+
+    const data = lecturers.map((lecturer) => ({
+      ...lecturer,
+      _id: lecturer.id,
+      userId: lecturer.user
+        ? {
+            _id: lecturer.user.id,
+            id: lecturer.user.id,
+            fullName: lecturer.user.fullName,
+            email: lecturer.user.email,
+          }
+        : lecturer.userId,
+    }));
+
     return res.status(200).json({
       success: true,
-      data: lecturers,
+      data,
     });
   } catch (error) {
     next(error);

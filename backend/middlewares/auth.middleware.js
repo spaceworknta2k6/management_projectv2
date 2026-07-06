@@ -1,8 +1,6 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const Student = require('../models/Student');
-const Lecturer = require('../models/Lecturer');
 const { getJwtSecret } = require('../config/jwt');
+const authService = require('../domains/auth/auth.service');
 
 // Protect route against unauthenticated users
 const protect = async (req, res, next) => {
@@ -36,7 +34,7 @@ const protect = async (req, res, next) => {
     const decoded = jwt.verify(token, getJwtSecret());
 
     // Retrieve corresponding User and check status constraints
-    const user = await User.findById(decoded.id || decoded.userId);
+    const user = await authService.getUserByIdForAuth(decoded.id || decoded.userId);
     if (!user || user.isDeleted) {
       return res.status(401).json({
         success: false,
@@ -60,7 +58,8 @@ const protect = async (req, res, next) => {
 
     // Attach base user details to request object
     req.user = {
-      _id: user._id,
+      _id: user.id,
+      id: user.id,
       fullName: user.fullName,
       email: user.email,
       roles: user.roles,
@@ -73,21 +72,15 @@ const protect = async (req, res, next) => {
     };
 
     // Proactively query specific role profiles
-    if (user.roles.includes('STUDENT')) {
-      const student = await Student.findOne({ userId: user._id, isDeleted: false });
-      if (student) {
-        req.user.studentId = student._id;
-        req.user.studentCode = student.studentCode;
-        req.user.cohort = user.cohort || student.cohort || '';
-      }
+    if (user.roles.includes('STUDENT') && user.student && !user.student.isDeleted) {
+      req.user.studentId = user.student.id;
+      req.user.studentCode = user.student.studentCode;
+      req.user.cohort = user.cohort || user.student.cohort || '';
     }
 
-    if (user.roles.includes('LECTURER')) {
-      const lecturer = await Lecturer.findOne({ userId: user._id, isDeleted: false });
-      if (lecturer) {
-        req.user.lecturerId = lecturer._id;
-        req.user.lecturerCode = lecturer.lecturerCode;
-      }
+    if (user.roles.includes('LECTURER') && user.lecturer && !user.lecturer.isDeleted) {
+      req.user.lecturerId = user.lecturer.id;
+      req.user.lecturerCode = user.lecturer.lecturerCode;
     }
 
     next();

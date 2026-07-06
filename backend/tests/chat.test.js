@@ -45,20 +45,65 @@ const runIntegrationTests = async () => {
         throw new Error('Required chat test users are missing.');
       }
 
+      const prisma = require('../config/prisma');
+      await prisma.chatMessage.deleteMany({});
+      await prisma.chatRoomMember.deleteMany({});
+      await prisma.chatRoom.deleteMany({});
+      await prisma.workflowEvent.deleteMany({ where: { entityType: 'ChatRoom' } });
+
       await ChatRoom.deleteMany({ name: 'Chat Attachment Test Room' });
       await ChatMessage.deleteMany({ body: /CHAT_TEST_/ });
       await FileAsset.deleteMany({ ownerType: 'chat_room' });
       await Notification.deleteMany({ type: 'CHAT_MESSAGE' });
       await WorkflowEvent.deleteMany({ entityType: 'ChatRoom' });
 
+      const roomId = new mongoose.Types.ObjectId().toString();
+      const now = new Date();
+
+      await prisma.chatRoom.create({
+        data: {
+          id: roomId,
+          mongoId: roomId,
+          type: 'direct',
+          name: 'Chat Attachment Test Room',
+          status: 'accepted',
+          requestedBy: studentUser._id.toString(),
+          acceptedBy: lecturerUser._id.toString(),
+          acceptedAt: now,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+
+      await prisma.chatRoomMember.create({
+        data: {
+          roomId,
+          userId: studentUser._id.toString(),
+          role: 'member',
+          status: 'active',
+          joinedAt: now
+        }
+      });
+
+      await prisma.chatRoomMember.create({
+        data: {
+          roomId,
+          userId: lecturerUser._id.toString(),
+          role: 'teacher',
+          status: 'accepted',
+          joinedAt: now
+        }
+      });
+
       const room = await ChatRoom.create({
+        _id: roomId,
         type: 'direct',
         name: 'Chat Attachment Test Room',
         status: 'accepted',
         memberIds: [studentUser._id, lecturerUser._id],
         requestedBy: studentUser._id,
         acceptedBy: lecturerUser._id,
-        acceptedAt: new Date(),
+        acceptedAt: now,
       });
       console.log(`Created test direct room: ${room._id}`);
 
@@ -145,19 +190,23 @@ const runIntegrationTests = async () => {
       console.log('Chat file access checks passed.');
 
       console.log('\n--- Test 5: Notifications and audit events ---');
-      const chatNotification = await Notification.findOne({
-        recipientId: lecturerUser._id,
-        type: 'CHAT_MESSAGE',
-        entityId: room._id,
-        isDeleted: false,
+      const chatNotification = await prisma.notification.findFirst({
+        where: {
+          recipientId: lecturerUser._id.toString(),
+          type: 'CHAT_MESSAGE',
+          entityId: room._id.toString(),
+          isDeleted: false,
+        }
       });
       if (!chatNotification) {
         throw new Error('Chat notification was not created for recipient.');
       }
-      const uploadAudit = await WorkflowEvent.findOne({
-        entityType: 'ChatRoom',
-        entityId: room._id,
-        action: 'CHAT_SEND_ATTACHMENT',
+       const uploadAudit = await prisma.workflowEvent.findFirst({
+        where: {
+          entityType: 'ChatRoom',
+          entityId: room._id.toString(),
+          action: 'CHAT_SEND_ATTACHMENT',
+        }
       });
       if (!uploadAudit) {
         throw new Error('Attachment audit event was not created.');
@@ -181,14 +230,18 @@ const runIntegrationTests = async () => {
       if (deleteRes.status !== 200 || !deleteResult.success) {
         throw new Error(`Sender recall failed: ${deleteResult.message}`);
       }
-      const deletedMessage = await ChatMessage.findOne({ _id: attachmentMessageId }).setOptions({ includeDeleted: true });
+      const deletedMessage = await prisma.chatMessage.findUnique({
+        where: { id: attachmentMessageId }
+      });
       if (!deletedMessage?.isDeleted || !deletedMessage.deletedAt || String(deletedMessage.deletedBy) !== String(studentUser._id)) {
         throw new Error('Message was not soft-deleted correctly.');
       }
-      const recallAudit = await WorkflowEvent.findOne({
-        entityType: 'ChatRoom',
-        entityId: room._id,
-        action: 'CHAT_RECALL_MESSAGE',
+      const recallAudit = await prisma.workflowEvent.findFirst({
+        where: {
+          entityType: 'ChatRoom',
+          entityId: room._id.toString(),
+          action: 'CHAT_RECALL_MESSAGE',
+        }
       });
       if (!recallAudit) {
         throw new Error('Recall audit event was not created.');

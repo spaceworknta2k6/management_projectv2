@@ -1,7 +1,7 @@
 const authService = require('./auth.service');
 const crypto = require('crypto');
+const prisma = require('../../config/prisma');
 
-const googleSessions = new Map();
 const GOOGLE_SESSION_TTL_MS = 2 * 60 * 1000;
 
 const getFrontendUrl = () => (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -25,11 +25,14 @@ const redirectGoogleError = (res, message) => {
   res.redirect(`${getFrontendUrl()}/auth/google?error=${encodeURIComponent(message)}`);
 };
 
-const cleanupGoogleSessions = () => {
-  const now = Date.now();
-  for (const [code, session] of googleSessions.entries()) {
-    if (session.expiresAt <= now) googleSessions.delete(code);
-  }
+const cleanupGoogleSessions = async () => {
+  await prisma.googleLoginSession.deleteMany({
+    where: {
+      expiresAt: {
+        lte: new Date(),
+      },
+    },
+  });
 };
 
 const login = async (req, res, next) => {
@@ -147,12 +150,15 @@ const handleGoogleCallback = async (req, res, next) => {
     // Kiểm tra domain trường và xác thực đăng nhập
     const name = profile.name || profile.given_name || email.split('@')[0];
     const result = await authService.loginWithGoogleEmail(email, name);
-    cleanupGoogleSessions();
+    await cleanupGoogleSessions();
 
     const sessionCode = crypto.randomBytes(24).toString('hex');
-    googleSessions.set(sessionCode, {
-      data: result,
-      expiresAt: Date.now() + GOOGLE_SESSION_TTL_MS,
+    await prisma.googleLoginSession.create({
+      data: {
+        code: sessionCode,
+        payload: result,
+        expiresAt: new Date(Date.now() + GOOGLE_SESSION_TTL_MS),
+      },
     });
 
     res.setHeader('Set-Cookie', clearStateCookie);
@@ -166,10 +172,12 @@ const handleGoogleCallback = async (req, res, next) => {
 };
 
 const consumeGoogleSession = async (req, res) => {
-  cleanupGoogleSessions();
+  await cleanupGoogleSessions();
 
   const { code } = req.query;
-  const session = googleSessions.get(code);
+  const session = await prisma.googleLoginSession.findUnique({
+    where: { code },
+  });
   if (!session) {
     return res.status(400).json({
       success: false,
@@ -177,17 +185,19 @@ const consumeGoogleSession = async (req, res) => {
     });
   }
 
-  googleSessions.delete(code);
+  await prisma.googleLoginSession.delete({
+    where: { code },
+  });
 
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.setHeader('Set-Cookie', [
-    `karl_token=${encodeURIComponent(session.data.accessToken)}; HttpOnly; Max-Age=${15 * 60}; SameSite=Lax; Path=/${secure}`,
-    `karl_refresh_token=${encodeURIComponent(session.data.refreshToken)}; HttpOnly; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax; Path=/${secure}`
+    `karl_token=${encodeURIComponent(session.payload.accessToken)}; HttpOnly; Max-Age=${15 * 60}; SameSite=Lax; Path=/${secure}`,
+    `karl_refresh_token=${encodeURIComponent(session.payload.refreshToken)}; HttpOnly; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax; Path=/${secure}`
   ]);
 
   return res.status(200).json({
     success: true,
-    data: session.data,
+    data: session.payload,
   });
 };
 

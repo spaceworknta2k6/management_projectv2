@@ -91,6 +91,11 @@ const runIntegrationTests = async () => {
       await ProjectGroup.deleteMany({ periodId: period._id });
       await ProjectTopic.deleteMany({ periodId: period._id });
       await Project.deleteMany({ periodId: period._id });
+
+      const prisma = require('../config/prisma');
+      await prisma.projectGroup.deleteMany({ where: { periodId: period._id.toString() } });
+      await prisma.projectTopic.deleteMany({ where: { periodId: period._id.toString() } });
+      await prisma.project.deleteMany({ where: { periodId: period._id.toString() } });
       console.log('✅ Cleaned up collections for this period.');
 
       // Create valid Project Group
@@ -105,6 +110,17 @@ const runIntegrationTests = async () => {
           contributionWeight: 1.0
         }],
         status: 'locked'
+      });
+      await prisma.projectGroup.create({
+        data: {
+          id: group._id.toString(),
+          mongoId: group._id.toString(),
+          periodId: group.periodId.toString(),
+          name: group.name,
+          leaderStudentId: group.leaderStudentId.toString(),
+          members: group.members,
+          status: group.status,
+        }
       });
       console.log(`Created Project Group ID: ${group._id}`);
 
@@ -124,6 +140,25 @@ const runIntegrationTests = async () => {
         departmentId: period.departmentId,
         status: 'assigned'
       });
+      await prisma.projectTopic.create({
+        data: {
+          id: topic._id.toString(),
+          mongoId: topic._id.toString(),
+          periodId: topic.periodId.toString(),
+          groupId: topic.groupId.toString(),
+          proposedByStudentId: topic.proposedByStudentId.toString(),
+          title: topic.title,
+          summary: topic.summary,
+          objectives: topic.objectives,
+          scope: topic.scope,
+          expectedResult: topic.expectedResult,
+          plan: topic.plan,
+          proposedSupervisorId: topic.proposedSupervisorId.toString(),
+          supervisorId: topic.supervisorId.toString(),
+          departmentId: topic.departmentId.toString(),
+          status: topic.status,
+        }
+      });
       console.log(`Created Project Topic ID: ${topic._id}`);
 
       // Create official Project Workspace
@@ -134,11 +169,23 @@ const runIntegrationTests = async () => {
         supervisorId: supervisorLecturer._id,
         status: 'assigned'
       });
+      await prisma.project.create({
+        data: {
+          id: project._id.toString(),
+          mongoId: project._id.toString(),
+          periodId: project.periodId.toString(),
+          groupId: project.groupId.toString(),
+          topicId: project.topicId.toString(),
+          supervisorId: project.supervisorId.toString(),
+          status: project.status,
+        }
+      });
       const projectId = project._id;
       console.log(`Created Project Workspace ID: ${projectId} in assigned status.`);
 
       // Clean up milestones for this project
       await Milestone.deleteMany({ projectId });
+      await prisma.milestone.deleteMany({ where: { projectId: projectId.toString() } });
 
       // 2. Authentication tokens
       console.log('\n--- Test 1: Logging in test actors ---');

@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const FileAsset = require('../../models/FileAsset');
 const Project = require('../../models/Project');
 const ProjectGroup = require('../../models/ProjectGroup');
+const prisma = require('../../config/prisma');
 const { getJwtSecret } = require('../../config/jwt');
 
 const PRIVATE_UPLOAD_DIR = path.join(__dirname, '../../uploads/private');
@@ -152,14 +153,27 @@ const isMimeCompatible = (verifiedMime, clientMime, originalName) => {
 const checkChatRoomFileAccess = async (asset, user) => {
   if (asset.ownerType !== 'chat_room' || !asset.ownerId) return null;
 
-  const ChatRoom = require('../../models/ChatRoom');
-  const room = await ChatRoom.findOne({
-    _id: asset.ownerId,
-    isDeleted: { $ne: true },
-    memberIds: user._id,
+  const room = await prisma.chatRoom.findFirst({
+    where: {
+      id: asset.ownerId.toString(),
+      isDeleted: false,
+    },
   });
 
   if (!room) {
+    throw { status: 403, message: 'Bạn không có quyền tải tệp trong phòng chat này.' };
+  }
+
+  const member = await prisma.chatRoomMember.findUnique({
+    where: {
+      roomId_userId: {
+        roomId: room.id,
+        userId: user._id.toString(),
+      },
+    },
+  });
+
+  if (!member || member.status === 'rejected' || (member.role === 'teacher' && member.status === 'pending')) {
     throw { status: 403, message: 'Bạn không có quyền tải tệp trong phòng chat này.' };
   }
 

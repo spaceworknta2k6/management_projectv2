@@ -1,42 +1,163 @@
+const prisma = require('../../config/prisma');
 const mongoose = require('mongoose');
-const ProjectTopic = require('../../models/ProjectTopic');
-const ProjectGroup = require('../../models/ProjectGroup');
-const ProjectPeriod = require('../../models/ProjectPeriod');
-const ProjectRoster = require('../../models/ProjectRoster');
-const Lecturer = require('../../models/Lecturer');
-const Project = require('../../models/Project');
-const Student = require('../../models/Student');
+const ProjectTopicMirror = require('../../models/ProjectTopic');
+const ProjectGroupMirror = require('../../models/ProjectGroup');
+const ProjectMirror = require('../../models/Project');
 const WorkflowEvent = require('../../models/WorkflowEvent');
-const { resolveProjectOwner } = require('../../utils/project-owner');
 const notificationsService = require('../notifications/notifications.service');
+
+const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const toId = (value) => (value ? value.toString() : null);
+const toDate = (value) => (value ? new Date(value) : null);
+
+const toPublicTopic = (topic) => {
+  if (!topic) return null;
+  return {
+    ...topic,
+    _id: topic.id,
+  };
+};
+
+const resolveOwnerFields = (data) => {
+  const resolved = { ...data };
+  if (!resolved.ownerType && resolved.groupId) {
+    resolved.ownerType = 'group';
+  }
+
+  if (!resolved.ownerId && resolved.ownerType === 'group' && resolved.groupId) {
+    resolved.ownerId = resolved.groupId;
+  }
+
+  if (!resolved.ownerId && resolved.ownerType === 'student' && resolved.studentId) {
+    resolved.ownerId = resolved.studentId;
+  }
+
+  if (!resolved.studentId && resolved.ownerType === 'student' && resolved.ownerId) {
+    resolved.studentId = resolved.ownerId;
+  }
+  return resolved;
+};
+
+const toMongoMirrorTopicData = (topic) => {
+  return {
+    _id: topic.id,
+    periodId: toId(topic.periodId),
+    ownerType: topic.ownerType || undefined,
+    ownerId: toId(topic.ownerId) || undefined,
+    studentId: toId(topic.studentId) || undefined,
+    groupId: toId(topic.groupId) || undefined,
+    proposedByStudentId: toId(topic.proposedByStudentId) || undefined,
+    createdByRole: topic.createdByRole || 'student',
+    createdByUserId: toId(topic.createdByUserId) || undefined,
+    proposedByLecturerId: toId(topic.proposedByLecturerId) || undefined,
+    approvedByLecturerId: toId(topic.approvedByLecturerId) || undefined,
+    capacityMaxStudents: topic.capacityMaxStudents,
+    capacityMaxGroups: topic.capacityMaxGroups,
+    currentStudentCount: topic.currentStudentCount,
+    currentGroupCount: topic.currentGroupCount,
+    allowedOwnerTypes: topic.allowedOwnerTypes || ['student', 'group'],
+    allowIndividual: topic.allowIndividual !== null ? topic.allowIndividual : undefined,
+    allowGroup: topic.allowGroup !== null ? topic.allowGroup : undefined,
+    minGroupSize: topic.minGroupSize !== null ? topic.minGroupSize : undefined,
+    maxGroupSize: topic.maxGroupSize !== null ? topic.maxGroupSize : undefined,
+    publishedByStaffId: toId(topic.publishedByStaffId) || undefined,
+    publishedAt: topic.publishedAt || undefined,
+    title: topic.title,
+    summary: topic.summary,
+    objectives: topic.objectives,
+    scope: topic.scope,
+    technologies: topic.technologies || [],
+    expectedResult: topic.expectedResult,
+    plan: topic.plan,
+    keywords: topic.keywords || [],
+    academicUnit: topic.academicUnit,
+    topicDomain: topic.topicDomain,
+    supervisorId: toId(topic.supervisorId) || undefined,
+    proposedSupervisorId: toId(topic.proposedSupervisorId) || undefined,
+    departmentId: toId(topic.departmentId),
+    status: topic.status,
+    rejectionReason: topic.rejectionReason || undefined,
+    aiDuplicateRisk: topic.aiDuplicateRisk || {},
+    approvedBy: toId(topic.approvedBy) || undefined,
+    approvedAt: topic.approvedAt || undefined,
+    version: topic.version,
+    isDeleted: topic.isDeleted,
+    deletedAt: topic.deletedAt || undefined,
+    deletedBy: toId(topic.deletedBy) || undefined,
+    createdAt: topic.createdAt,
+    updatedAt: topic.updatedAt,
+  };
+};
+
+const syncMongoMirrorTopic = async (topic) => {
+  await ProjectTopicMirror.updateOne(
+    { _id: topic.id },
+    { $set: toMongoMirrorTopicData(topic) },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+const toMongoMirrorProjectData = (project) => {
+  return {
+    _id: project.id,
+    periodId: toId(project.periodId),
+    ownerType: project.ownerType || undefined,
+    ownerId: toId(project.ownerId) || undefined,
+    studentId: toId(project.studentId) || undefined,
+    groupId: toId(project.groupId) || undefined,
+    topicId: toId(project.topicId),
+    supervisorId: toId(project.supervisorId),
+    reviewerId: toId(project.reviewerId) || undefined,
+    status: project.status,
+    extendedUntil: project.extendedUntil || undefined,
+    finalGradeId: toId(project.finalGradeId) || undefined,
+    lockedAt: project.lockedAt || undefined,
+    version: project.version,
+    isDeleted: project.isDeleted,
+    deletedAt: project.deletedAt || undefined,
+    deletedBy: toId(project.deletedBy) || undefined,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+  };
+};
+
+const syncMongoMirrorProject = async (project) => {
+  await ProjectMirror.updateOne(
+    { _id: project.id },
+    { $set: toMongoMirrorProjectData(project) },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+};
 
 const getTopicStudentUserIds = async (topic) => {
   const userIds = [];
   if (topic.studentId) {
-    const student = await Student.findOne({ _id: topic.studentId, isDeleted: false });
+    const student = await prisma.student.findFirst({
+      where: { id: toId(topic.studentId), isDeleted: false }
+    });
     if (student && student.userId) {
       userIds.push(student.userId.toString());
     }
   } else if (topic.groupId) {
-    const group = await ProjectGroup.findOne({ _id: topic.groupId, isDeleted: { $ne: true } })
-      .populate({
-        path: 'members.studentId',
-        match: { isDeleted: false },
-      });
+    const group = await prisma.projectGroup.findFirst({
+      where: { id: toId(topic.groupId), isDeleted: false }
+    });
     if (group) {
-      for (const m of group.members) {
-        if (m.status === 'accepted' && m.studentId && m.studentId.userId) {
-          userIds.push(m.studentId.userId.toString());
-        }
+      const members = group.members || [];
+      const memberStudentIds = members
+        .filter(m => m.status === 'accepted' && m.studentId)
+        .map(m => toId(m.studentId));
+
+      const students = await prisma.student.findMany({
+        where: { id: { in: memberStudentIds }, isDeleted: false }
+      });
+      for (const s of students) {
+        if (s.userId) userIds.push(s.userId.toString());
       }
     }
   }
   return userIds;
 };
-
-
-const ACTIVE_TOPIC_STATUSES = ['submitted', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'];
-const ACTIVE_PROJECT_STATUSES = { $nin: ['cancelled', 'archived', 'failed'] };
 
 const getTopicAllowedOwnerTypes = (topic) => (
   Array.isArray(topic.allowedOwnerTypes) && topic.allowedOwnerTypes.length > 0
@@ -69,10 +190,10 @@ const logWorkflowEvent = async ({
 }) => {
   return await WorkflowEvent.create({
     entityType,
-    entityId,
+    entityId: toId(entityId),
     fromStatus,
     toStatus,
-    actorId,
+    actorId: toId(actorId),
     actorRoles,
     action,
     reason,
@@ -80,57 +201,57 @@ const logWorkflowEvent = async ({
 };
 
 const assertStudentTopicOwnerAvailable = async (periodId, studentId) => {
-  const roster = await ProjectRoster.findOne({ periodId, studentId, status: 'active' });
+  const roster = await prisma.projectRoster.findFirst({
+    where: { periodId: toId(periodId), studentId: toId(studentId), status: 'active' }
+  });
   if (!roster) {
     throw { status: 403, message: 'Ban chua co trong danh sach tham gia dot nay.' };
   }
 
+  const ACTIVE_TOPIC_STATUSES = ['submitted', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'];
+
   const [existingTopic, existingProject, existingGroupProject] = await Promise.all([
-    ProjectTopic.findOne({
-      periodId,
-      ownerType: 'student',
-      ownerId: studentId,
-      isDeleted: false,
-      status: { $in: ACTIVE_TOPIC_STATUSES },
+    prisma.projectTopic.findFirst({
+      where: {
+        periodId: toId(periodId),
+        ownerType: 'student',
+        ownerId: toId(studentId),
+        isDeleted: false,
+        status: { in: ACTIVE_TOPIC_STATUSES },
+      }
     }),
-    Project.findOne({
-      periodId,
-      ownerType: 'student',
-      ownerId: studentId,
-      isDeleted: { $ne: true },
-      status: ACTIVE_PROJECT_STATUSES,
+    prisma.project.findFirst({
+      where: {
+        periodId: toId(periodId),
+        ownerType: 'student',
+        ownerId: toId(studentId),
+        isDeleted: false,
+        status: { notIn: ['cancelled', 'archived', 'failed'] },
+      }
     }),
-    Project.aggregate([
-      {
-        $match: {
-          periodId,
-          ownerType: 'group',
-          isDeleted: { $ne: true },
-          status: ACTIVE_PROJECT_STATUSES,
-        },
-      },
-      {
-        $lookup: {
-          from: 'projectgroups',
-          localField: 'groupId',
-          foreignField: '_id',
-          as: 'group',
-        },
-      },
-      { $unwind: '$group' },
-      {
-        $match: {
-          'group.status': { $in: ['confirmed', 'locked'] },
-          'group.members': {
-            $elemMatch: {
-              studentId,
-              status: 'accepted',
-            },
-          },
-        },
-      },
-      { $limit: 1 },
-    ]),
+    prisma.project.findMany({
+      where: {
+        periodId: toId(periodId),
+        ownerType: 'group',
+        isDeleted: false,
+        status: { notIn: ['cancelled', 'archived', 'failed'] },
+      }
+    }).then(async (projects) => {
+      if (projects.length === 0) return [];
+      const groupIds = projects.map(p => toId(p.groupId)).filter(Boolean);
+      const groups = await prisma.projectGroup.findMany({
+        where: {
+          id: { in: groupIds },
+          status: { in: ['confirmed', 'locked'] },
+          isDeleted: false,
+        }
+      });
+      const userGroup = groups.find(g => {
+        const members = g.members || [];
+        return members.some(m => toId(m.studentId) === toId(studentId) && m.status === 'accepted');
+      });
+      return userGroup ? [userGroup] : [];
+    })
   ]);
 
   if (existingTopic || existingProject) {
@@ -143,10 +264,12 @@ const assertStudentTopicOwnerAvailable = async (periodId, studentId) => {
 };
 
 const assertAcceptedMembersInRoster = async (periodId, memberIds) => {
-  const activeRosterCount = await ProjectRoster.countDocuments({
-    periodId,
-    studentId: { $in: memberIds },
-    status: 'active',
+  const activeRosterCount = await prisma.projectRoster.count({
+    where: {
+      periodId: toId(periodId),
+      studentId: { in: memberIds.map(toId) },
+      status: 'active',
+    }
   });
 
   if (activeRosterCount !== memberIds.length) {
@@ -155,12 +278,14 @@ const assertAcceptedMembersInRoster = async (periodId, memberIds) => {
 };
 
 const resolveGroupTopicOwner = async (periodId, groupId, studentId, period, topic) => {
-  const group = await ProjectGroup.findOne({ _id: groupId, periodId, isDeleted: { $ne: true } });
+  const group = await prisma.projectGroup.findFirst({
+    where: { id: toId(groupId), periodId: toId(periodId), isDeleted: false }
+  });
   if (!group) {
     throw { status: 404, message: 'Nhom do an khong ton tai.' };
   }
 
-  if (group.leaderStudentId.toString() !== studentId.toString()) {
+  if (toId(group.leaderStudentId) !== toId(studentId)) {
     throw { status: 403, message: 'Chi truong nhom moi co quyen de xuat de tai do an.' };
   }
 
@@ -183,21 +308,24 @@ const resolveGroupTopicOwner = async (periodId, groupId, studentId, period, topi
     throw { status: 400, message: `Nhom vuot qua gioi han ${maxLimit} thanh vien cua hoc phan.` };
   }
 
-  const callerMember = group.members.find(
-    (member) => member.studentId.toString() === studentId.toString() && member.status === 'accepted'
+  const callerMember = (group.members || []).find(
+    (member) => toId(member.studentId) === toId(studentId) && member.status === 'accepted'
   );
   if (!callerMember) {
     throw { status: 403, message: 'Ban chua la thanh vien da chap nhan cua nhom nay.' };
   }
 
-  const existingActiveTopic = await ProjectTopic.findOne({
-    periodId,
-    $or: [
-      { ownerType: 'group', ownerId: group._id },
-      { groupId: group._id },
-    ],
-    isDeleted: false,
-    status: { $in: ACTIVE_TOPIC_STATUSES },
+  const ACTIVE_TOPIC_STATUSES = ['submitted', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'];
+  const existingActiveTopic = await prisma.projectTopic.findFirst({
+    where: {
+      periodId: toId(periodId),
+      OR: [
+        { ownerType: 'group', ownerId: group.id },
+        { groupId: group.id }
+      ],
+      isDeleted: false,
+      status: { in: ACTIVE_TOPIC_STATUSES }
+    }
   });
 
   if (existingActiveTopic) {
@@ -210,12 +338,12 @@ const resolveGroupTopicOwner = async (periodId, groupId, studentId, period, topi
 };
 
 const buildTopicPayload = ({ topicData, period, studentId, ownerType, ownerId, groupId }) => ({
-  periodId: topicData.periodId,
+  periodId: toId(topicData.periodId),
   ownerType,
-  ownerId,
-  studentId: ownerType === 'student' ? ownerId : undefined,
-  groupId,
-  proposedByStudentId: studentId,
+  ownerId: toId(ownerId),
+  studentId: ownerType === 'student' ? toId(ownerId) : undefined,
+  groupId: toId(groupId),
+  proposedByStudentId: toId(studentId),
   title: topicData.title.trim(),
   summary: topicData.summary.trim(),
   objectives: topicData.objectives.trim(),
@@ -226,45 +354,80 @@ const buildTopicPayload = ({ topicData, period, studentId, ownerType, ownerId, g
   keywords: topicData.keywords || [],
   academicUnit: topicData.academicUnit || period.academicUnit || 'computer_science',
   topicDomain: topicData.topicDomain || 'software_development',
-  proposedSupervisorId: topicData.proposedSupervisorId,
-  departmentId: period.departmentId,
+  proposedSupervisorId: toId(topicData.proposedSupervisorId),
+  departmentId: toId(period.departmentId),
   status: 'submitted',
 });
+
+const resolveProjectOwner = (topic) => {
+  if (topic.ownerType === 'group' || topic.groupId) {
+    return {
+      ownerType: 'group',
+      ownerId: toId(topic.groupId || topic.ownerId),
+      groupId: toId(topic.groupId || topic.ownerId),
+    };
+  }
+  return {
+    ownerType: 'student',
+    ownerId: toId(topic.studentId || topic.ownerId),
+    studentId: toId(topic.studentId || topic.ownerId),
+  };
+};
 
 const spawnProjectForAssignedTopic = async (topic, supervisorId, actorUserId, actorRoles = ['FACULTY_STAFF']) => {
   const owner = resolveProjectOwner(topic);
 
   const groupId = owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : null;
-  const group = groupId ? await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } }) : null;
+  const group = groupId ? await prisma.projectGroup.findFirst({
+    where: { id: toId(groupId), isDeleted: false }
+  }) : null;
+
   if (group) {
-    group.status = 'locked';
-    await group.save();
+    await prisma.projectGroup.update({
+      where: { id: group.id },
+      data: { status: 'locked' }
+    });
+    await ProjectGroupMirror.updateOne(
+      { _id: group.id },
+      { $set: { status: 'locked' } }
+    );
   }
 
-  const existingProject = await Project.findOne({
-    topicId: topic._id,
-    isDeleted: { $ne: true },
-    status: ACTIVE_PROJECT_STATUSES,
+  const existingProject = await prisma.project.findFirst({
+    where: {
+      topicId: toId(topic.id),
+      isDeleted: false,
+      status: { notIn: ['cancelled', 'archived', 'failed'] },
+    }
   });
 
   if (existingProject) {
     return existingProject;
   }
 
-  const project = await Project.create({
-    periodId: topic.periodId,
+  const id = newObjectId();
+  const projectData = resolveOwnerFields({
+    id,
+    mongoId: id,
+    periodId: toId(topic.periodId),
     ownerType: owner?.ownerType,
     ownerId: owner?.ownerId,
     studentId: owner?.ownerType === 'student' ? (owner.studentId || owner.ownerId) : undefined,
     groupId: owner?.ownerType === 'group' ? (owner.groupId || owner.ownerId) : undefined,
-    topicId: topic._id,
-    supervisorId,
+    topicId: toId(topic.id),
+    supervisorId: toId(supervisorId),
     status: 'assigned',
   });
 
+  const project = await prisma.project.create({
+    data: projectData
+  });
+
+  await syncMongoMirrorProject(project);
+
   await logWorkflowEvent({
     entityType: 'Project',
-    entityId: project._id,
+    entityId: project.id,
     fromStatus: '',
     toStatus: 'assigned',
     actorId: actorUserId,
@@ -280,7 +443,9 @@ const proposeTopic = async (topicData, studentId) => {
   const incomingPeriodId = topicData.periodId;
   const incomingOwnerType = topicData.ownerType === 'group' ? 'group' : 'student';
 
-  const periodRecord = await ProjectPeriod.findOne({ _id: incomingPeriodId, isDeleted: { $ne: true } });
+  const periodRecord = await prisma.projectPeriod.findFirst({
+    where: { id: toId(incomingPeriodId), isDeleted: false }
+  });
   if (!periodRecord) {
     throw { status: 404, message: 'Dot do an khong ton tai.' };
   }
@@ -298,11 +463,12 @@ const proposeTopic = async (topicData, studentId) => {
       throw { status: 400, message: 'Hoc phan khong cho phep de xuat de tai theo nhom.' };
     }
     const selectedGroup = await resolveGroupTopicOwner(incomingPeriodId, topicData.groupId, studentId, periodRecord);
-    selectedGroupId = selectedGroup._id;
-    selectedOwnerId = selectedGroup._id;
+    selectedGroupId = selectedGroup.id;
+    selectedOwnerId = selectedGroup.id;
   }
 
-  const createdTopic = new ProjectTopic(buildTopicPayload({
+  const id = newObjectId();
+  const payload = resolveOwnerFields(buildTopicPayload({
     topicData,
     period: periodRecord,
     studentId,
@@ -311,10 +477,18 @@ const proposeTopic = async (topicData, studentId) => {
     groupId: selectedGroupId,
   }));
 
-  await createdTopic.save();
+  const createdTopic = await prisma.projectTopic.create({
+    data: {
+      id,
+      mongoId: id,
+      ...payload
+    }
+  });
+
+  await syncMongoMirrorTopic(createdTopic);
 
   await logWorkflowEvent({
-    entityId: createdTopic._id,
+    entityId: createdTopic.id,
     fromStatus: '',
     toStatus: 'submitted',
     actorId: studentId,
@@ -323,93 +497,29 @@ const proposeTopic = async (topicData, studentId) => {
     reason: `De xuat de tai: ${createdTopic.title}`,
   });
 
-  return createdTopic;
-
-  const { periodId, groupId } = topicData;
-
-  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
-  if (!period) {
-    throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
-  }
-
-  const group = await ProjectGroup.findOne({ _id: groupId, isDeleted: { $ne: true } });
-  if (!group) {
-    throw { status: 404, message: 'Nhóm đồ án không tồn tại.' };
-  }
-
-  // Verify that the caller is indeed the leader of this group
-  if (group.leaderStudentId.toString() !== studentId.toString()) {
-    throw { status: 403, message: 'Chỉ trưởng nhóm mới có quyền đề xuất đề tài đồ án.' };
-  }
-
-  // Verify group is confirmed or draft
-  if (group.status === 'cancelled' || group.status === 'locked') {
-    throw { status: 400, message: 'Trạng thái nhóm không hợp lệ để đăng ký đề tài.' };
-  }
-
-  // Check if group already has any active topic proposed
-  const existingActiveTopic = await ProjectTopic.findOne({
-    periodId,
-    groupId,
-    isDeleted: false,
-    status: { $in: ['submitted', 'needs_revision', 'approved', 'assigned', 'locked', 'changed', 'completed'] },
-  });
-
-  if (existingActiveTopic) {
-    throw { status: 400, message: 'Nhóm của bạn đã có một đề tài đang hoạt động (đã nộp hoặc đã được duyệt) trong đợt đồ án này.' };
-  }
-
-  // Create new topic proposal
-  const topic = new ProjectTopic({
-    periodId,
-    groupId,
-    proposedByStudentId: studentId,
-    title: topicData.title.trim(),
-    summary: topicData.summary.trim(),
-    objectives: topicData.objectives.trim(),
-    scope: topicData.scope.trim(),
-    technologies: topicData.technologies || [],
-    expectedResult: topicData.expectedResult.trim(),
-    plan: topicData.plan.trim(),
-    keywords: topicData.keywords || [],
-    proposedSupervisorId: topicData.proposedSupervisorId,
-    departmentId: period.departmentId, // Inherit departmentId from ProjectPeriod
-    status: 'submitted',
-  });
-
-  await topic.save();
-
-  await logWorkflowEvent({
-    entityId: topic._id,
-    fromStatus: '',
-    toStatus: 'submitted',
-    actorId: studentId,
-    actorRoles: ['STUDENT'],
-    action: 'PROPOSE_TOPIC',
-    reason: `Đề xuất đề tài: ${topic.title}`,
-  });
-
-  return topic;
+  return toPublicTopic(createdTopic);
 };
 
 const reviewTopic = async (topicId, action, user, note = '') => {
-  const topic = await ProjectTopic.findById(topicId);
+  const topic = await prisma.projectTopic.findFirst({
+    where: { id: toId(topicId), isDeleted: false }
+  });
   if (!topic) {
     throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
   }
 
   const fromStatus = topic.status;
-  
-  // Verify permissions
   const roles = user.roles || [];
   const isStaff = roles.some(r => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(r));
   let isAuthorizedLecturer = false;
 
   if (roles.includes('LECTURER') && user.lecturerId) {
-    const period = await ProjectPeriod.findById(topic.periodId);
-    const isCoordinator = period && period.coordinatorLecturerId && period.coordinatorLecturerId.toString() === user.lecturerId.toString();
-    const isProposedSupervisor = topic.proposedSupervisorId && topic.proposedSupervisorId.toString() === user.lecturerId.toString();
-    const isProposedLecturer = topic.proposedByLecturerId && topic.proposedByLecturerId.toString() === user.lecturerId.toString();
+    const period = await prisma.projectPeriod.findFirst({
+      where: { id: topic.periodId, isDeleted: false }
+    });
+    const isCoordinator = period && period.coordinatorLecturerId && toId(period.coordinatorLecturerId) === toId(user.lecturerId);
+    const isProposedSupervisor = topic.proposedSupervisorId && toId(topic.proposedSupervisorId) === toId(user.lecturerId);
+    const isProposedLecturer = topic.proposedByLecturerId && toId(topic.proposedByLecturerId) === toId(user.lecturerId);
 
     if (isCoordinator || isProposedSupervisor || isProposedLecturer) {
       isAuthorizedLecturer = true;
@@ -422,18 +532,20 @@ const reviewTopic = async (topicId, action, user, note = '') => {
 
   let toStatus = '';
   let shouldAutoAssignSupervisor = false;
+  const updateData = {};
+
   if (action === 'approve') {
     shouldAutoAssignSupervisor = Boolean(
       user.lecturerId &&
       topic.proposedSupervisorId &&
-      topic.proposedSupervisorId.toString() === user.lecturerId.toString()
+      toId(topic.proposedSupervisorId) === toId(user.lecturerId)
     );
     toStatus = shouldAutoAssignSupervisor ? 'assigned' : 'approved';
-    topic.approvedBy = user._id;
-    topic.approvedAt = new Date();
-    topic.approvedByLecturerId = user.lecturerId || undefined;
+    updateData.approvedBy = toId(user._id);
+    updateData.approvedAt = new Date();
+    updateData.approvedByLecturerId = toId(user.lecturerId) || null;
     if (shouldAutoAssignSupervisor) {
-      topic.supervisorId = user.lecturerId;
+      updateData.supervisorId = toId(user.lecturerId);
     }
   } else if (action === 'request-revision') {
     toStatus = 'needs_revision';
@@ -443,15 +555,21 @@ const reviewTopic = async (topicId, action, user, note = '') => {
     throw { status: 400, message: 'Hành động xét duyệt không hợp lệ.' };
   }
 
-  topic.status = toStatus;
-  await topic.save();
+  updateData.status = toStatus;
+
+  const updatedTopic = await prisma.projectTopic.update({
+    where: { id: topic.id },
+    data: updateData
+  });
+
+  await syncMongoMirrorTopic(updatedTopic);
 
   if (shouldAutoAssignSupervisor) {
-    await spawnProjectForAssignedTopic(topic, user.lecturerId, user._id, ['LECTURER']);
+    await spawnProjectForAssignedTopic(updatedTopic, user.lecturerId, user._id, ['LECTURER']);
   }
 
   await logWorkflowEvent({
-    entityId: topic._id,
+    entityId: updatedTopic.id,
     fromStatus,
     toStatus,
     actorId: user._id,
@@ -462,9 +580,8 @@ const reviewTopic = async (topicId, action, user, note = '') => {
       : `Xét duyệt đề tài với kết quả [${toStatus}]`),
   });
 
-  // Gửi thông báo cho sinh viên thực hiện đề tài
   try {
-    const studentUserIds = await getTopicStudentUserIds(topic);
+    const studentUserIds = await getTopicStudentUserIds(updatedTopic);
     const actionLabel = shouldAutoAssignSupervisor ? 'phê duyệt và nhận hướng dẫn' : action === 'approve' ? 'phê duyệt' : action === 'request-revision' ? 'yêu cầu chỉnh sửa' : 'từ chối';
     const notifyType = action === 'approve' ? 'TOPIC_APPROVED' : action === 'request-revision' ? 'TOPIC_REVISION_REQUESTED' : 'TOPIC_REJECTED';
     
@@ -474,9 +591,9 @@ const reviewTopic = async (topicId, action, user, note = '') => {
         recipientId: studentUserId,
         type: notifyType,
         title: `Đề tài đồ án đã được ${actionLabel}`,
-        body: `Đề tài "${topic.title}" của bạn đã được ${actionLabel} bởi ${reviewerName}.${note ? ` Lý do/Ghi chú: "${note}"` : ''}`,
+        body: `Đề tài "${updatedTopic.title}" của bạn đã được ${actionLabel} bởi ${reviewerName}.${note ? ` Lý do/Ghi chú: "${note}"` : ''}`,
         entityType: 'ProjectTopic',
-        entityId: topic._id,
+        entityId: updatedTopic.id,
         actionUrl: `/dashboard/topics`,
       });
     }
@@ -484,36 +601,43 @@ const reviewTopic = async (topicId, action, user, note = '') => {
     console.error('Lỗi khi gửi thông báo xét duyệt đề tài:', notifyErr.message);
   }
 
-  return topic;
+  return toPublicTopic(updatedTopic);
 };
 
 const assignSupervisor = async (topicId, supervisorId, actorUserId) => {
-  const topic = await ProjectTopic.findById(topicId);
+  const topic = await prisma.projectTopic.findFirst({
+    where: { id: toId(topicId), isDeleted: false }
+  });
   if (!topic) {
     throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
   }
 
-  // Business logic check: must be approved before assigning
   if (topic.status !== 'approved') {
     throw { status: 400, message: 'Chỉ đề tài đã được duyệt (status=approved) mới được phép phân công giảng viên hướng dẫn.' };
   }
 
-  const lecturer = await Lecturer.findById(supervisorId);
+  const lecturer = await prisma.lecturer.findFirst({
+    where: { id: toId(supervisorId), isDeleted: false }
+  });
   if (!lecturer) {
     throw { status: 404, message: 'Giảng viên được phân công hướng dẫn không tồn tại.' };
   }
 
-  // 1. Update ProjectTopic state
   const fromStatus = topic.status;
-  topic.supervisorId = supervisorId;
-  topic.status = 'assigned';
-  await topic.save();
+  const updatedTopic = await prisma.projectTopic.update({
+    where: { id: topic.id },
+    data: {
+      supervisorId: toId(supervisorId),
+      status: 'assigned',
+    }
+  });
 
-  const project = await spawnProjectForAssignedTopic(topic, supervisorId, actorUserId, ['FACULTY_STAFF']);
+  await syncMongoMirrorTopic(updatedTopic);
 
-  // 4. Log workflow events
+  const project = await spawnProjectForAssignedTopic(updatedTopic, supervisorId, actorUserId, ['FACULTY_STAFF']);
+
   await logWorkflowEvent({
-    entityId: topic._id,
+    entityId: updatedTopic.id,
     fromStatus,
     toStatus: 'assigned',
     actorId: actorUserId,
@@ -522,34 +646,34 @@ const assignSupervisor = async (topicId, supervisorId, actorUserId) => {
     reason: `Phân công giảng viên hướng dẫn ID ${supervisorId} và khởi tạo Workspace đồ án.`,
   });
 
-  // Gửi thông báo cho sinh viên và Giảng viên hướng dẫn
   try {
-    const supervisorLecturer = await Lecturer.findById(supervisorId).populate('userId');
-    if (supervisorLecturer && supervisorLecturer.userId) {
-      const supervisorName = supervisorLecturer.userId.fullName || 'Giảng viên';
+    const supervisorLecturer = await prisma.lecturer.findFirst({
+      where: { id: toId(supervisorId), isDeleted: false },
+      include: { user: true }
+    });
+    if (supervisorLecturer && supervisorLecturer.user) {
+      const supervisorName = supervisorLecturer.user.fullName || 'Giảng viên';
       
-      // 1. Thông báo cho sinh viên
-      const studentUserIds = await getTopicStudentUserIds(topic);
+      const studentUserIds = await getTopicStudentUserIds(updatedTopic);
       for (const studentUserId of studentUserIds) {
         await notificationsService.createNotification({
           recipientId: studentUserId,
           type: 'SUPERVISOR_ASSIGNED',
           title: 'Đề tài đã được phân công GVHD',
-          body: `Đề tài "${topic.title}" của bạn đã được phân công Giảng viên hướng dẫn: ${supervisorName}.`,
+          body: `Đề tài "${updatedTopic.title}" của bạn đã được phân công Giảng viên hướng dẫn: ${supervisorName}.`,
           entityType: 'Project',
-          entityId: project._id,
+          entityId: project.id,
           actionUrl: `/dashboard/projects`,
         });
       }
 
-      // 2. Thông báo cho Giảng viên hướng dẫn
       await notificationsService.createNotification({
-        recipientId: supervisorLecturer.userId._id,
+        recipientId: supervisorLecturer.user.id,
         type: 'LECTURER_SUPERVISOR_ASSIGNED',
         title: 'Được phân công hướng dẫn đồ án mới',
-        body: `Thầy/cô đã được phân công hướng dẫn đề tài "${topic.title}" của sinh viên/nhóm.`,
+        body: `Thầy/cô đã được phân công hướng dẫn đề tài "${updatedTopic.title}" của sinh viên/nhóm.`,
         entityType: 'Project',
-        entityId: project._id,
+        entityId: project.id,
         actionUrl: `/dashboard/projects`,
       });
     }
@@ -557,117 +681,152 @@ const assignSupervisor = async (topicId, supervisorId, actorUserId) => {
     console.error('Lỗi khi gửi thông báo phân công GVHD:', notifyErr.message);
   }
 
-  return project;
+  return toPublicTopic(updatedTopic);
+};
+
+const populateTopics = async (topics) => {
+  if (!topics || topics.length === 0) return [];
+
+  const groupIds = Array.from(new Set(topics.map(t => toId(t.groupId)).filter(Boolean)));
+  const studentIds = Array.from(new Set(
+    topics.flatMap(t => [toId(t.studentId), toId(t.proposedByStudentId)]).filter(Boolean)
+  ));
+  const lecturerIds = Array.from(new Set(
+    topics.flatMap(t => [toId(t.proposedSupervisorId), toId(t.supervisorId), toId(t.approvedByLecturerId), toId(t.proposedByLecturerId)]).filter(Boolean)
+  ));
+
+  const groups = await prisma.projectGroup.findMany({
+    where: { id: { in: groupIds } },
+    select: { id: true, name: true, status: true, members: true }
+  });
+  const groupMap = new Map(groups.map(g => [g.id, { ...g, _id: g.id }]));
+
+  const students = await prisma.student.findMany({
+    where: { id: { in: studentIds } },
+    include: {
+      user: {
+        select: { id: true, fullName: true, email: true, status: true }
+      }
+    }
+  });
+  const studentMap = new Map(students.map(s => [s.id, {
+    ...s,
+    _id: s.id,
+    userId: s.user ? { ...s.user, _id: s.user.id } : null
+  }]));
+
+  const lecturers = await prisma.lecturer.findMany({
+    where: { id: { in: lecturerIds } },
+    include: {
+      user: {
+        select: { id: true, fullName: true, email: true, status: true }
+      }
+    }
+  });
+  const lecturerMap = new Map(lecturers.map(l => [l.id, {
+    ...l,
+    _id: l.id,
+    userId: l.user ? { ...l.user, _id: l.user.id } : null
+  }]));
+
+  return topics.map(t => {
+    const populated = {
+      ...t,
+      _id: t.id,
+      groupId: t.groupId ? groupMap.get(toId(t.groupId)) || null : null,
+      studentId: t.studentId ? studentMap.get(toId(t.studentId)) || null : null,
+      proposedByStudentId: t.proposedByStudentId ? studentMap.get(toId(t.proposedByStudentId)) || null : null,
+      proposedSupervisorId: t.proposedSupervisorId ? lecturerMap.get(toId(t.proposedSupervisorId)) || null : null,
+      supervisorId: t.supervisorId ? lecturerMap.get(toId(t.supervisorId)) || null : null,
+    };
+    return populated;
+  });
+};
+
+const populateTopic = async (topic) => {
+  if (!topic) return null;
+  const populated = await populateTopics([topic]);
+  return populated[0];
 };
 
 const getTopicsByPeriod = async (periodId) => {
-  const query = { isDeleted: false };
+  const where = { isDeleted: false };
   if (periodId) {
-    query.periodId = periodId;
+    where.periodId = toId(periodId);
   }
-  return await ProjectTopic.find(query)
-    .populate({
-      path: 'groupId',
-      select: 'name status members',
-    })
-    .populate({
-      path: 'studentId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'proposedByStudentId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'proposedSupervisorId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'supervisorId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .sort({ createdAt: -1 });
+  const topics = await prisma.projectTopic.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+  });
+  return await populateTopics(topics);
 };
 
 const getTopicById = async (id) => {
-  const topic = await ProjectTopic.findById(id)
-    .populate({
-      path: 'groupId',
-      select: 'name status members',
-    })
-    .populate({
-      path: 'studentId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'proposedByStudentId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'proposedSupervisorId',
-      populate: { path: 'userId', select: 'fullName email' },
-    })
-    .populate({
-      path: 'supervisorId',
-      populate: { path: 'userId', select: 'fullName email' },
-    });
-
-  if (!topic || topic.isDeleted) {
+  const topic = await prisma.projectTopic.findFirst({
+    where: { id: toId(id), isDeleted: false },
+  });
+  if (!topic) {
     throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
   }
-  return topic;
+  return await populateTopic(topic);
 };
 
 const updateTopic = async (topicId, topicData, studentId) => {
-  const topic = await ProjectTopic.findById(topicId);
+  const topic = await prisma.projectTopic.findFirst({
+    where: { id: toId(topicId), isDeleted: false }
+  });
   if (!topic) {
     throw { status: 404, message: 'Đề tài không tồn tại.' };
   }
 
-  // Verify ownership
-  if (topic.proposedByStudentId.toString() !== studentId.toString()) {
+  if (toId(topic.proposedByStudentId) !== toId(studentId)) {
     throw { status: 403, message: 'Chỉ sinh viên đề xuất mới có quyền chỉnh sửa đề tài.' };
   }
 
-  // Verify status is needs_revision or draft
   if (topic.status !== 'needs_revision' && topic.status !== 'draft') {
     throw { status: 400, message: 'Chỉ có thể chỉnh sửa đề tài khi có yêu cầu chỉnh sửa từ Giáo vụ.' };
   }
 
-  // Update fields
-  if (topicData.title) topic.title = topicData.title.trim();
-  if (topicData.summary) topic.summary = topicData.summary.trim();
-  if (topicData.objectives) topic.objectives = topicData.objectives.trim();
-  if (topicData.scope) topic.scope = topicData.scope.trim();
-  if (topicData.technologies) topic.technologies = topicData.technologies;
-  if (topicData.expectedResult) topic.expectedResult = topicData.expectedResult.trim();
-  if (topicData.plan) topic.plan = topicData.plan.trim();
-  if (topicData.proposedSupervisorId) topic.proposedSupervisorId = topicData.proposedSupervisorId;
-  if (topicData.academicUnit) topic.academicUnit = topicData.academicUnit;
-  if (topicData.topicDomain) topic.topicDomain = topicData.topicDomain;
+  const updateData = {};
+  if (topicData.title) updateData.title = topicData.title.trim();
+  if (topicData.summary) updateData.summary = topicData.summary.trim();
+  if (topicData.objectives) updateData.objectives = topicData.objectives.trim();
+  if (topicData.scope) updateData.scope = topicData.scope.trim();
+  if (topicData.technologies) updateData.technologies = topicData.technologies;
+  if (topicData.expectedResult) updateData.expectedResult = topicData.expectedResult.trim();
+  if (topicData.plan) updateData.plan = topicData.plan.trim();
+  if (topicData.proposedSupervisorId) updateData.proposedSupervisorId = toId(topicData.proposedSupervisorId);
+  if (topicData.academicUnit) updateData.academicUnit = topicData.academicUnit;
+  if (topicData.topicDomain) updateData.topicDomain = topicData.topicDomain;
 
-  // Change status back to submitted
-  topic.status = 'submitted';
-  topic.version += 1;
+  updateData.status = 'submitted';
+  updateData.version = topic.version + 1;
 
-  await topic.save();
+  const updatedTopic = await prisma.projectTopic.update({
+    where: { id: topic.id },
+    data: updateData
+  });
+
+  await syncMongoMirrorTopic(updatedTopic);
 
   await logWorkflowEvent({
-    entityId: topic._id,
+    entityId: updatedTopic.id,
     fromStatus: 'needs_revision',
     toStatus: 'submitted',
     actorId: studentId,
     actorRoles: ['STUDENT'],
     action: 'RESUBMIT_TOPIC',
-    reason: `Cập nhật và nộp lại đề tài sau chỉnh sửa: ${topic.title}`,
+    reason: `Cập nhật và nộp lại đề tài sau chỉnh sửa: ${updatedTopic.title}`,
   });
 
-  return topic;
+  return toPublicTopic(updatedTopic);
 };
 
 const cancelTopic = async (topicId, actorUserId, actorRoles = ['FACULTY_STAFF']) => {
-  const topic = await ProjectTopic.findById(topicId);
-  if (!topic || topic.isDeleted) {
+  const topic = await prisma.projectTopic.findFirst({
+    where: { id: toId(topicId), isDeleted: false }
+  });
+  if (!topic) {
     throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
   }
 
@@ -675,18 +834,27 @@ const cancelTopic = async (topicId, actorUserId, actorRoles = ['FACULTY_STAFF'])
     throw { status: 400, message: 'Không thể hủy đề tài đã hoàn thành.' };
   }
 
-  const projects = await Project.find({ topicId: topic._id });
+  const projects = await prisma.project.findMany({
+    where: { topicId: topic.id, isDeleted: false }
+  });
+
   for (const project of projects) {
     const fromStatus = project.status;
-    project.status = 'cancelled';
-    project.isDeleted = true;
-    project.deletedAt = new Date();
-    project.deletedBy = actorUserId;
-    await project.save();
+    const updatedProject = await prisma.project.update({
+      where: { id: project.id },
+      data: {
+        status: 'cancelled',
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: toId(actorUserId),
+      }
+    });
+
+    await syncMongoMirrorProject(updatedProject);
 
     await logWorkflowEvent({
       entityType: 'Project',
-      entityId: project._id,
+      entityId: project.id,
       fromStatus,
       toStatus: 'cancelled',
       actorId: actorUserId,
@@ -696,15 +864,24 @@ const cancelTopic = async (topicId, actorUserId, actorRoles = ['FACULTY_STAFF'])
     });
   }
 
-  const group = await ProjectGroup.findOne({ _id: topic.groupId, isDeleted: { $ne: true } });
+  const group = await prisma.projectGroup.findFirst({
+    where: { id: toId(topic.groupId), isDeleted: false }
+  });
   if (group && group.status === 'locked') {
     const fromStatus = group.status;
-    group.status = 'confirmed';
-    await group.save();
+    const updatedGroup = await prisma.projectGroup.update({
+      where: { id: group.id },
+      data: { status: 'confirmed' }
+    });
+
+    await ProjectGroupMirror.updateOne(
+      { _id: group.id },
+      { $set: { status: 'confirmed' } }
+    );
 
     await logWorkflowEvent({
       entityType: 'ProjectGroup',
-      entityId: group._id,
+      entityId: group.id,
       fromStatus,
       toStatus: 'confirmed',
       actorId: actorUserId,
@@ -715,14 +892,20 @@ const cancelTopic = async (topicId, actorUserId, actorRoles = ['FACULTY_STAFF'])
   }
 
   const fromStatus = topic.status;
-  topic.status = 'cancelled';
-  topic.isDeleted = true;
-  topic.deletedAt = new Date();
-  topic.deletedBy = actorUserId;
-  await topic.save();
+  const updatedTopic = await prisma.projectTopic.update({
+    where: { id: topic.id },
+    data: {
+      status: 'cancelled',
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: toId(actorUserId),
+    }
+  });
+
+  await syncMongoMirrorTopic(updatedTopic);
 
   await logWorkflowEvent({
-    entityId: topic._id,
+    entityId: updatedTopic.id,
     fromStatus,
     toStatus: 'cancelled',
     actorId: actorUserId,
@@ -740,7 +923,9 @@ const cancelTopic = async (topicId, actorUserId, actorRoles = ['FACULTY_STAFF'])
 
 const createLecturerTopic = async (topicData, lecturerId, userId) => {
   const { periodId } = topicData;
-  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
+  const period = await prisma.projectPeriod.findFirst({
+    where: { id: toId(periodId), isDeleted: false }
+  });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -760,13 +945,16 @@ const createLecturerTopic = async (topicData, lecturerId, userId) => {
     }
   }
 
-  const topic = new ProjectTopic({
-    periodId,
+  const id = newObjectId();
+  const payload = resolveOwnerFields({
+    id,
+    mongoId: id,
+    periodId: toId(periodId),
     createdByRole: 'lecturer',
-    createdByUserId: userId,
-    proposedByLecturerId: lecturerId,
-    supervisorId: lecturerId,
-    proposedSupervisorId: lecturerId,
+    createdByUserId: toId(userId),
+    proposedByLecturerId: toId(lecturerId),
+    supervisorId: toId(lecturerId),
+    proposedSupervisorId: toId(lecturerId),
     title: topicData.title.trim(),
     summary: topicData.summary.trim(),
     objectives: topicData.objectives.trim(),
@@ -779,19 +967,23 @@ const createLecturerTopic = async (topicData, lecturerId, userId) => {
     topicDomain: topicData.topicDomain || 'software_development',
     capacityMaxStudents: topicData.capacityMaxStudents !== undefined ? parseInt(topicData.capacityMaxStudents, 10) : 1,
     capacityMaxGroups: topicData.capacityMaxGroups !== undefined ? parseInt(topicData.capacityMaxGroups, 10) : 1,
-    minGroupSize: topicData.minGroupSize !== undefined ? parseInt(topicData.minGroupSize, 10) : undefined,
-    maxGroupSize: topicData.maxGroupSize !== undefined ? parseInt(topicData.maxGroupSize, 10) : undefined,
+    minGroupSize: topicData.minGroupSize !== undefined ? parseInt(topicData.minGroupSize, 10) : null,
+    maxGroupSize: topicData.maxGroupSize !== undefined ? parseInt(topicData.maxGroupSize, 10) : null,
     allowedOwnerTypes: topicData.allowedOwnerTypes || ['student', 'group'],
     allowIndividual: topicData.allowIndividual !== undefined ? topicData.allowIndividual : period.allowIndividual,
     allowGroup: topicData.allowGroup !== undefined ? topicData.allowGroup : period.allowGroup,
-    departmentId: period.departmentId,
+    departmentId: toId(period.departmentId),
     status: 'approved',
   });
 
-  await topic.save();
+  const topic = await prisma.projectTopic.create({
+    data: payload
+  });
+
+  await syncMongoMirrorTopic(topic);
 
   await logWorkflowEvent({
-    entityId: topic._id,
+    entityId: topic.id,
     fromStatus: '',
     toStatus: 'approved',
     actorId: userId,
@@ -800,11 +992,13 @@ const createLecturerTopic = async (topicData, lecturerId, userId) => {
     reason: `Giảng viên đề xuất đề tài: ${topic.title}`,
   });
 
-  return topic;
+  return toPublicTopic(topic);
 };
 
 const registerExistingTopic = async (topicId, registerData, studentId, actorUserId) => {
-  const topic = await ProjectTopic.findOne({ _id: topicId, isDeleted: { $ne: true } });
+  const topic = await prisma.projectTopic.findFirst({
+    where: { id: toId(topicId), isDeleted: false }
+  });
   if (!topic) {
     throw { status: 404, message: 'Đề tài không tồn tại.' };
   }
@@ -813,7 +1007,9 @@ const registerExistingTopic = async (topicId, registerData, studentId, actorUser
     throw { status: 400, message: 'Chỉ đề tài đã công khai mới cho phép đăng ký.' };
   }
 
-  const period = await ProjectPeriod.findOne({ _id: topic.periodId, isDeleted: { $ne: true } });
+  const period = await prisma.projectPeriod.findFirst({
+    where: { id: topic.periodId, isDeleted: false }
+  });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
@@ -826,7 +1022,7 @@ const registerExistingTopic = async (topicId, registerData, studentId, actorUser
     if (!getTopicAllowedOwnerTypes(topic).includes('student')) {
       throw { status: 400, message: 'De tai nay khong cho phep dang ky ca nhan.' };
     }
-    const allowInd = topic.allowIndividual !== undefined ? topic.allowIndividual : period.allowIndividual;
+    const allowInd = topic.allowIndividual !== null ? topic.allowIndividual : period.allowIndividual;
     if (allowInd === false) {
       throw { status: 400, message: 'Đề tài hoặc học phần không cho phép đăng ký cá nhân.' };
     }
@@ -835,16 +1031,15 @@ const registerExistingTopic = async (topicId, registerData, studentId, actorUser
     if (!getTopicAllowedOwnerTypes(topic).includes('group')) {
       throw { status: 400, message: 'De tai nay khong cho phep dang ky theo nhom.' };
     }
-    const allowGrp = topic.allowGroup !== undefined ? topic.allowGroup : period.allowGroup;
+    const allowGrp = topic.allowGroup !== null ? topic.allowGroup : period.allowGroup;
     if (allowGrp === false) {
       throw { status: 400, message: 'Đề tài hoặc học phần không cho phép đăng ký theo nhóm.' };
     }
     const group = await resolveGroupTopicOwner(topic.periodId, registerData.groupId, studentId, period, topic);
-    targetGroupId = group._id;
-    targetOwnerId = group._id;
+    targetGroupId = group.id;
+    targetOwnerId = group.id;
   }
 
-  // Capacity check
   if (ownerType === 'student') {
     if (topic.currentStudentCount >= topic.capacityMaxStudents) {
       throw { status: 400, message: 'Đề tài đã đầy số lượng đăng ký tối đa.' };
@@ -855,60 +1050,131 @@ const registerExistingTopic = async (topicId, registerData, studentId, actorUser
     }
   }
 
-  // Increment counters on the original topic
+  let updatedCurrentStudentCount = topic.currentStudentCount;
+  let updatedCurrentGroupCount = topic.currentGroupCount;
+
   if (ownerType === 'student') {
-    topic.currentStudentCount += 1;
+    updatedCurrentStudentCount += 1;
   } else {
-    topic.currentGroupCount += 1;
-    const group = await ProjectGroup.findById(targetGroupId);
-    const acceptedCount = group.members.filter(m => m.status === 'accepted').length;
-    topic.currentStudentCount += acceptedCount;
+    updatedCurrentGroupCount += 1;
+    const group = await prisma.projectGroup.findFirst({
+      where: { id: toId(targetGroupId), isDeleted: false }
+    });
+    const acceptedCount = (group.members || []).filter(m => m.status === 'accepted').length;
+    updatedCurrentStudentCount += acceptedCount;
   }
 
-  // If capacity is filled, set status to assigned / locked
-  const isStudentFull = topic.currentStudentCount >= topic.capacityMaxStudents;
-  const isGroupFull = topic.currentGroupCount >= topic.capacityMaxGroups;
+  let toStatus = topic.status;
+  const isStudentFull = updatedCurrentStudentCount >= topic.capacityMaxStudents;
+  const isGroupFull = updatedCurrentGroupCount >= topic.capacityMaxGroups;
   if (isStudentFull || isGroupFull) {
-    topic.status = 'assigned';
+    toStatus = 'assigned';
   }
-  await topic.save();
 
-  // Create registered topic cloned from the original
-  const registeredTopic = new ProjectTopic({
-    ...topic.toObject(),
-    _id: new mongoose.Types.ObjectId(),
-    ownerType,
-    ownerId: targetOwnerId,
-    studentId: ownerType === 'student' ? targetOwnerId : undefined,
-    groupId: ownerType === 'group' ? targetGroupId : undefined,
-    status: 'assigned',
+  const updatedOriginalTopic = await prisma.projectTopic.update({
+    where: { id: topic.id },
+    data: {
+      currentStudentCount: updatedCurrentStudentCount,
+      currentGroupCount: updatedCurrentGroupCount,
+      status: toStatus
+    }
   });
-  await registeredTopic.save();
 
-  // Lock group
+  await syncMongoMirrorTopic(updatedOriginalTopic);
+
+  const registeredTopicId = newObjectId();
+  const registeredTopicPayload = resolveOwnerFields({
+    id: registeredTopicId,
+    mongoId: registeredTopicId,
+    periodId: toId(topic.periodId),
+    ownerType,
+    ownerId: toId(targetOwnerId),
+    studentId: ownerType === 'student' ? toId(targetOwnerId) : undefined,
+    groupId: ownerType === 'group' ? toId(targetGroupId) : undefined,
+    createdByRole: topic.createdByRole,
+    createdByUserId: toId(topic.createdByUserId),
+    proposedByStudentId: toId(topic.proposedByStudentId),
+    proposedByLecturerId: toId(topic.proposedByLecturerId),
+    approvedByLecturerId: toId(topic.approvedByLecturerId),
+    capacityMaxStudents: topic.capacityMaxStudents,
+    capacityMaxGroups: topic.capacityMaxGroups,
+    currentStudentCount: updatedCurrentStudentCount,
+    currentGroupCount: updatedCurrentGroupCount,
+    allowedOwnerTypes: topic.allowedOwnerTypes,
+    allowIndividual: topic.allowIndividual,
+    allowGroup: topic.allowGroup,
+    minGroupSize: topic.minGroupSize,
+    maxGroupSize: topic.maxGroupSize,
+    publishedByStaffId: toId(topic.publishedByStaffId),
+    publishedAt: topic.publishedAt,
+    title: topic.title,
+    summary: topic.summary,
+    objectives: topic.objectives,
+    scope: topic.scope,
+    technologies: topic.technologies,
+    expectedResult: topic.expectedResult,
+    plan: topic.plan,
+    keywords: topic.keywords,
+    academicUnit: topic.academicUnit,
+    topicDomain: topic.topicDomain,
+    supervisorId: toId(topic.supervisorId),
+    proposedSupervisorId: toId(topic.proposedSupervisorId),
+    departmentId: toId(topic.departmentId),
+    status: 'assigned',
+    rejectionReason: topic.rejectionReason,
+    aiDuplicateRisk: topic.aiDuplicateRisk || {},
+    approvedBy: toId(topic.approvedBy),
+    approvedAt: topic.approvedAt,
+    version: topic.version,
+    isDeleted: topic.isDeleted,
+    deletedAt: topic.deletedAt,
+    deletedBy: toId(topic.deletedBy),
+  });
+
+  const registeredTopic = await prisma.projectTopic.create({
+    data: registeredTopicPayload
+  });
+
+  await syncMongoMirrorTopic(registeredTopic);
+
   if (ownerType === 'group') {
-    const group = await ProjectGroup.findOne({ _id: targetGroupId });
+    const group = await prisma.projectGroup.findFirst({
+      where: { id: toId(targetGroupId), isDeleted: false }
+    });
     if (group) {
-      group.status = 'locked';
-      await group.save();
+      await prisma.projectGroup.update({
+        where: { id: group.id },
+        data: { status: 'locked' }
+      });
+      await ProjectGroupMirror.updateOne(
+        { _id: group.id },
+        { $set: { status: 'locked' } }
+      );
     }
   }
 
-  // Spawn project workspace
-  const project = await Project.create({
-    periodId: topic.periodId,
+  const projectId = newObjectId();
+  const projectPayload = resolveOwnerFields({
+    id: projectId,
+    mongoId: projectId,
+    periodId: toId(topic.periodId),
     ownerType,
-    ownerId: targetOwnerId,
-    studentId: ownerType === 'student' ? targetOwnerId : undefined,
-    groupId: ownerType === 'group' ? targetGroupId : undefined,
-    topicId: registeredTopic._id,
-    supervisorId: topic.supervisorId || topic.proposedSupervisorId,
+    ownerId: toId(targetOwnerId),
+    studentId: ownerType === 'student' ? toId(targetOwnerId) : undefined,
+    groupId: ownerType === 'group' ? toId(targetGroupId) : undefined,
+    topicId: registeredTopic.id,
+    supervisorId: toId(topic.supervisorId || topic.proposedSupervisorId),
     status: 'assigned',
   });
 
-  // Logs
+  const project = await prisma.project.create({
+    data: projectPayload
+  });
+
+  await syncMongoMirrorProject(project);
+
   await logWorkflowEvent({
-    entityId: registeredTopic._id,
+    entityId: registeredTopic.id,
     fromStatus: '',
     toStatus: 'assigned',
     actorId: actorUserId,
@@ -919,7 +1185,7 @@ const registerExistingTopic = async (topicId, registerData, studentId, actorUser
 
   await logWorkflowEvent({
     entityType: 'Project',
-    entityId: project._id,
+    entityId: project.id,
     fromStatus: '',
     toStatus: 'assigned',
     actorId: actorUserId,
@@ -928,11 +1194,13 @@ const registerExistingTopic = async (topicId, registerData, studentId, actorUser
     reason: 'Khởi tạo Workspace từ đăng ký đề tài',
   });
 
-  return registeredTopic;
+  return toPublicTopic(registeredTopic);
 };
 
 const publishTopic = async (topicId, actorUserId) => {
-  const topic = await ProjectTopic.findById(topicId);
+  const topic = await prisma.projectTopic.findFirst({
+    where: { id: toId(topicId), isDeleted: false }
+  });
   if (!topic) {
     throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
   }
@@ -942,13 +1210,19 @@ const publishTopic = async (topicId, actorUserId) => {
   }
 
   const fromStatus = topic.status;
-  topic.status = 'published';
-  topic.publishedByStaffId = actorUserId;
-  topic.publishedAt = new Date();
-  await topic.save();
+  const updatedTopic = await prisma.projectTopic.update({
+    where: { id: topic.id },
+    data: {
+      status: 'published',
+      publishedByStaffId: toId(actorUserId),
+      publishedAt: new Date(),
+    }
+  });
+
+  await syncMongoMirrorTopic(updatedTopic);
 
   await logWorkflowEvent({
-    entityId: topic._id,
+    entityId: updatedTopic.id,
     fromStatus,
     toStatus: 'published',
     actorId: actorUserId,
@@ -957,11 +1231,13 @@ const publishTopic = async (topicId, actorUserId) => {
     reason: `Công khai đề tài: ${topic.title}`,
   });
 
-  return topic;
+  return toPublicTopic(updatedTopic);
 };
 
 const unpublishTopic = async (topicId, actorUserId) => {
-  const topic = await ProjectTopic.findById(topicId);
+  const topic = await prisma.projectTopic.findFirst({
+    where: { id: toId(topicId), isDeleted: false }
+  });
   if (!topic) {
     throw { status: 404, message: 'Đề tài đồ án không tồn tại.' };
   }
@@ -971,13 +1247,19 @@ const unpublishTopic = async (topicId, actorUserId) => {
   }
 
   const fromStatus = topic.status;
-  topic.status = 'approved';
-  topic.publishedByStaffId = undefined;
-  topic.publishedAt = undefined;
-  await topic.save();
+  const updatedTopic = await prisma.projectTopic.update({
+    where: { id: topic.id },
+    data: {
+      status: 'approved',
+      publishedByStaffId: null,
+      publishedAt: null,
+    }
+  });
+
+  await syncMongoMirrorTopic(updatedTopic);
 
   await logWorkflowEvent({
-    entityId: topic._id,
+    entityId: updatedTopic.id,
     fromStatus,
     toStatus: 'approved',
     actorId: actorUserId,
@@ -986,7 +1268,7 @@ const unpublishTopic = async (topicId, actorUserId) => {
     reason: `Gỡ công khai đề tài: ${topic.title}`,
   });
 
-  return topic;
+  return toPublicTopic(updatedTopic);
 };
 
 module.exports = {

@@ -1,13 +1,16 @@
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
-const ProjectPeriod = require('../../models/ProjectPeriod');
-const ProjectRoster = require('../../models/ProjectRoster');
-const User = require('../../models/User');
-const Student = require('../../models/Student');
+const prisma = require('../../config/prisma');
+const ProjectRosterMirror = require('../../models/ProjectRoster');
+const UserMirror = require('../../models/User');
+const StudentMirror = require('../../models/Student');
 const WorkflowEvent = require('../../models/WorkflowEvent');
 const Project = require('../../models/Project');
 const ProjectTopic = require('../../models/ProjectTopic');
 const ProjectGroup = require('../../models/ProjectGroup');
+
+const newObjectId = () => new mongoose.Types.ObjectId().toString();
+const toId = (value) => (value ? value.toString() : null);
 
 const logWorkflowEvent = async ({
   entityId,
@@ -16,144 +19,264 @@ const logWorkflowEvent = async ({
   actorId,
   action,
   reason = '',
-}) => {
-  return await WorkflowEvent.create({
-    entityType: 'ProjectRoster',
-    entityId,
-    fromStatus,
-    toStatus,
-    actorId,
-    actorRoles: ['FACULTY_STAFF'],
-    action,
-    reason,
+}) => WorkflowEvent.create({
+  entityType: 'ProjectRoster',
+  entityId,
+  fromStatus,
+  toStatus,
+  actorId,
+  actorRoles: ['FACULTY_STAFF'],
+  action,
+  reason,
+});
+
+const toPublicUser = (user) => {
+  if (!user) return null;
+  const { passwordHash, ...safeUser } = user;
+  return {
+    ...safeUser,
+    _id: user.id,
+  };
+};
+
+const toPublicStudent = (student, user = null) => {
+  if (!student) return null;
+  return {
+    ...student,
+    _id: student.id,
+    userId: user ? toPublicUser(user) : student.userId,
+  };
+};
+
+const toPublicRoster = (roster, student = null, user = null) => {
+  if (!roster) return null;
+  return {
+    ...roster,
+    _id: roster.id,
+    studentId: student ? toPublicStudent(student, user) : roster.studentId,
+  };
+};
+
+const trimStudentData = (studentData) => ({
+  studentCode: studentData.studentCode.trim(),
+  fullName: studentData.fullName.trim(),
+  email: studentData.email.trim().toLowerCase(),
+  classSection: studentData.classSection.trim(),
+  className: (studentData.className || studentData.classSection).trim(),
+  cohort: (studentData.cohort || 'K67').trim(),
+  major: (studentData.major || 'Công nghệ thông tin').trim(),
+});
+
+const mirrorUser = async (user) => {
+  await UserMirror.updateOne(
+    { _id: user.id },
+    {
+      $set: {
+        fullName: user.fullName,
+        email: user.email,
+        passwordHash: user.passwordHash,
+        roles: user.roles,
+        status: user.status,
+        phoneNumber: user.phoneNumber || '',
+        cohort: user.cohort || '',
+        avatarUrl: user.avatarUrl || '',
+        isDeleted: user.isDeleted,
+        deletedAt: user.deletedAt,
+        deletedBy: user.deletedBy,
+      },
+    },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+const mirrorStudent = async (student) => {
+  await StudentMirror.updateOne(
+    { _id: student.id },
+    {
+      $set: {
+        userId: student.userId,
+        studentCode: student.studentCode,
+        className: student.className,
+        cohort: student.cohort,
+        major: student.major,
+        facultyId: student.facultyId,
+        skills: student.skills || [],
+        interests: student.interests || [],
+        technologies: student.technologies || [],
+        isDeleted: student.isDeleted,
+        deletedAt: student.deletedAt,
+        deletedBy: student.deletedBy,
+      },
+    },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+const mirrorRoster = async (roster) => {
+  await ProjectRosterMirror.updateOne(
+    { _id: roster.id },
+    {
+      $set: {
+        periodId: roster.periodId,
+        studentId: roster.studentId,
+        classSection: roster.classSection,
+        status: roster.status,
+        importedBy: roster.importedBy,
+        importedAt: roster.importedAt,
+      },
+    },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+};
+
+const getPeriodOrThrow = async (periodId) => {
+  const period = await prisma.projectPeriod.findFirst({
+    where: {
+      id: toId(periodId),
+      isDeleted: false,
+    },
   });
-};
-
-const getOrCreateStudent = async (studentData, passwordHash, facultyId) => {
-  const { studentCode, fullName, email, classSection } = studentData;
-
-  // 1. Check if user already exists
-  let user = await User.findOne({ email: email.toLowerCase() });
-  if (!user) {
-    user = await User.create({
-      fullName,
-      email: email.toLowerCase(),
-      passwordHash,
-      roles: ['STUDENT'],
-      status: 'active',
-    });
-  }
-
-  // 2. Check if student profile exists
-  let student = await Student.findOne({ studentCode });
-  if (!student) {
-    student = await Student.create({
-      userId: user._id,
-      studentCode,
-      className: studentData.className || classSection, // Default classname from section
-      cohort: studentData.cohort || 'K67', // Standard cohort fallback
-      major: studentData.major || 'Công nghệ thông tin',
-      facultyId,
-    });
-  }
-
-  return student;
-};
-
-const importRoster = async (periodId, rosterList, actorId) => {
-  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
   if (!period) {
     throw { status: 404, message: 'Đợt đồ án không tồn tại.' };
   }
+  return period;
+};
 
-  // Generate a standard hashed password for new student accounts
-  const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash('password123', salt);
+const getOrCreateStudent = async (studentData, passwordHash, facultyId) => {
+  const data = trimStudentData(studentData);
 
-  const importedCodes = [];
-  let useTransaction = true;
-  const session = await mongoose.startSession();
-  
-  try {
-    await session.withTransaction(async () => {
-      for (const item of rosterList) {
-        // Retrieve or create student and user profile
-        const student = await getOrCreateStudent(item, passwordHash, period.facultyId);
+  let student = await prisma.student.findFirst({
+    where: {
+      studentCode: data.studentCode,
+      isDeleted: false,
+    },
+  });
 
-        // Check if already registered in the roster
-        let rosterEntry = await ProjectRoster.findOne({ periodId, studentId: student._id });
-        
-        if (!rosterEntry) {
-          rosterEntry = await ProjectRoster.create([{
-            periodId,
-            studentId: student._id,
-            classSection: item.classSection,
-            status: 'active',
-            importedBy: actorId,
-            importedAt: new Date(),
-          }], { session });
-        } else if (rosterEntry.status === 'removed') {
-          rosterEntry.status = 'active';
-          rosterEntry.classSection = item.classSection;
-          rosterEntry.importedBy = actorId;
-          rosterEntry.importedAt = new Date();
-          await rosterEntry.save({ session });
-        }
-
-        importedCodes.push(student.studentCode);
-      }
+  let user = student
+    ? await prisma.user.findFirst({
+      where: {
+        id: student.userId,
+        isDeleted: false,
+      },
+    })
+    : await prisma.user.findFirst({
+      where: {
+        email: data.email,
+        isDeleted: false,
+      },
     });
 
-    console.log(`Successfully imported ${importedCodes.length} students into roster.`);
-  } catch (txError) {
-    const isStandaloneError = 
-      txError.message.includes('Transaction numbers are only allowed') ||
-      txError.message.includes('retryable writes') ||
-      txError.code === 20;
-
-    if (isStandaloneError) {
-      console.warn('⚠️ MongoDB deployment is standalone. Falling back to non-transactional import...');
-      useTransaction = false;
-    } else {
-      throw txError;
-    }
-  } finally {
-    await session.endSession();
+  if (student && !user) {
+    throw { status: 404, message: 'Không tìm thấy tài khoản sinh viên.' };
   }
 
-  // Sequential non-transactional fallback execution for standalone servers
-  if (!useTransaction) {
-    importedCodes.length = 0;
-    for (const item of rosterList) {
-      const student = await getOrCreateStudent(item, passwordHash, period.facultyId);
-
-      let rosterEntry = await ProjectRoster.findOne({ periodId, studentId: student._id });
-      
-      if (!rosterEntry) {
-        rosterEntry = await ProjectRoster.create({
-          periodId,
-          studentId: student._id,
-          classSection: item.classSection,
-          status: 'active',
-          importedBy: actorId,
-          importedAt: new Date(),
-        });
-      } else if (rosterEntry.status === 'removed') {
-        rosterEntry.status = 'active';
-        rosterEntry.classSection = item.classSection;
-        rosterEntry.importedBy = actorId;
-        rosterEntry.importedAt = new Date();
-        await rosterEntry.save();
-      }
-
-      importedCodes.push(student.studentCode);
-    }
-    console.log(`Successfully imported ${importedCodes.length} students into roster without transaction fallback.`);
+  if (!user) {
+    const id = newObjectId();
+    user = await prisma.user.create({
+      data: {
+        id,
+        mongoId: id,
+        fullName: data.fullName,
+        email: data.email,
+        passwordHash,
+        roles: ['STUDENT'],
+        status: 'active',
+      },
+    });
+  } else if (!user.roles.includes('STUDENT')) {
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        roles: [...user.roles, 'STUDENT'],
+      },
+    });
   }
 
-  // Log workflow audit
+  if (!student) {
+    const id = newObjectId();
+    student = await prisma.student.create({
+      data: {
+        id,
+        mongoId: id,
+        userId: user.id,
+        studentCode: data.studentCode,
+        className: data.className,
+        cohort: data.cohort,
+        major: data.major,
+        facultyId: toId(facultyId),
+      },
+    });
+  }
+
+  await Promise.all([
+    mirrorUser(user),
+    mirrorStudent(student),
+  ]);
+
+  return { student, user };
+};
+
+const upsertRosterEntry = async ({ periodId, studentId, classSection, actorId }) => {
+  const existing = await prisma.projectRoster.findUnique({
+    where: {
+      periodId_studentId: {
+        periodId: toId(periodId),
+        studentId: toId(studentId),
+      },
+    },
+  });
+
+  if (existing && existing.status === 'active') {
+    return { rosterEntry: existing, createdOrReactivated: false };
+  }
+
+  const now = new Date();
+  const rosterEntry = existing
+    ? await prisma.projectRoster.update({
+      where: { id: existing.id },
+      data: {
+        classSection: classSection.trim(),
+        status: 'active',
+        importedBy: toId(actorId),
+        importedAt: now,
+      },
+    })
+    : await prisma.projectRoster.create({
+      data: {
+        id: newObjectId(),
+        periodId: toId(periodId),
+        studentId: toId(studentId),
+        classSection: classSection.trim(),
+        status: 'active',
+        importedBy: toId(actorId),
+        importedAt: now,
+      },
+    });
+
+  await mirrorRoster(rosterEntry);
+  return { rosterEntry, createdOrReactivated: true };
+};
+
+const importRoster = async (periodId, rosterList, actorId) => {
+  const period = await getPeriodOrThrow(periodId);
+  const passwordHash = await bcrypt.hash('password123', 10);
+
+  const importedCodes = [];
+  for (const item of rosterList) {
+    const { student, user } = await getOrCreateStudent(item, passwordHash, period.facultyId);
+    await upsertRosterEntry({
+      periodId: period.id,
+      studentId: student.id,
+      classSection: item.classSection,
+      actorId,
+    });
+    importedCodes.push(student.studentCode);
+    await mirrorUser(user);
+    await mirrorStudent(student);
+  }
+
   await logWorkflowEvent({
-    entityId: periodId,
+    entityId: period.id,
     fromStatus: '',
     toStatus: 'active',
     actorId,
@@ -165,38 +288,23 @@ const importRoster = async (periodId, rosterList, actorId) => {
 };
 
 const addSingleStudent = async (periodId, studentData, actorId) => {
-  const period = await ProjectPeriod.findOne({ _id: periodId, isDeleted: { $ne: true } });
-  if (!period) {
-    throw { status: 404, message: 'Học phần đồ án không tồn tại.' };
-  }
+  const period = await getPeriodOrThrow(periodId);
+  const passwordHash = await bcrypt.hash('password123', 10);
+  const { student, user } = await getOrCreateStudent(studentData, passwordHash, period.facultyId);
 
-  const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash('password123', salt);
+  const { rosterEntry, createdOrReactivated } = await upsertRosterEntry({
+    periodId: period.id,
+    studentId: student.id,
+    classSection: studentData.classSection,
+    actorId,
+  });
 
-  const student = await getOrCreateStudent(studentData, passwordHash, period.facultyId);
-
-  let rosterEntry = await ProjectRoster.findOne({ periodId, studentId: student._id });
-  if (!rosterEntry) {
-    rosterEntry = await ProjectRoster.create({
-      periodId,
-      studentId: student._id,
-      classSection: studentData.classSection,
-      status: 'active',
-      importedBy: actorId,
-      importedAt: new Date(),
-    });
-  } else if (rosterEntry.status === 'removed') {
-    rosterEntry.status = 'active';
-    rosterEntry.classSection = studentData.classSection;
-    rosterEntry.importedBy = actorId;
-    rosterEntry.importedAt = new Date();
-    await rosterEntry.save();
-  } else {
+  if (!createdOrReactivated) {
     throw { status: 400, message: 'Sinh viên đã tồn tại trong học phần đồ án này.' };
   }
 
   await logWorkflowEvent({
-    entityId: periodId,
+    entityId: period.id,
     fromStatus: 'removed',
     toStatus: 'active',
     actorId,
@@ -204,29 +312,45 @@ const addSingleStudent = async (periodId, studentData, actorId) => {
     reason: `Thêm thủ công sinh viên ${student.studentCode} vào danh sách`,
   });
 
-  return student;
+  return toPublicRoster(rosterEntry, student, user);
 };
 
 const getRosterByPeriod = async (periodId) => {
-  return await ProjectRoster.find({ periodId, status: 'active' })
-    .populate({
-      path: 'studentId',
-      populate: { path: 'userId', select: 'fullName email status' },
-    })
-    .sort({ createdAt: -1 });
+  const roster = await prisma.projectRoster.findMany({
+    where: {
+      periodId: toId(periodId),
+      status: 'active',
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  const studentIds = roster.map((entry) => entry.studentId);
+  const students = await prisma.student.findMany({
+    where: {
+      id: { in: studentIds },
+      isDeleted: false,
+    },
+  });
+  const users = await prisma.user.findMany({
+    where: {
+      id: { in: students.map((student) => student.userId) },
+      isDeleted: false,
+    },
+  });
+
+  const studentById = new Map(students.map((student) => [student.id, student]));
+  const userById = new Map(users.map((user) => [user.id, user]));
+
+  return roster.map((entry) => {
+    const student = studentById.get(entry.studentId);
+    const user = student ? userById.get(student.userId) : null;
+    return toPublicRoster(entry, student, user);
+  });
 };
 
-const removeStudentFromRoster = async (periodId, studentId, actorId) => {
-  const rosterEntry = await ProjectRoster.findOne({ periodId, studentId });
-  if (!rosterEntry) {
-    throw { status: 404, message: 'Không tìm thấy sinh viên trong danh sách học phần đồ án.' };
-  }
-
-  if (rosterEntry.status === 'removed') {
-    throw { status: 400, message: 'Sinh viên đã được rút tên trước đó.' };
-  }
-
-  // Enforce validation checks before removing a student
+const assertStudentCanBeRemoved = async (periodId, studentId) => {
   const activeProject = await Project.findOne({
     periodId,
     studentId,
@@ -245,7 +369,6 @@ const removeStudentFromRoster = async (periodId, studentId, actorId) => {
     throw { status: 400, message: 'Sinh viên đang có đề tài hoạt động trong học phần này, không thể xóa khỏi danh sách.' };
   }
 
-  // Check group linkages
   const studentGroups = await ProjectGroup.find({
     periodId,
     isDeleted: { $ne: true },
@@ -253,37 +376,62 @@ const removeStudentFromRoster = async (periodId, studentId, actorId) => {
     members: {
       $elemMatch: {
         studentId,
-        status: 'accepted'
-      }
-    }
+        status: 'accepted',
+      },
+    },
   });
 
-  if (studentGroups.length > 0) {
-    const groupIds = studentGroups.map(g => g._id);
-    const activeGroupProject = await Project.findOne({
-      periodId,
-      groupId: { $in: groupIds },
-      status: { $ne: 'cancelled' },
-    });
-    if (activeGroupProject) {
-      throw { status: 400, message: 'Sinh viên thuộc nhóm đang thực hiện dự án hoạt động, không thể xóa khỏi danh sách.' };
-    }
+  if (studentGroups.length === 0) return;
 
-    const activeGroupTopic = await ProjectTopic.findOne({
-      periodId,
-      groupId: { $in: groupIds },
-      status: { $in: ['submitted', 'approved', 'assigned', 'locked', 'changed'] },
-    });
-    if (activeGroupTopic) {
-      throw { status: 400, message: 'Sinh viên thuộc nhóm có đề tài hoạt động, không thể xóa khỏi danh sách.' };
-    }
+  const groupIds = studentGroups.map((group) => group._id);
+  const activeGroupProject = await Project.findOne({
+    periodId,
+    groupId: { $in: groupIds },
+    status: { $ne: 'cancelled' },
+  });
+  if (activeGroupProject) {
+    throw { status: 400, message: 'Sinh viên thuộc nhóm đang thực hiện dự án hoạt động, không thể xóa khỏi danh sách.' };
   }
 
-  rosterEntry.status = 'removed';
-  await rosterEntry.save();
+  const activeGroupTopic = await ProjectTopic.findOne({
+    periodId,
+    groupId: { $in: groupIds },
+    status: { $in: ['submitted', 'approved', 'assigned', 'locked', 'changed'] },
+  });
+  if (activeGroupTopic) {
+    throw { status: 400, message: 'Sinh viên thuộc nhóm có đề tài hoạt động, không thể xóa khỏi danh sách.' };
+  }
+};
+
+const removeStudentFromRoster = async (periodId, studentId, actorId) => {
+  const rosterEntry = await prisma.projectRoster.findUnique({
+    where: {
+      periodId_studentId: {
+        periodId: toId(periodId),
+        studentId: toId(studentId),
+      },
+    },
+  });
+
+  if (!rosterEntry) {
+    throw { status: 404, message: 'Không tìm thấy sinh viên trong danh sách học phần đồ án.' };
+  }
+
+  if (rosterEntry.status === 'removed') {
+    throw { status: 400, message: 'Sinh viên đã được rút tên trước đó.' };
+  }
+
+  await assertStudentCanBeRemoved(toId(periodId), toId(studentId));
+
+  const updatedRoster = await prisma.projectRoster.update({
+    where: { id: rosterEntry.id },
+    data: { status: 'removed' },
+  });
+
+  await mirrorRoster(updatedRoster);
 
   await logWorkflowEvent({
-    entityId: periodId,
+    entityId: toId(periodId),
     fromStatus: 'active',
     toStatus: 'removed',
     actorId,
@@ -291,48 +439,89 @@ const removeStudentFromRoster = async (periodId, studentId, actorId) => {
     reason: `Xóa sinh viên ID ${studentId} khỏi danh sách đợt đồ án`,
   });
 
-  return rosterEntry;
+  return toPublicRoster(updatedRoster);
 };
 
 const updateRosterEntry = async (periodId, studentId, updates, actorId) => {
   const { classSection, fullName, studentCode } = updates;
 
-  const rosterEntry = await ProjectRoster.findOne({ periodId, studentId, status: 'active' });
-  if (!rosterEntry) {
+  const rosterEntry = await prisma.projectRoster.findUnique({
+    where: {
+      periodId_studentId: {
+        periodId: toId(periodId),
+        studentId: toId(studentId),
+      },
+    },
+  });
+  if (!rosterEntry || rosterEntry.status !== 'active') {
     throw { status: 404, message: 'Không tìm thấy sinh viên trong danh sách đợt đồ án.' };
   }
 
-  const student = await Student.findById(studentId);
+  const student = await prisma.student.findFirst({
+    where: {
+      id: toId(studentId),
+      isDeleted: false,
+    },
+  });
   if (!student) {
     throw { status: 404, message: 'Không tìm thấy hồ sơ sinh viên.' };
   }
 
-  const user = await User.findById(student.userId);
+  const user = await prisma.user.findFirst({
+    where: {
+      id: student.userId,
+      isDeleted: false,
+    },
+  });
   if (!user) {
     throw { status: 404, message: 'Không tìm thấy tài khoản sinh viên.' };
   }
 
-  // Check studentCode uniqueness if changing
+  const studentUpdate = {};
   if (studentCode && studentCode.trim() !== student.studentCode) {
-    const existing = await Student.findOne({ studentCode: studentCode.trim() });
+    const trimmedCode = studentCode.trim();
+    const existing = await prisma.student.findFirst({
+      where: {
+        studentCode: trimmedCode,
+        isDeleted: false,
+      },
+    });
     if (existing) {
-      throw { status: 409, message: `Mã sinh viên "${studentCode.trim()}" đã tồn tại trong hệ thống.` };
+      throw { status: 409, message: `Mã sinh viên "${trimmedCode}" đã tồn tại trong hệ thống.` };
     }
-    student.studentCode = studentCode.trim();
+    studentUpdate.studentCode = trimmedCode;
   }
 
+  const userUpdate = {};
   if (fullName && fullName.trim()) {
-    user.fullName = fullName.trim();
+    userUpdate.fullName = fullName.trim();
   }
 
+  const rosterUpdate = {};
   if (classSection && classSection.trim()) {
-    rosterEntry.classSection = classSection.trim();
+    rosterUpdate.classSection = classSection.trim();
   }
 
-  await Promise.all([student.save(), user.save(), rosterEntry.save()]);
+  const [updatedStudent, updatedUser, updatedRoster] = await prisma.$transaction([
+    Object.keys(studentUpdate).length
+      ? prisma.student.update({ where: { id: student.id }, data: studentUpdate })
+      : prisma.student.findUnique({ where: { id: student.id } }),
+    Object.keys(userUpdate).length
+      ? prisma.user.update({ where: { id: user.id }, data: userUpdate })
+      : prisma.user.findUnique({ where: { id: user.id } }),
+    Object.keys(rosterUpdate).length
+      ? prisma.projectRoster.update({ where: { id: rosterEntry.id }, data: rosterUpdate })
+      : prisma.projectRoster.findUnique({ where: { id: rosterEntry.id } }),
+  ]);
+
+  await Promise.all([
+    mirrorUser(updatedUser),
+    mirrorStudent(updatedStudent),
+    mirrorRoster(updatedRoster),
+  ]);
 
   await logWorkflowEvent({
-    entityId: periodId,
+    entityId: toId(periodId),
     fromStatus: '',
     toStatus: 'updated',
     actorId,
@@ -340,7 +529,7 @@ const updateRosterEntry = async (periodId, studentId, updates, actorId) => {
     reason: `Cập nhật thông tin sinh viên ID ${studentId} trong danh sách`,
   });
 
-  return rosterEntry;
+  return toPublicRoster(updatedRoster, updatedStudent, updatedUser);
 };
 
 module.exports = {

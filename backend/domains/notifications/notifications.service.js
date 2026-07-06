@@ -1,9 +1,18 @@
-const Notification = require('../../models/Notification');
+const mongoose = require('mongoose');
+const prisma = require('../../config/prisma');
+
+const newObjectId = () => new mongoose.Types.ObjectId().toString();
+
+const toPublicNotification = (notification) => {
+  if (!notification) return null;
+  return {
+    ...notification,
+    _id: notification.id,
+  };
+};
 
 const createNotification = async (data) => {
-  const { recipientId, type, title, body, entityType, entityId, actionUrl, deadlineAt } = data;
-
-  const notification = new Notification({
+  const {
     recipientId,
     type,
     title,
@@ -12,68 +21,111 @@ const createNotification = async (data) => {
     entityId,
     actionUrl,
     deadlineAt,
+  } = data;
+
+  const id = newObjectId();
+  const notification = await prisma.notification.create({
+    data: {
+      id,
+      mongoId: id,
+      recipientId: recipientId.toString(),
+      type,
+      title,
+      body,
+      entityType: entityType || null,
+      entityId: entityId ? entityId.toString() : null,
+      actionUrl: actionUrl || null,
+      deadlineAt: deadlineAt ? new Date(deadlineAt) : null,
+    },
   });
 
-  const savedNotification = await notification.save();
+  const publicNotification = toPublicNotification(notification);
 
   try {
     const socketIoHolder = require('../../config/socket-io-holder');
     const io = socketIoHolder.getIo();
     if (io) {
-      io.to(`user:${recipientId}`).emit('notification:new', savedNotification);
+      io.to(`user:${recipientId}`).emit('notification:new', publicNotification);
     }
   } catch (error) {
     console.error('Lỗi khi phát sự kiện socket thông báo:', error.message);
   }
 
-  return savedNotification;
+  return publicNotification;
 };
 
 const getNotifications = async (recipientId) => {
-  return await Notification.find({ recipientId, isDeleted: false }).sort({ createdAt: -1 });
+  const notifications = await prisma.notification.findMany({
+    where: {
+      recipientId: recipientId.toString(),
+      isDeleted: false,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  return notifications.map(toPublicNotification);
 };
 
-const markAsRead = async (id, recipientId) => {
-  const notification = await Notification.findOne({ _id: id, isDeleted: false });
+const findOwnedNotification = async (id, recipientId) => {
+  const notification = await prisma.notification.findFirst({
+    where: {
+      id,
+      isDeleted: false,
+    },
+  });
+
   if (!notification) {
     throw { status: 404, message: 'Thông báo không tồn tại.' };
   }
 
-  if (notification.recipientId.toString() !== recipientId.toString()) {
+  if (notification.recipientId !== recipientId.toString()) {
     throw { status: 403, message: 'Quyền truy cập bị từ chối: Bạn không sở hữu thông báo này.' };
   }
 
-  notification.readAt = new Date();
-  return await notification.save();
+  return notification;
+};
+
+const markAsRead = async (id, recipientId) => {
+  await findOwnedNotification(id, recipientId);
+
+  const notification = await prisma.notification.update({
+    where: { id },
+    data: { readAt: new Date() },
+  });
+
+  return toPublicNotification(notification);
 };
 
 const markAllAsRead = async (recipientId) => {
-  await Notification.updateMany(
-    { recipientId, isDeleted: false, readAt: { $exists: false } },
-    { $set: { readAt: new Date() } }
-  );
-  // Also handle null case if any
-  await Notification.updateMany(
-    { recipientId, isDeleted: false, readAt: null },
-    { $set: { readAt: new Date() } }
-  );
+  await prisma.notification.updateMany({
+    where: {
+      recipientId: recipientId.toString(),
+      isDeleted: false,
+      readAt: null,
+    },
+    data: {
+      readAt: new Date(),
+    },
+  });
+
   return { success: true, message: 'Đã đánh dấu đọc toàn bộ thông báo.' };
 };
 
 const deleteNotification = async (id, recipientId) => {
-  const notification = await Notification.findOne({ _id: id, isDeleted: false });
-  if (!notification) {
-    throw { status: 404, message: 'Thông báo không tồn tại.' };
-  }
+  await findOwnedNotification(id, recipientId);
 
-  if (notification.recipientId.toString() !== recipientId.toString()) {
-    throw { status: 403, message: 'Quyền truy cập bị từ chối: Bạn không sở hữu thông báo này.' };
-  }
+  const notification = await prisma.notification.update({
+    where: { id },
+    data: {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: recipientId.toString(),
+    },
+  });
 
-  notification.isDeleted = true;
-  notification.deletedAt = new Date();
-  notification.deletedBy = recipientId;
-  return await notification.save();
+  return toPublicNotification(notification);
 };
 
 module.exports = {

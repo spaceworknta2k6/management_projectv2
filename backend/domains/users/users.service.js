@@ -1,122 +1,138 @@
-const User = require('../../models/User');
-const Student = require('../../models/Student');
-const Lecturer = require('../../models/Lecturer');
+const prisma = require('../../config/prisma');
 
-/**
- * Lấy danh sách toàn bộ tài khoản có phân trang, tìm kiếm và bộ lọc
- */
-const getUsers = async ({ search = '', role = '', status = '', page = 1, limit = 10 }) => {
-  const query = { isDeleted: false };
+const VALID_ROLES = ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'LECTURER', 'STUDENT'];
+const VALID_STATUSES = ['active', 'inactive', 'locked'];
 
-  // Tìm kiếm theo tên hoặc email (không phân biệt hoa thường)
-  if (search) {
-    query.$or = [
-      { fullName: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-    ];
-  }
-
-  // Lọc theo vai trò (roles là array)
-  if (role) {
-    query.roles = role;
-  }
-
-  // Lọc theo trạng thái
-  if (status) {
-    query.status = status;
-  }
-
-  const skip = (page - 1) * limit;
-
-  const [users, total] = await Promise.all([
-    User.find(query)
-      .select('-passwordHash') // Không trả về password hash vì lý do bảo mật
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    User.countDocuments(query),
-  ]);
-
+const toPublicUser = (user) => {
+  if (!user) return null;
+  const { passwordHash, ...publicUser } = user;
   return {
-    users,
-    total,
-    page: Number(page),
-    pages: Math.ceil(total / limit),
+    ...publicUser,
+    _id: user.id,
   };
 };
 
-/**
- * Cập nhật vai trò (Roles) cho tài khoản
- */
-const updateUserRole = async (userId, roles) => {
-  const VALID_ROLES = ['SYSTEM_ADMIN', 'FACULTY_STAFF', 'LECTURER', 'STUDENT'];
-  
+const buildUserWhere = ({ search = '', role = '', status = '' }) => {
+  const where = { isDeleted: false };
+
+  if (search) {
+    where.OR = [
+      { fullName: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  if (role) {
+    where.roles = { has: role };
+  }
+
+  if (status) {
+    where.status = status;
+  }
+
+  return where;
+};
+
+const getUsers = async ({ search = '', role = '', status = '', page = 1, limit = 10 }) => {
+  const safePage = Number(page) > 0 ? Number(page) : 1;
+  const safeLimit = Number(limit) > 0 ? Number(limit) : 10;
+  const where = buildUserWhere({ search, role, status });
+  const skip = (safePage - 1) * safeLimit;
+
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: safeLimit,
+    }),
+    prisma.user.count({ where }),
+  ]);
+
+  return {
+    users: users.map(toPublicUser),
+    total,
+    page: safePage,
+    pages: Math.ceil(total / safeLimit),
+  };
+};
+
+const assertRoles = (roles) => {
   if (!Array.isArray(roles) || roles.length === 0) {
     throw { status: 400, message: 'Danh sách vai trò không hợp lệ.' };
   }
 
-  const invalidRoles = roles.filter(r => !VALID_ROLES.includes(r));
+  const invalidRoles = roles.filter((role) => !VALID_ROLES.includes(role));
   if (invalidRoles.length > 0) {
     throw { status: 400, message: `Vai trò không hợp lệ: ${invalidRoles.join(', ')}` };
   }
+};
 
-  const user = await User.findById(userId);
-  if (!user || user.isDeleted) {
+const findExistingUser = async (userId) => {
+  const user = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      isDeleted: false,
+    },
+  });
+
+  if (!user) {
     throw { status: 404, message: 'Tài khoản không tồn tại hoặc đã bị xóa.' };
   }
 
-  user.roles = roles;
-  await user.save();
   return user;
 };
 
-/**
- * Cập nhật trạng thái (ban/unban/inactive)
- */
-const updateUserStatus = async (userId, status) => {
-  const VALID_STATUSES = ['active', 'inactive', 'locked'];
+const updateUserRole = async (userId, roles) => {
+  assertRoles(roles);
+  await findExistingUser(userId);
 
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { roles },
+  });
+
+  return toPublicUser(user);
+};
+
+const updateUserStatus = async (userId, status) => {
   if (!VALID_STATUSES.includes(status)) {
     throw { status: 400, message: 'Trạng thái không hợp lệ.' };
   }
 
-  const user = await User.findById(userId);
-  if (!user || user.isDeleted) {
-    throw { status: 404, message: 'Tài khoản không tồn tại hoặc đã bị xóa.' };
-  }
+  await findExistingUser(userId);
 
-  user.status = status;
-  await user.save();
-  return user;
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { status },
+  });
+
+  return toPublicUser(user);
 };
 
-/**
- * Soft-delete tài khoản
- */
 const deleteUser = async (userId, deletedByUserId) => {
-  const user = await User.findById(userId);
-  if (!user || user.isDeleted) {
-    throw { status: 404, message: 'Tài khoản không tồn tại hoặc đã bị xóa.' };
-  }
+  await findExistingUser(userId);
 
   const deletedAt = new Date();
-  user.isDeleted = true;
-  user.deletedAt = deletedAt;
-  if (deletedByUserId) {
-    user.deletedBy = deletedByUserId;
-  }
-  await user.save();
-
-  // Soft-delete profile tương ứng nếu có
   const updatePayload = {
     isDeleted: true,
     deletedAt,
     ...(deletedByUserId && { deletedBy: deletedByUserId }),
   };
 
-  await Promise.all([
-    Student.findOneAndUpdate({ userId: user._id }, updatePayload),
-    Lecturer.findOneAndUpdate({ userId: user._id }, updatePayload),
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: updatePayload,
+    }),
+    prisma.student.updateMany({
+      where: { userId },
+      data: updatePayload,
+    }),
+    prisma.lecturer.updateMany({
+      where: { userId },
+      data: updatePayload,
+    }),
   ]);
 
   return { success: true, message: 'Tài khoản đã được xóa thành công.' };

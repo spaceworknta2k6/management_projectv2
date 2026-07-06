@@ -1,5 +1,43 @@
 const EvaluationRubric = require('../../models/EvaluationRubric');
 const ProjectPeriod = require('../../models/ProjectPeriod');
+const prisma = require('../../config/prisma');
+
+const toId = (value) => (value ? value.toString() : null);
+
+const toPrismaRubricData = (rubric) => {
+  const source = typeof rubric.toObject === 'function' ? rubric.toObject() : rubric;
+  return {
+    id: toId(source._id),
+    mongoId: toId(source._id),
+    name: source.name,
+    description: source.description || '',
+    version: source.version,
+    criteria: source.criteria || {},
+    isDeleted: Boolean(source.isDeleted),
+    deletedAt: source.deletedAt || null,
+    deletedBy: toId(source.deletedBy),
+    createdAt: source.createdAt || new Date(),
+    updatedAt: source.updatedAt || new Date(),
+  };
+};
+
+const syncPrismaRubric = async (rubric) => {
+  const data = toPrismaRubricData(rubric);
+  await prisma.evaluationRubric.upsert({
+    where: { mongoId: data.mongoId },
+    create: data,
+    update: {
+      name: data.name,
+      description: data.description,
+      version: data.version,
+      criteria: data.criteria,
+      isDeleted: data.isDeleted,
+      deletedAt: data.deletedAt,
+      deletedBy: data.deletedBy,
+      updatedAt: data.updatedAt,
+    },
+  });
+};
 
 const createRubric = async (data, user) => {
   const rubric = new EvaluationRubric({
@@ -7,7 +45,9 @@ const createRubric = async (data, user) => {
     createdBy: user._id,
     updatedBy: user._id,
   });
-  return await rubric.save();
+  const saved = await rubric.save();
+  await syncPrismaRubric(saved);
+  return saved;
 };
 
 const getRubrics = async (query = {}) => {
@@ -43,7 +83,9 @@ const updateRubric = async (id, data, user) => {
     }
   rubric.updatedBy = user._id;
 
-  return await rubric.save();
+  const saved = await rubric.save();
+  await syncPrismaRubric(saved);
+  return saved;
 };
 
 const deleteRubric = async (id, user) => {
@@ -62,7 +104,9 @@ const deleteRubric = async (id, user) => {
   rubric.deletedAt = new Date();
   rubric.deletedBy = user._id;
 
-  return await rubric.save();
+  const saved = await rubric.save();
+  await syncPrismaRubric(saved);
+  return saved;
 };
 
 module.exports = {

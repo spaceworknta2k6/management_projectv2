@@ -85,6 +85,8 @@ const runIntegrationTests = async () => {
 
       await Lecturer.deleteMany({ lecturerCode: /^RC-APPEAL-/ });
       await User.deleteMany({ email: RECHECK_EMAIL });
+      const prisma = require('../config/prisma');
+      await prisma.user.deleteMany({ where: { email: RECHECK_EMAIL } });
 
       const passwordHash = await bcrypt.hash('password123', 10);
       const recheckUser = await User.create({
@@ -94,6 +96,18 @@ const runIntegrationTests = async () => {
         roles: ['LECTURER'],
         status: 'active',
       });
+      await prisma.user.create({
+        data: {
+          id: recheckUser._id.toString(),
+          mongoId: recheckUser._id.toString(),
+          fullName: recheckUser.fullName,
+          email: recheckUser.email,
+          passwordHash: recheckUser.passwordHash,
+          roles: ['LECTURER'],
+          status: 'active',
+        }
+      });
+
       const recheckLecturer = await Lecturer.create({
         userId: recheckUser._id,
         lecturerCode: `RC-APPEAL-${Date.now()}`,
@@ -102,6 +116,19 @@ const runIntegrationTests = async () => {
         academicDegree: 'master',
         expertise: ['Recheck grading'],
         maxProjects: 10,
+      });
+      await prisma.lecturer.create({
+        data: {
+          id: recheckLecturer._id.toString(),
+          mongoId: recheckLecturer._id.toString(),
+          userId: recheckLecturer.userId.toString(),
+          lecturerCode: recheckLecturer.lecturerCode,
+          facultyId: recheckLecturer.facultyId ? recheckLecturer.facultyId.toString() : '',
+          departmentId: recheckLecturer.departmentId ? recheckLecturer.departmentId.toString() : '',
+          academicDegree: 'master',
+          expertise: ['Recheck grading'],
+          maxProjects: 10,
+        }
       });
 
       const oldPeriods = await ProjectPeriod.find({ name: TEST_PERIOD_NAME }).setOptions({ includeDeleted: true });
@@ -116,6 +143,14 @@ const runIntegrationTests = async () => {
         WorkflowEvent.deleteMany({ entityType: 'AppealRequest' }),
         ProjectPeriod.deleteMany({ _id: { $in: oldPeriodIds } }),
       ]);
+      const oldPeriodIdStrings = oldPeriodIds.map(id => id.toString());
+      await prisma.appealRequest.deleteMany({ where: { periodId: { in: oldPeriodIdStrings } } });
+      await prisma.finalGrade.deleteMany({ where: { periodId: { in: oldPeriodIdStrings } } });
+      await prisma.scoreSheet.deleteMany({ where: { periodId: { in: oldPeriodIdStrings } } });
+      await prisma.project.deleteMany({ where: { periodId: { in: oldPeriodIdStrings } } });
+      await prisma.projectTopic.deleteMany({ where: { periodId: { in: oldPeriodIdStrings } } });
+      await prisma.projectGroup.deleteMany({ where: { periodId: { in: oldPeriodIdStrings } } });
+      await prisma.projectPeriod.deleteMany({ where: { id: { in: oldPeriodIdStrings } } });
 
       const period = await ProjectPeriod.create({
         name: TEST_PERIOD_NAME,
@@ -140,6 +175,33 @@ const runIntegrationTests = async () => {
         scoringFormula: { supervisor: 0.5, reviewer: 0.5, recheck: 0.5 },
         status: 'in_progress',
       });
+      await prisma.projectPeriod.create({
+        data: {
+          id: period._id.toString(),
+          mongoId: period._id.toString(),
+          name: period.name,
+          schoolYear: period.schoolYear,
+          semester: period.semester,
+          type: period.type,
+          facultyId: period.facultyId.toString(),
+          departmentId: period.departmentId.toString(),
+          registrationStart: period.registrationStart,
+          registrationEnd: period.registrationEnd,
+          projectStart: period.projectStart,
+          projectEnd: period.projectEnd,
+          topicChangeDeadline: period.topicChangeDeadline,
+          finalSubmissionDeadline: period.finalSubmissionDeadline,
+          gradingStart: period.gradingStart,
+          gradingEnd: period.gradingEnd,
+          revisionDeadline: period.revisionDeadline,
+          archiveDeadline: period.archiveDeadline,
+          minGroupSize: period.minGroupSize,
+          maxGroupSize: period.maxGroupSize,
+          rubricVersion: period.rubricVersion,
+          scoringFormula: JSON.parse(JSON.stringify(period.scoringFormula || {})),
+          status: 'in_progress',
+        }
+      });
 
       const group = await ProjectGroup.create({
         periodId: period._id,
@@ -147,6 +209,17 @@ const runIntegrationTests = async () => {
         leaderStudentId: student._id,
         members: [{ studentId: student._id, role: 'LEADER', status: 'accepted', contributionWeight: 1 }],
         status: 'locked',
+      });
+      await prisma.projectGroup.create({
+        data: {
+          id: group._id.toString(),
+          mongoId: group._id.toString(),
+          periodId: group.periodId.toString(),
+          name: group.name,
+          leaderStudentId: group.leaderStudentId.toString(),
+          members: JSON.parse(JSON.stringify(group.members)),
+          status: group.status,
+        }
       });
 
       const topic = await ProjectTopic.create({
@@ -164,6 +237,25 @@ const runIntegrationTests = async () => {
         departmentId: period.departmentId,
         status: 'assigned',
       });
+      await prisma.projectTopic.create({
+        data: {
+          id: topic._id.toString(),
+          mongoId: topic._id.toString(),
+          periodId: topic.periodId.toString(),
+          groupId: topic.groupId.toString(),
+          proposedByStudentId: topic.proposedByStudentId.toString(),
+          title: topic.title,
+          summary: topic.summary,
+          objectives: topic.objectives,
+          scope: topic.scope,
+          expectedResult: topic.expectedResult,
+          plan: topic.plan,
+          proposedSupervisorId: topic.proposedSupervisorId.toString(),
+          supervisorId: topic.supervisorId.toString(),
+          departmentId: topic.departmentId.toString(),
+          status: topic.status,
+        }
+      });
 
       const project = await Project.create({
         periodId: period._id,
@@ -173,6 +265,20 @@ const runIntegrationTests = async () => {
         supervisorId: supervisor._id,
         reviewerId: reviewer._id,
         status: 'ready_for_grading',
+      });
+      await prisma.project.create({
+        data: {
+          id: project._id.toString(),
+          mongoId: project._id.toString(),
+          periodId: project.periodId.toString(),
+          ownerType: project.ownerType,
+          ownerId: project.groupId.toString(),
+          groupId: project.groupId.toString(),
+          topicId: project.topicId.toString(),
+          supervisorId: project.supervisorId.toString(),
+          reviewerId: project.reviewerId.toString(),
+          status: project.status,
+        }
       });
 
       const [studentToken, supervisorToken, reviewerToken, staffToken, recheckToken] = await Promise.all([
@@ -345,6 +451,22 @@ const runIntegrationTests = async () => {
           ],
         });
         await User.deleteMany({ email: RECHECK_EMAIL });
+
+        const prisma = require('../config/prisma');
+        const recheckUserIds = recheckUsers.map(user => user._id.toString());
+        await prisma.lecturer.deleteMany({
+          where: {
+            OR: [
+              { lecturerCode: { startsWith: 'RC-APPEAL-' } },
+              { userId: { in: recheckUserIds } }
+            ]
+          }
+        });
+        await prisma.user.deleteMany({
+          where: {
+            email: RECHECK_EMAIL
+          }
+        });
         await mongoose.disconnect();
         console.log('MongoDB connection closed.');
         process.exit(process.exitCode || 0);

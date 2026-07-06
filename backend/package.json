@@ -11,9 +11,28 @@
     "dev": "nodemon app.js",
     "test": "node tests/run-all.js",
     "test:integration": "node tests/run-all.js",
-    "test:env": "node tests/check-test-env.js"
+    "test:env": "node tests/check-test-env.js",
+    "db:validate": "prisma validate",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "db:studio": "prisma studio",
+    "db:migrate:auth-data": "node scripts/migrate-auth-to-postgres.js",
+    "db:migrate:notifications": "node scripts/migrate-notifications-to-postgres.js",
+    "db:migrate:workflow-events": "node scripts/migrate-workflow-events-to-postgres.js",
+    "db:migrate:periods-rosters": "node scripts/migrate-periods-rosters-to-postgres.js",
+    "db:migrate:groups": "node scripts/migrate-groups-to-postgres.js",
+    "db:migrate:topics-projects": "node scripts/migrate-topics-projects-to-postgres.js",
+    "db:migrate:milestones": "node scripts/migrate-milestones-to-postgres.js",
+    "db:migrate:submissions": "node scripts/migrate-submissions-to-postgres.js",
+    "db:migrate:scores": "node scripts/migrate-scores-to-postgres.js",
+    "db:migrate:appeals": "node scripts/migrate-appeals-to-postgres.js",
+    "db:migrate:extensions": "node scripts/migrate-extensions-to-postgres.js",
+    "db:migrate:topic-changes": "node scripts/migrate-topic-changes-to-postgres.js",
+    "db:migrate:chat": "node scripts/migrate-chat-to-postgres.js"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -23,6 +42,8 @@
     "mammoth": "^1.12.0",
     "mongoose": "^9.6.3",
     "multer": "^2.1.1",
+    "pg": "^8.22.0",
+    "prisma": "^7.8.0",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

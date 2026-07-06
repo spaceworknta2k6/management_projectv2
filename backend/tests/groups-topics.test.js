@@ -114,6 +114,39 @@ const runIntegrationTests = async () => {
       }
       console.log(`Resolved ProjectPeriod ID: ${period._id} (Status: ${period.status})`);
 
+      const prisma = require('../config/prisma');
+      await prisma.projectPeriod.upsert({
+        where: { id: period._id.toString() },
+        create: {
+          id: period._id.toString(),
+          mongoId: period._id.toString(),
+          name: period.name,
+          schoolYear: period.schoolYear,
+          semester: period.semester,
+          type: period.type,
+          facultyId: period.facultyId ? period.facultyId.toString() : null,
+          departmentId: period.departmentId ? period.departmentId.toString() : null,
+          registrationStart: period.registrationStart,
+          registrationEnd: period.registrationEnd,
+          projectStart: period.projectStart,
+          projectEnd: period.projectEnd,
+          topicChangeDeadline: period.topicChangeDeadline,
+          finalSubmissionDeadline: period.finalSubmissionDeadline,
+          gradingStart: period.gradingStart,
+          gradingEnd: period.gradingEnd,
+          revisionDeadline: period.revisionDeadline,
+          archiveDeadline: period.archiveDeadline,
+          minGroupSize: period.minGroupSize,
+          maxGroupSize: period.maxGroupSize,
+          rubricVersion: period.rubricVersion,
+          scoringFormula: period.scoringFormula || {},
+          status: 'registration_open',
+        },
+        update: {
+          status: 'registration_open',
+        }
+      });
+
       // Register both students in the Period Roster if they aren't already
       await ProjectRoster.findOneAndUpdate(
         { periodId: period._id, studentId: student1Profile._id },
@@ -125,12 +158,63 @@ const runIntegrationTests = async () => {
         { classSection: 'IT4911', status: 'active', importedBy: staffUser._id },
         { upsert: true, returnDocument: 'after' }
       );
+
+      // Upsert ProjectRoster in Postgres for student 1
+      await prisma.projectRoster.upsert({
+        where: {
+          periodId_studentId: {
+            periodId: period._id.toString(),
+            studentId: student1Profile._id.toString(),
+          }
+        },
+        create: {
+          id: new mongoose.Types.ObjectId().toString(),
+          periodId: period._id.toString(),
+          studentId: student1Profile._id.toString(),
+          classSection: 'IT4911',
+          status: 'active',
+          importedBy: staffUser._id.toString(),
+        },
+        update: {
+          status: 'active',
+        }
+      });
+
+      // Upsert ProjectRoster in Postgres for student 2
+      await prisma.projectRoster.upsert({
+        where: {
+          periodId_studentId: {
+            periodId: period._id.toString(),
+            studentId: student2Profile._id.toString(),
+          }
+        },
+        create: {
+          id: new mongoose.Types.ObjectId().toString(),
+          periodId: period._id.toString(),
+          studentId: student2Profile._id.toString(),
+          classSection: 'IT4911',
+          status: 'active',
+          importedBy: staffUser._id.toString(),
+        },
+        update: {
+          status: 'active',
+        }
+      });
       console.log('✅ Registered both students in the Active Project Roster.');
 
       // Clean up previous runs
       await ProjectGroup.deleteMany({ periodId: period._id });
       await ProjectTopic.deleteMany({ periodId: period._id });
       await Project.deleteMany({ periodId: period._id });
+      await prisma.projectGroup.deleteMany({
+        where: { periodId: period._id.toString() }
+      });
+      await prisma.projectTopic.deleteMany({
+        where: { periodId: period._id.toString() }
+      });
+      await prisma.project.deleteMany({
+        where: { periodId: period._id.toString() }
+      });
       console.log('✅ Cleaned up old group/topic/project documents for this period.');
 
       // 2. Login operations

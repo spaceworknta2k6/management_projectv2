@@ -85,7 +85,7 @@ export function useTopics(initialActiveTab = 'all') {
   const handleSubmitTopic = async (e) => {
     e.preventDefault();
     if (!form.title.trim() || !form.periodId || !form.summary.trim()) {
-      toast.error('Vui long nhap day du hoc phan, ten de tai va tom tat noi dung.');
+      toast.error('Vui lòng nhập đầy đủ học phần, tên đề tài và tóm tắt nội dung.');
       return;
     }
 
@@ -113,18 +113,18 @@ export function useTopics(initialActiveTab = 'all') {
 
         if (editingTopicId) {
           await api.put(`/topics/${editingTopicId}`, lecturerPayload, token);
-          toast.success('Cap nhat de tai thanh cong!');
+          toast.success('Cập nhật đề tài thành công!');
         } else {
           await api.post('/topics/lecturer', lecturerPayload, token);
-          toast.success('Tao de tai giang vien thanh cong!');
+          toast.success('Tạo đề tài giảng viên thành công!');
         }
       } else {
         if (!form.proposedSupervisorEmail?.trim()) {
-          toast.error('Vui long nhap email giang vien huong dan de xuat.');
+          toast.error('Vui lòng nhập email giảng viên hướng dẫn đề xuất.');
           return;
         }
         if (form.ownerType === 'group' && !form.groupId) {
-          toast.error('Vui long chon nhom khi dang ky de tai theo nhom.');
+          toast.error('Vui lòng chọn nhóm khi đăng ký đề tài theo nhóm.');
           return;
         }
 
@@ -137,10 +137,10 @@ export function useTopics(initialActiveTab = 'all') {
 
         if (editingTopicId) {
           await api.put(`/topics/${editingTopicId}`, studentPayload, token);
-          toast.success('Cap nhat de xuat de tai thanh cong!');
+          toast.success('Cập nhật đề xuất đề tài thành công!');
         } else {
           await api.post('/topics', studentPayload, token);
-          toast.success('De xuat de tai thanh cong! Cho duyet chuyen mon.');
+          toast.success('Đề xuất đề tài thành công! Chờ duyệt chuyên môn.');
         }
       }
 
@@ -177,7 +177,7 @@ export function useTopics(initialActiveTab = 'all') {
   const handleApprove = async (id) => {
     try {
       await api.post(`/topics/${id}/approve`, {}, token);
-      toast.success('Da phe duyet de tai thanh cong!');
+      toast.success('Đã phê duyệt đề tài thành công!');
       loadData();
     } catch (err) {
       handleApiError(err, toast);
@@ -187,7 +187,7 @@ export function useTopics(initialActiveTab = 'all') {
   const handleReject = async (id) => {
     try {
       await api.post(`/topics/${id}/reject`, {}, token);
-      toast.success('Da tu choi de tai.');
+      toast.success('Đã từ chối đề tài.');
       loadData();
     } catch (err) {
       handleApiError(err, toast);
@@ -197,7 +197,7 @@ export function useTopics(initialActiveTab = 'all') {
   const handleRequestRevision = async (id) => {
     try {
       await api.post(`/topics/${id}/request-revision`, {}, token);
-      toast.success('Da gui yeu cau chinh sua de tai.');
+      toast.success('Đã gửi yêu cầu chỉnh sửa đề tài.');
       loadData();
     } catch (err) {
       handleApiError(err, toast);
@@ -208,9 +208,9 @@ export function useTopics(initialActiveTab = 'all') {
     try {
       const res = await api.post(`/topics/${id}/cancel`, {}, token);
       const counts = res.data?.cancelledProjects
-        ? ` Da huy ${res.data.cancelledProjects} du an lien ket.`
+        ? ` Đã huỷ ${res.data.cancelledProjects} dự án liên kết.`
         : '';
-      toast.success(`${res.message || 'Da huy de tai.'}${counts}`);
+      toast.success(`${res.message || 'Đã huỷ đề tài.'}${counts}`);
       loadData();
       return true;
     } catch (err) {
@@ -226,7 +226,7 @@ export function useTopics(initialActiveTab = 'all') {
         ...(ownerType === 'group' ? { groupId } : {}),
       };
       await api.post(`/topics/${topicId}/register`, payload, token);
-      toast.success('Dang ky de tai thanh cong!');
+      toast.success('Đăng ký đề tài thành công!');
       loadData();
       return true;
     } catch (err) {
@@ -238,7 +238,7 @@ export function useTopics(initialActiveTab = 'all') {
   const handlePublishTopic = async (id) => {
     try {
       await api.post(`/topics/${id}/publish`, {}, token);
-      toast.success('Da cong khai de tai thanh cong!');
+      toast.success('Đã công khai đề tài thành công!');
       loadData();
     } catch (err) {
       handleApiError(err, toast);
@@ -248,7 +248,7 @@ export function useTopics(initialActiveTab = 'all') {
   const handleUnpublishTopic = async (id) => {
     try {
       await api.post(`/topics/${id}/unpublish`, {}, token);
-      toast.success('Da rut de tai khoi danh sach cong khai.');
+      toast.success('Đã rút đề tài khỏi danh sách công khai.');
       loadData();
     } catch (err) {
       handleApiError(err, toast);

@@ -177,7 +177,7 @@ const runIntegrationTests = async () => {
       if (!addSingleResult.success || !addSingleResult.data._id) {
         throw new Error('❌ Test 5 Failed: Single student registration failed.');
       }
-      const singleStudentId = addSingleResult.data._id;
+      const singleStudentId = addSingleResult.data.studentId._id || addSingleResult.data.studentId.id || addSingleResult.data.studentId;
       console.log(`✅ Test 5 Passed: Single student Trần Đức Việt successfully registered with Student ID ${singleStudentId}.`);
 
       // 7. Check total roster entries now (should be 3)

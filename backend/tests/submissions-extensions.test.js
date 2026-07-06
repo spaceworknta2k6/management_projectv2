@@ -45,6 +45,7 @@ const runIntegrationTests = async () => {
       if (!staffUser) throw new Error('❌ Staff Lê Thị Hương not found.');
 
       // Find or create Project Period
+      // Find or create Project Period
       let period = await ProjectPeriod.findOne({ name: 'Đợt Đồ Án Tốt Nghiệp Kỳ 2025.2' });
       if (!period) {
         period = await ProjectPeriod.create({
@@ -72,17 +73,72 @@ const runIntegrationTests = async () => {
         });
       }
 
+      const prisma = require('../config/prisma');
+      await prisma.projectPeriod.upsert({
+        where: { id: period._id.toString() },
+        create: {
+          id: period._id.toString(),
+          mongoId: period._id.toString(),
+          name: period.name,
+          schoolYear: period.schoolYear,
+          semester: period.semester,
+          type: period.type,
+          facultyId: period.facultyId ? period.facultyId.toString() : null,
+          departmentId: period.departmentId ? period.departmentId.toString() : null,
+          registrationStart: period.registrationStart,
+          registrationEnd: period.registrationEnd,
+          projectStart: period.projectStart,
+          projectEnd: period.projectEnd,
+          topicChangeDeadline: period.topicChangeDeadline,
+          finalSubmissionDeadline: period.finalSubmissionDeadline,
+          gradingStart: period.gradingStart,
+          gradingEnd: period.gradingEnd,
+          revisionDeadline: period.revisionDeadline,
+          archiveDeadline: period.archiveDeadline,
+          minGroupSize: period.minGroupSize,
+          maxGroupSize: period.maxGroupSize,
+          rubricVersion: period.rubricVersion,
+          scoringFormula: period.scoringFormula || {},
+          status: 'in_progress',
+        },
+        update: {
+          status: 'in_progress',
+        }
+      });
+
       // Register student in roster
       await ProjectRoster.findOneAndUpdate(
         { periodId: period._id, studentId: studentProfile._id },
         { classSection: 'IT4911', status: 'active', importedBy: staffUser._id },
         { upsert: true }
       );
+      await prisma.projectRoster.upsert({
+        where: {
+          periodId_studentId: {
+            periodId: period._id.toString(),
+            studentId: studentProfile._id.toString(),
+          }
+        },
+        create: {
+          id: new mongoose.Types.ObjectId().toString(),
+          periodId: period._id.toString(),
+          studentId: studentProfile._id.toString(),
+          classSection: 'IT4911',
+          status: 'active',
+          importedBy: staffUser._id.toString(),
+        },
+        update: {
+          status: 'active',
+        }
+      });
 
       // Clean up previous runs
       await ProjectGroup.deleteMany({ periodId: period._id });
       await ProjectTopic.deleteMany({ periodId: period._id });
       await Project.deleteMany({ periodId: period._id });
+      await prisma.projectGroup.deleteMany({ where: { periodId: period._id.toString() } });
+      await prisma.projectTopic.deleteMany({ where: { periodId: period._id.toString() } });
+      await prisma.project.deleteMany({ where: { periodId: period._id.toString() } });
       console.log('✅ Cleaned up old database mock collections.');
 
       // Create valid Project Group
@@ -97,6 +153,17 @@ const runIntegrationTests = async () => {
           contributionWeight: 1.0
         }],
         status: 'locked'
+      });
+      await prisma.projectGroup.create({
+        data: {
+          id: group._id.toString(),
+          mongoId: group._id.toString(),
+          periodId: group.periodId.toString(),
+          name: group.name,
+          leaderStudentId: group.leaderStudentId.toString(),
+          members: group.members,
+          status: group.status,
+        }
       });
 
       // Create valid Topic
@@ -115,6 +182,25 @@ const runIntegrationTests = async () => {
         departmentId: period.departmentId,
         status: 'assigned'
       });
+      await prisma.projectTopic.create({
+        data: {
+          id: topic._id.toString(),
+          mongoId: topic._id.toString(),
+          periodId: topic.periodId.toString(),
+          groupId: topic.groupId.toString(),
+          proposedByStudentId: topic.proposedByStudentId.toString(),
+          title: topic.title,
+          summary: topic.summary,
+          objectives: topic.objectives,
+          scope: topic.scope,
+          expectedResult: topic.expectedResult,
+          plan: topic.plan,
+          proposedSupervisorId: topic.proposedSupervisorId.toString(),
+          supervisorId: topic.supervisorId.toString(),
+          departmentId: topic.departmentId.toString(),
+          status: topic.status,
+        }
+      });
 
       // Create official Project Workspace in in_progress
       const project = await Project.create({
@@ -124,12 +210,25 @@ const runIntegrationTests = async () => {
         supervisorId: supervisorLecturer._id,
         status: 'in_progress'
       });
+      await prisma.project.create({
+        data: {
+          id: project._id.toString(),
+          mongoId: project._id.toString(),
+          periodId: project.periodId.toString(),
+          groupId: project.groupId.toString(),
+          topicId: project.topicId.toString(),
+          supervisorId: project.supervisorId.toString(),
+          status: project.status,
+        }
+      });
       const projectId = project._id;
       console.log(`Prepared Project Workspace ID: ${projectId} (Status: ${project.status})`);
 
       // Clean up packages and extensions
       await SubmissionPackage.deleteMany({ ownerId: projectId });
       await ExtensionRequest.deleteMany({ projectId });
+      await prisma.submissionPackage.deleteMany({ where: { ownerId: projectId.toString() } });
+      await prisma.extensionRequest.deleteMany({ where: { projectId: projectId.toString() } });
 
       // Create active Milestone (which we will extend later!)
       const milestone = await Milestone.create({
@@ -138,6 +237,17 @@ const runIntegrationTests = async () => {
         description: 'Tài liệu báo cáo...',
         deadline: new Date('2026-06-10'),
         status: 'open'
+      });
+      await prisma.milestone.create({
+        data: {
+          id: milestone._id.toString(),
+          mongoId: milestone._id.toString(),
+          projectId: milestone.projectId.toString(),
+          title: milestone.title,
+          description: milestone.description,
+          deadline: milestone.deadline,
+          status: milestone.status,
+        }
       });
       const milestoneId = milestone._id;
       console.log(`Prepared Milestone ID: ${milestoneId} (Deadline: ${milestone.deadline.toISOString()})`);
