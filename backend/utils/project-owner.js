@@ -48,17 +48,6 @@ const normalizeOwner = (owner = {}) => {
   return null;
 };
 
-const buildOwnerFilter = ({ ownerType, ownerId } = {}) => {
-  if (!OWNER_TYPES.includes(ownerType) || !ownerId) {
-    return { _id: { $exists: false } };
-  }
-
-  return {
-    ownerType,
-    ownerId,
-  };
-};
-
 const resolveProjectOwner = (project) => normalizeOwner(project);
 
 const isStudentOwner = (owner, studentId) => {
@@ -125,7 +114,6 @@ const getOwnerDisplay = (owner) => {
 };
 
 module.exports = {
-  buildOwnerFilter,
   resolveProjectOwner,
   isStudentOwner,
   canAccessOwner,

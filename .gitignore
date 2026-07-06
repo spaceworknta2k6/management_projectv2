@@ -55,3 +55,8 @@ presentation_plan.md
 /projects/
 /reports/
 MANAGEMENT_PROJECT_GAP_ANALYSIS.md
+
+# Docker & Hugging Face deployment files
+backend/Dockerfile
+backend/.dockerignore
+backend/README.md
