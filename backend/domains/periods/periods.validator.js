@@ -1,6 +1,16 @@
 const { isObjectId } = require('../../utils/object-id');
 const { ACADEMIC_UNITS } = require('../../constants/academic-units');
 
+const VALID_SEMESTERS = ['1', '2', '3'];
+
+const normalizeSemester = (value) => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === '3' || raw === 'iii' || raw.includes('học kỳ iii') || raw.includes('hoc ky iii')) return '3';
+  if (raw === '2' || raw === 'ii' || raw.includes('học kỳ ii') || raw.includes('hoc ky ii')) return '2';
+  if (raw === '1' || raw === 'i' || raw.includes('học kỳ i') || raw.includes('hoc ky i')) return '1';
+  return String(value || '').trim();
+};
+
 const validatePeriodCreate = (req, res, next) => {
   const {
     name,
@@ -57,6 +67,13 @@ const validatePeriodCreate = (req, res, next) => {
   if (!semester || typeof semester !== 'string' || semester.trim() === '') {
     errors.push({ field: 'semester', code: 'SEMESTER_REQUIRED', message: 'Học kỳ là bắt buộc.' });
   }
+  if (semester && typeof semester === 'string' && semester.trim() !== '') {
+    req.body.semester = normalizeSemester(semester);
+    if (!VALID_SEMESTERS.includes(req.body.semester)) {
+      errors.push({ field: 'semester', code: 'SEMESTER_INVALID', message: 'Hoc ky chi duoc phep la 1, 2 hoac 3.' });
+    }
+  }
+
   const effectiveAcademicUnit = req.body.academicUnit;
   if (!effectiveAcademicUnit || !ACADEMIC_UNITS.includes(effectiveAcademicUnit)) {
     errors.push({ field: 'academicUnit', code: 'ACADEMIC_UNIT_INVALID', message: 'Khoa/đơn vị chuyên môn phụ trách không hợp lệ.' });
@@ -182,8 +199,15 @@ const validatePeriodCreate = (req, res, next) => {
 
 const validatePeriodUpdate = (req, res, next) => {
   // Supports partial updates but ensures updated dates are correct
-  const { minGroupSize, maxGroupSize, scoringFormula, rubricId, groupMinSize, groupMaxSize, academicUnit } = req.body;
+  const { minGroupSize, maxGroupSize, scoringFormula, rubricId, groupMinSize, groupMaxSize, academicUnit, semester } = req.body;
   const errors = [];
+
+  if (semester !== undefined) {
+    req.body.semester = normalizeSemester(semester);
+    if (!VALID_SEMESTERS.includes(req.body.semester)) {
+      errors.push({ field: 'semester', code: 'SEMESTER_INVALID', message: 'Hoc ky chi duoc phep la 1, 2 hoac 3.' });
+    }
+  }
 
   if (rubricId !== undefined && rubricId !== null && rubricId !== '') {
     if (!isObjectId(rubricId)) {

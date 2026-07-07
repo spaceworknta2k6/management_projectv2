@@ -32,6 +32,15 @@ import css from './page.module.css';
 
 const PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const SEMESTER_OPTIONS = ['1', '2', '3'];
+
+function normalizeSemester(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === '3' || raw === 'iii' || raw.includes('học kỳ iii') || raw.includes('hoc ky iii')) return '3';
+  if (raw === '2' || raw === 'ii' || raw.includes('học kỳ ii') || raw.includes('hoc ky ii')) return '2';
+  if (raw === '1' || raw === 'i' || raw.includes('học kỳ i') || raw.includes('hoc ky i')) return '1';
+  return raw;
+}
 
 function getSafePositiveInt(value, fallback) {
   const parsed = Number(value);
@@ -79,10 +88,8 @@ export default function RostersPage() {
   // Extract semesters based on selected school year
   const semesters = useMemo(() => {
     if (!selectedSchoolYear) return [];
-    const filtered = periods.filter((p) => p.schoolYear === selectedSchoolYear);
-    const sems = filtered.map((p) => p.semester);
-    return Array.from(new Set(sems)).sort();
-  }, [periods, selectedSchoolYear]);
+    return SEMESTER_OPTIONS;
+  }, [selectedSchoolYear]);
 
   // Filtered period list based on year and semester
   const filteredPeriodsList = useMemo(() => {
@@ -90,7 +97,7 @@ export default function RostersPage() {
     return periods.filter(
       (p) =>
         p.schoolYear === selectedSchoolYear &&
-        (!selectedSemester || p.semester === selectedSemester)
+        (!selectedSemester || normalizeSemester(p.semester) === selectedSemester)
     );
   }, [periods, selectedSchoolYear, selectedSemester]);
 
@@ -100,7 +107,7 @@ export default function RostersPage() {
       const activePeriod = periods.find((p) => p._id === selectedPeriodId);
       if (activePeriod) {
         setSelectedSchoolYear(activePeriod.schoolYear);
-        setSelectedSemester(activePeriod.semester);
+        setSelectedSemester(normalizeSemester(activePeriod.semester));
       }
     }
   }, [selectedPeriodId, periods]);
@@ -108,10 +115,10 @@ export default function RostersPage() {
   const handleSchoolYearChange = (year) => {
     setSelectedSchoolYear(year);
     const matchedPeriods = periods.filter((p) => p.schoolYear === year);
+    setSelectedSemester('1');
     if (matchedPeriods.length > 0) {
-      const firstSem = matchedPeriods.map((p) => p.semester).sort()[0];
-      setSelectedSemester(firstSem);
-      const matched = matchedPeriods.find((p) => p.semester === firstSem);
+      const firstSem = '1';
+      const matched = matchedPeriods.find((p) => normalizeSemester(p.semester) === firstSem);
       if (matched) {
         setSelectedPeriodId(matched._id);
       } else {
@@ -127,7 +134,7 @@ export default function RostersPage() {
   const handleSemesterChange = (semester) => {
     setSelectedSemester(semester);
     const matchedPeriods = periods.filter(
-      (p) => p.schoolYear === selectedSchoolYear && p.semester === semester
+      (p) => p.schoolYear === selectedSchoolYear && normalizeSemester(p.semester) === semester
     );
     if (matchedPeriods.length > 0) {
       setSelectedPeriodId(matchedPeriods[0]._id);
@@ -162,7 +169,11 @@ export default function RostersPage() {
   });
 
   const fetchRoster = useCallback(async () => {
-    if (!selectedPeriodId) return;
+    if (!selectedPeriodId) {
+      setRoster([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await api.get(`/periods/${selectedPeriodId}/rosters`, token);
@@ -181,7 +192,7 @@ export default function RostersPage() {
   }, [fetchPeriods, token]);
 
   useEffect(() => {
-    if (token && selectedPeriodId) {
+    if (token) {
       fetchRoster();
     }
   }, [fetchRoster, token, selectedPeriodId]);

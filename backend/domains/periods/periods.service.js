@@ -33,6 +33,14 @@ const INT_FIELDS = [
 
 const FLOAT_FIELDS = ['varianceThreshold', 'passScore'];
 
+const normalizeSemester = (value) => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === '3' || raw === 'iii' || raw.includes('học kỳ iii') || raw.includes('hoc ky iii')) return '3';
+  if (raw === '2' || raw === 'ii' || raw.includes('học kỳ ii') || raw.includes('hoc ky ii')) return '2';
+  if (raw === '1' || raw === 'i' || raw.includes('học kỳ i') || raw.includes('hoc ky i')) return '1';
+  return String(value || '').trim();
+};
+
 const toPublicPeriod = (period) => {
   if (!period) return null;
   return {
@@ -43,6 +51,10 @@ const toPublicPeriod = (period) => {
 
 const normalizePeriodData = (data = {}) => {
   const normalized = { ...data };
+
+  if (normalized.semester !== undefined) {
+    normalized.semester = normalizeSemester(normalized.semester);
+  }
 
   for (const field of DATE_FIELDS) {
     if (normalized[field] !== undefined) {
