@@ -8,11 +8,13 @@ const testFileStore = new Map();
 
 const toId = (value) => (value ? value.toString() : null);
 
+// Keep uploaded names filesystem/cloud-safe before sending them to the storage provider.
 const sanitizeFileName = (originalName) => {
   const baseName = (originalName || 'upload.bin').split(/[\\/]/).pop();
   return baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
 };
 
+// Trust file content, not only the browser-provided MIME type.
 const detectMimeFromMagicBytes = (buffer) => {
   if (!buffer || buffer.length < 4) return null;
   const hex = buffer.toString('hex', 0, 4).toUpperCase();
@@ -29,6 +31,7 @@ const detectMimeFromMagicBytes = (buffer) => {
   return null;
 };
 
+// Allow common office files because DOCX/PPTX/XLSX are ZIP containers internally.
 const isMimeCompatible = (verifiedMime, clientMime, originalName) => {
   if (!verifiedMime) return false;
 
@@ -55,6 +58,7 @@ const hasAnyRole = (user, allowedRoles) => {
   return roles.some((role) => allowedRoles.includes(role));
 };
 
+// Chat attachments can only be downloaded by active members of the room.
 const checkChatRoomFileAccess = async (asset, user) => {
   if (asset.ownerType !== 'chat_room' || !asset.ownerId) return null;
 
@@ -89,6 +93,7 @@ const checkChatRoomFileAccess = async (asset, user) => {
   return asset;
 };
 
+// Upload flow: verify MIME, store the file, then create the FileAsset metadata row.
 const uploadFile = async (multerFile, ownerType, ownerId, user) => {
   const fileBuffer = multerFile.buffer;
   const sha256Hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
@@ -186,6 +191,7 @@ const checkFileAccess = async (id, user) => {
     return assetWithMongoProps;
   }
 
+  // Project files are readable by project members, supervisor, reviewer, and staff.
   let project = null;
   const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(asset.ownerId || '');
   if (asset.ownerId && isValidObjectId) {
@@ -238,6 +244,7 @@ const checkFileAccess = async (id, user) => {
   throw { status: 403, message: 'Quyền truy cập bị từ chối: Bạn không có quyền tải xuống tệp tin này.' };
 };
 
+// Abstract storage reads so tests can use memory while production uses Cloudinary.
 const createStoredFileReadStream = async (asset) => {
   if (asset.storageKey.startsWith('test-memory:')) {
     const fileId = asset.storageKey.slice('test-memory:'.length);
@@ -262,6 +269,7 @@ const createStoredFileReadStream = async (asset) => {
   throw { status: 500, message: 'Phương thức lưu trữ tệp tin không được hỗ trợ.' };
 };
 
+// Signed URLs let the frontend download private files without exposing the JWT in the URL.
 const generateSignedUrl = async (id, user) => {
   await checkFileAccess(id, user);
 
@@ -277,6 +285,7 @@ const generateSignedUrl = async (id, user) => {
   return { downloadUrl, expires };
 };
 
+// Download endpoint validates the short-lived HMAC signature before streaming the file.
 const verifySignedUrl = async (id, token, expires) => {
   if (!token || !expires) {
     throw { status: 403, message: 'Quyền truy cập bị từ chối: Thiếu tham số xác thực Signed URL.' };
@@ -311,6 +320,7 @@ const updateScanStatus = async (id, status) => {
   };
 };
 
+// Business delete is soft delete so old submissions/history still keep their audit trail.
 const deleteFile = async (id, user) => {
   const asset = await prisma.fileAsset.findUnique({
     where: { id: id.toString() }

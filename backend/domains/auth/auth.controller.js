@@ -4,6 +4,7 @@ const prisma = require('../../config/prisma');
 
 const GOOGLE_SESSION_TTL_MS = 2 * 60 * 1000;
 
+// Frontend receives the Google session code here after OAuth succeeds.
 const getFrontendUrl = () => (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 const getBackendUrl = (req) => (
@@ -35,6 +36,7 @@ const cleanupGoogleSessions = async () => {
   });
 };
 
+// Email/password login: issue short-lived access token and longer refresh token.
 const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -59,6 +61,8 @@ const login = async (req, res, next) => {
   }
 };
 
+// #auth gg
+// Step 1: redirect the browser to Google with an anti-CSRF state cookie.
 const startGoogleLogin = async (req, res, next) => {
   try {
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -88,6 +92,7 @@ const startGoogleLogin = async (req, res, next) => {
   }
 };
 
+// Step 2: Google redirects back with a code; exchange it, read profile, then create an app session.
 const handleGoogleCallback = async (req, res, next) => {
   try {
     const { code, state, error } = req.query;
@@ -171,6 +176,7 @@ const handleGoogleCallback = async (req, res, next) => {
   }
 };
 
+// Step 3: frontend trades the short session code for normal Karl auth cookies.
 const consumeGoogleSession = async (req, res) => {
   await cleanupGoogleSessions();
 
@@ -200,6 +206,7 @@ const consumeGoogleSession = async (req, res) => {
     data: session.payload,
   });
 };
+// #end auth gg
 
 const getMe = async (req, res, next) => {
   try {

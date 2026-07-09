@@ -16,13 +16,16 @@ const avatarUpload = multer({
   limits: { fileSize: 2 * 1024 * 1024 },
 });
 
-// Public Endpoints
+// Public auth endpoints. Login endpoints are rate-limited to reduce brute-force attempts.
 router.post('/login', authLimiter, authValidator.validateLogin, authController.login);
 router.post('/logout', authController.logout);
+// #auth gg
 router.get('/google', authController.startGoogleLogin);
 router.get('/google/callback', authController.handleGoogleCallback);
 router.get('/google/session', authController.consumeGoogleSession);
+// #end auth gg
 
+// Refresh token endpoint: reads HttpOnly cookie and only returns a new access token.
 router.post('/refresh', async (req, res, next) => {
   try {
     let refreshToken;
@@ -43,7 +46,7 @@ router.post('/refresh', async (req, res, next) => {
       });
     }
 
-    // Verify Refresh Token
+    // Verify Refresh Token before issuing a fresh access token.
     const decoded = jwt.verify(refreshToken, getJwtSecret());
     if (decoded.type !== 'refresh') {
       return res.status(401).json({
@@ -52,7 +55,7 @@ router.post('/refresh', async (req, res, next) => {
       });
     }
 
-    // Find User and check constraints
+    // Find user and reject deleted/locked/inactive accounts.
     const user = await authService.getUserByIdForAuth(decoded.id);
     if (!user || user.isDeleted || user.status === 'locked' || user.status === 'inactive') {
       return res.status(401).json({
@@ -61,7 +64,7 @@ router.post('/refresh', async (req, res, next) => {
       });
     }
 
-    // Generate new Access Token
+    // Generate new Access Token with the same identity and role claims.
     const accessToken = jwt.sign(
       { id: user.id, roles: user.roles },
       getJwtSecret(),
@@ -87,13 +90,13 @@ router.post('/refresh', async (req, res, next) => {
   }
 });
 
-// Protected Endpoints
+// Protected profile endpoints.
 router.get('/me', protect, authController.getMe);
 router.patch('/me', protect, authValidator.validateUpdateMe, authController.updateMe);
 router.patch('/me/avatar', protect, avatarUpload.single('avatar'), authController.updateAvatar);
 router.post('/change-password', protect, authValidator.validateChangePassword, authController.changePassword);
 
-// Fetch all lecturers
+// Lecturer picker for forms that need a supervisor/reviewer list.
 router.get('/lecturers', protect, async (req, res, next) => {
   try {
     const lecturers = await prisma.lecturer.findMany({

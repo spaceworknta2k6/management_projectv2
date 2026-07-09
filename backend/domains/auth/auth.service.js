@@ -9,6 +9,7 @@ const ALLOWED_DOMAIN = 'st.phenikaa-uni.edu.vn';
 
 const newObjectId = () => crypto.randomBytes(12).toString('hex');
 
+// Shape Prisma users like the old Mongo-style API expected by controllers/frontend.
 const normalizeUser = (user) => {
   if (!user) return null;
   return {
@@ -18,6 +19,7 @@ const normalizeUser = (user) => {
   };
 };
 
+// Read user + role-specific profile data for token checks and current-user APIs.
 const getUserByIdForAuth = async (userId) => {
   const user = await prisma.user.findFirst({
     where: {
@@ -33,6 +35,7 @@ const getUserByIdForAuth = async (userId) => {
   return normalizeUser(user);
 };
 
+// Every login path must reject deleted, locked, or inactive accounts.
 const assertActiveUser = (user) => {
   if (!user || user.isDeleted) {
     throw { status: 404, message: 'Người dùng không tồn tại.' };
@@ -45,6 +48,7 @@ const assertActiveUser = (user) => {
   }
 };
 
+// Build the response shared by password login, Google login, and profile updates.
 const buildAuthResult = async (inputUser) => {
   const user = inputUser.student !== undefined || inputUser.lecturer !== undefined
     ? normalizeUser(inputUser)
@@ -109,6 +113,8 @@ const buildAuthResult = async (inputUser) => {
   };
 };
 
+// #auth gg
+// Google-created student accounts need a facultyId; reuse existing data when possible.
 const getFallbackFacultyId = async () => {
   const lecturer = await prisma.lecturer.findFirst({
     where: { isDeleted: false },
@@ -123,6 +129,7 @@ const getFallbackFacultyId = async () => {
   return student?.facultyId || newObjectId();
 };
 
+// Google login is limited to the school domain and auto-creates a student account if needed.
 const loginWithGoogleEmail = async (email, fullName = '') => {
   const normalizedEmail = email.toLowerCase();
 
@@ -184,6 +191,7 @@ const loginWithGoogleEmail = async (email, fullName = '') => {
   assertActiveUser(user);
   return buildAuthResult(user);
 };
+// #end auth gg
 
 const login = async (email, password) => {
   const user = await prisma.user.findFirst({

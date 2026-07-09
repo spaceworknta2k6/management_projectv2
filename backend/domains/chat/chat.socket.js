@@ -3,6 +3,7 @@ const chatService = require('./chat.service');
 const { getJwtSecret } = require('../../config/jwt');
 const authService = require('../auth/auth.service');
 
+// Socket.IO uses the same JWT identity as REST APIs, then stores a compact user on socket.user.
 const buildSocketUser = async (token) => {
   const decoded = jwt.verify(token, getJwtSecret());
   const user = await authService.getUserByIdForAuth(decoded.id || decoded.userId);
@@ -31,6 +32,7 @@ const buildSocketUser = async (token) => {
 };
 
 const registerChatSocket = (io) => {
+  // Authenticate before any socket can join chat rooms or send events.
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth?.token;
@@ -43,9 +45,10 @@ const registerChatSocket = (io) => {
   });
 
   io.on('connection', (socket) => {
-    // Join a user-specific room to receive real-time notifications
+    // User room is for personal real-time notifications outside a specific chat room.
     socket.join(`user:${socket.user._id}`);
 
+    // Only real members may join a chat room channel.
     socket.on('chat:join', async ({ roomId }, ack) => {
       try {
         await chatService.getRoomForUser(roomId, socket.user);
@@ -60,6 +63,7 @@ const registerChatSocket = (io) => {
       if (roomId) socket.leave(`chat:${roomId}`);
     });
 
+    // Persist message through the service, then broadcast it to everyone in that room.
     socket.on('chat:message', async ({ roomId, body }, ack) => {
       try {
         const message = await chatService.sendMessage(roomId, socket.user, body);
@@ -70,6 +74,7 @@ const registerChatSocket = (io) => {
       }
     });
 
+    // Typing events are transient: validate access, then broadcast without saving.
     socket.on('chat:typing', async ({ roomId, isTyping }, ack) => {
       try {
         await chatService.getRoomForUser(roomId, socket.user);

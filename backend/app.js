@@ -10,7 +10,7 @@ const compression = require('compression');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Global Middlewares
+// Global middleware: CORS, compression, security headers, and request body parsing.
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
@@ -32,7 +32,7 @@ app.use(express.urlencoded({ extended: true }));
 // Only avatars are public. Project/submission files are private and must go through /api/v1/files.
 app.use('/public/uploads/avatars', express.static(path.join(__dirname, 'public/uploads/avatars')));
 
-// API Routes Hook
+// API route registration. Each domain keeps its own router/controller/service files.
 const authRouter = require('./domains/auth/auth.router');
 const periodsRouter = require('./domains/periods/periods.router');
 const groupsRouter = require('./domains/groups/groups.router');
@@ -65,17 +65,17 @@ app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/rubrics', rubricsRouter);
 app.use('/api/v1/appeals', appealsRouter);
 
-// Basic Health Check Route
+// Basic health check used by deployment/runtime checks.
 app.get('/health', (req, res) => {
   res.status(200).json({ success: true, message: 'Server is healthy!' });
 });
 
-// Capture 404 Not Found
+// Capture unknown routes after all API routers have had a chance to match.
 app.use((req, res, next) => {
   res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });
 });
 
-// Centralized Error Handling Middleware
+// Centralized error handler. Domain services throw { status, message } for expected failures.
 app.use((err, req, res, next) => {
   console.error('Unhandled Server Exception:', err);
   
@@ -88,7 +88,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Boot listening server
+// Boot HTTP server, then attach Socket.IO for chat and notifications.
 const server = app.listen(PORT, () => {
   console.log(`Server compiled successfully in [${process.env.NODE_ENV}] mode.`);
   console.log(`Karl API Server listening on: http://localhost:${PORT}`);
