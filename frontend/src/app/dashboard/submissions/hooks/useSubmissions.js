@@ -16,7 +16,8 @@ const isStudentProjectOwner = (project, studentId) => (
 
 
 const isStudentGroupProjectMember = (project, studentId) => (
-  project?.groupId?.members?.some((member) => String(getId(member.studentId)) === String(studentId))
+  Array.isArray(project?.groupId?.members) &&
+  project.groupId.members.some((member) => member && String(getId(member.studentId)) === String(studentId))
 );
 
 export function useSubmissions() {

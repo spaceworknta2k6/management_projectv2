@@ -26,9 +26,9 @@ const resolveSubmissionOwnerFields = (data) => {
 
 const isAcceptedGroupMember = (group, studentId) => {
   if (!group || !studentId) return false;
-  const members = group.members || [];
+  const members = Array.isArray(group.members) ? group.members : [];
   return members.some(
-    (member) => toId(member.studentId) === toId(studentId) && member.status === 'accepted'
+    (member) => member && toId(member.studentId) === toId(studentId) && member.status === 'accepted'
   );
 };
 
@@ -51,8 +51,8 @@ const getProjectStudentUserIds = async (projectId) => {
       where: { id: toId(project.groupId), isDeleted: false }
     });
     if (group) {
-      const members = group.members || [];
-      const studentIds = members.filter(m => m.status === 'accepted' && m.studentId).map(m => toId(m.studentId));
+      const members = Array.isArray(group.members) ? group.members : [];
+      const studentIds = members.filter(m => m?.status === 'accepted' && m.studentId).map(m => toId(m.studentId));
       const students = await prisma.student.findMany({
         where: { id: { in: studentIds }, isDeleted: false }
       });
@@ -118,6 +118,9 @@ const initializePackage = async (projectId, phase, actorUserId, actorStudentId) 
   }
 
   const projectOwner = resolveProjectOwner(project);
+  if (!projectOwner) {
+    throw { status: 400, message: 'Dá»± Ã¡n chÆ°a cÃ³ thÃ´ng tin sinh viÃªn/nhÃ³m thá»±c hiá»‡n há»£p lá»‡.' };
+  }
   await ensureStudentCanSubmitForOwner(projectOwner, actorStudentId);
 
   let pkg = await prisma.submissionPackage.findFirst({

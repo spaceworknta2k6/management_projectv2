@@ -190,7 +190,7 @@ const markInProgress = async (projectId, actorUserId, actorStudentId) => {
       });
       if (group) {
         const members = Array.isArray(group.members) ? group.members : [];
-        isAuthorized = members.some(m => m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted');
+        isAuthorized = members.some(m => m?.studentId && m.studentId.toString() === actorStudentId.toString() && m.status === 'accepted');
       }
     }
   } else {

@@ -8,7 +8,7 @@ const idsEqual = (left, right) => {
 };
 
 const normalizeOwner = (owner) => {
-  if (!owner) return null;
+  if (!owner || typeof owner !== 'object') return null;
   const ownerType = owner.ownerType;
   const ownerId = owner.ownerId?._id || owner.ownerId;
   const groupId = owner.groupId?._id || owner.groupId;
@@ -53,6 +53,7 @@ const resolveProjectOwner = (project) => normalizeOwner(project);
 
 const isStudentOwner = (owner, studentId) => {
   const normalized = normalizeOwner(owner);
+  if (!normalized) return false;
   return normalized?.ownerType === 'student' && idsEqual(normalized.ownerId, studentId);
 };
 
@@ -69,10 +70,10 @@ const isAcceptedGroupOwnerMember = async (owner, studentId) => {
       },
     });
 
-  if (!group?.members) return false;
+  const members = Array.isArray(group?.members) ? group.members : [];
 
-  return group.members.some(
-    (member) => idsEqual(member.studentId?._id || member.studentId, studentId) && member.status === 'accepted'
+  return members.some(
+    (member) => member && idsEqual(member.studentId?._id || member.studentId, studentId) && member.status === 'accepted'
   );
 };
 

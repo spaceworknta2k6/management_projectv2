@@ -14,8 +14,10 @@ const isStaff = (user) => hasAnyRole(user, STAFF_ROLES);
 
 const isAcceptedGroupMember = (group, studentId) => {
   if (!group || !studentId) return false;
-  return (group.members || []).some(
+  const members = Array.isArray(group.members) ? group.members : [];
+  return members.some(
     (member) =>
+      member?.studentId &&
       member.studentId.toString() === studentId.toString() &&
       member.status === 'accepted'
   );

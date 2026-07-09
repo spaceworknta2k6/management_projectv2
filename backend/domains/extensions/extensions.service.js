@@ -19,8 +19,8 @@ const getRequestStudentUserIds = async (request) => {
       where: { id: request.groupId, isDeleted: false }
     });
     if (group) {
-      const members = group.members || [];
-      const studentIds = members.filter(m => m.status === 'accepted' && m.studentId).map(m => m.studentId.toString());
+      const members = Array.isArray(group.members) ? group.members : [];
+      const studentIds = members.filter(m => m?.status === 'accepted' && m.studentId).map(m => m.studentId.toString());
       const students = await prisma.student.findMany({
         where: { id: { in: studentIds }, isDeleted: false }
       });
@@ -359,7 +359,7 @@ const getRequests = async (queryParams = {}, actor = {}) => {
       where: { isDeleted: false }
     });
     const studentGroupIds = activeGroups
-      .filter(g => (g.members || []).some(m => m.studentId === actor.studentId.toString() && m.status === 'accepted'))
+      .filter(g => (Array.isArray(g.members) ? g.members : []).some(m => m?.studentId === actor.studentId.toString() && m.status === 'accepted'))
       .map(g => g.id);
 
     where.OR = [

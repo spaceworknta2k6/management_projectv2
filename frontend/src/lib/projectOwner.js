@@ -4,6 +4,12 @@ export function getId(value) {
   return value._id || value.id || '';
 }
 
+function getAcceptedMembers(group) {
+  const members = group?.members;
+  if (!Array.isArray(members)) return [];
+  return members.filter((member) => member && (!member.status || member.status === 'accepted'));
+}
+
 export function isStudentProjectOwner(project, studentId) {
   const currentStudentId = getId(studentId);
   if (!project || !currentStudentId) return false;
@@ -13,11 +19,7 @@ export function isStudentProjectOwner(project, studentId) {
     return true;
   }
 
-  return Boolean(
-    project.groupId?.members?.some((member) => (
-      getId(member.studentId) === currentStudentId && (!member.status || member.status === 'accepted')
-    ))
-  );
+  return getAcceptedMembers(project.groupId).some((member) => getId(member.studentId) === currentStudentId);
 }
 
 export function getOwnerDisplay(project) {
@@ -41,7 +43,7 @@ export function getMemberDisplay(project) {
     return student?.userId?.email || student?.studentCode || '';
   }
 
-  return (project?.groupId?.members || [])
+  return getAcceptedMembers(project?.groupId)
     .map((member) => `${member.studentId?.userId?.fullName || 'Sinh viên'} (${member.studentId?.userId?.email || ''})`)
     .join('; ');
 }

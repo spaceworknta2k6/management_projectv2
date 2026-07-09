@@ -52,6 +52,10 @@ const targetTypeLabels = {
   project: 'Dự án',
 };
 
+function getRequestOwnerSource(request) {
+  return request?.projectId || request || null;
+}
+
 function StatusBadge({ status }) {
   const meta = statusMeta[status] || { label: status || 'Không xác định', variant: 'neutral' };
   return <Badge variant={meta.variant}>{meta.label}</Badge>;
@@ -584,7 +588,7 @@ export default function ExtensionRequestsPage() {
                         {getProjectTitle(request.projectId)}
                       </h3>
                       <p className={css.s17}>
-                        {getOwnerTypeLabel(request)}: {getOwnerDisplay(request)} · {getTargetLabel(request)}
+                        {getOwnerTypeLabel(getRequestOwnerSource(request))}: {getOwnerDisplay(getRequestOwnerSource(request))} · {getTargetLabel(request)}
                       </p>
                     </div>
                     <StatusBadge status={request.status} />

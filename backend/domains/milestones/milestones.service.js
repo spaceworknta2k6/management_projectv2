@@ -18,9 +18,9 @@ const toPublicMilestone = (milestone) => {
 
 const isAcceptedGroupMember = (group, studentId) => {
   if (!group || !studentId) return false;
-  const members = group.members || [];
+  const members = Array.isArray(group.members) ? group.members : [];
   return members.some(
-    (member) => toId(member.studentId) === toId(studentId) && member.status === 'accepted'
+    (member) => member && toId(member.studentId) === toId(studentId) && member.status === 'accepted'
   );
 };
 
@@ -74,8 +74,8 @@ const emitMilestoneChange = async (projectId) => {
         where: { id: toId(gId) }
       });
       if (group) {
-        const members = group.members || [];
-        const memberStudentIds = members.map(m => toId(m.studentId)).filter(Boolean);
+        const members = Array.isArray(group.members) ? group.members : [];
+        const memberStudentIds = members.map(m => toId(m?.studentId)).filter(Boolean);
         const students = await prisma.student.findMany({
           where: { id: { in: memberStudentIds } }
         });
