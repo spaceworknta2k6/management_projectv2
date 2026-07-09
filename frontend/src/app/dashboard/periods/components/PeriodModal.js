@@ -244,7 +244,7 @@ export default function PeriodModal({
 
           {/* Scoring weights */}
           <h4 className={css.s33}>Cấu hình Trọng số Điểm (Tổng phải = 1.0)</h4>
-          <div className={css.s34} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+          <div className={css.s34}>
             <Input
               label="Trọng số Giảng viên hướng dẫn"
               name="supervisorWeight"
@@ -296,7 +296,8 @@ export default function PeriodModal({
               onChange={handleChange}
               error={formErrors.topicChangeDeadline}
             />
-            <div />
+
+
 
             <Input
               label="Bắt đầu thực hiện"

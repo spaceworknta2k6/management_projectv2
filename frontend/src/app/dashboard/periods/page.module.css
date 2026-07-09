@@ -152,14 +152,14 @@
 }
 
 .s27 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   margin-bottom: 16px;
 }
 
 .s28 {
-  grid-column: span 2;
+  /* no longer needed in single-column layout */
 }
 
 .s29 {
@@ -199,8 +199,8 @@
 }
 
 .s34 {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -215,8 +215,8 @@
 }
 
 .s36 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
 }
 
