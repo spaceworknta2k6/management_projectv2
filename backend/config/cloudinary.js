@@ -8,7 +8,7 @@ const getCloudinaryConfig = () => {
   if (!cloudName || !apiKey || !apiSecret) {
     throw {
       status: 500,
-      message: 'Cloudinary chưa được cấu hình đầy đủ.',
+      message: ' Cloudinary chưa được cấu hình đầy đủ. ',
     };
   }
 
