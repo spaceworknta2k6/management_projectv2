@@ -25,6 +25,19 @@ const getUsers = async (req, res, next) => {
   }
 };
 
+const exportUsersCsv = async (req, res, next) => {
+  try {
+    const { search, role, status } = req.query;
+    const csv = await usersService.exportUsersCsv({ search, role, status });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="users-export.csv"');
+    res.status(200).send(`\uFEFF${csv}`);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const updateUserRole = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -97,6 +110,7 @@ const deleteUser = async (req, res, next) => {
 
 module.exports = {
   getUsers,
+  exportUsersCsv,
   updateUserRole,
   updateUserStatus,
   deleteUser,

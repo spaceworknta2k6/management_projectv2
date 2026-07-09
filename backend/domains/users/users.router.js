@@ -9,6 +9,7 @@ router.use(protect);
 router.use(requireRole(['SYSTEM_ADMIN']));
 
 router.get('/', usersController.getUsers);
+router.get('/export', usersController.exportUsersCsv);
 router.patch('/:id/role', usersController.updateUserRole);
 router.patch('/:id/status', usersController.updateUserStatus);
 router.delete('/:id', usersController.deleteUser);
