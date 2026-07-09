@@ -180,7 +180,7 @@ const checkFileAccess = async (id, user) => {
     uploadedBy: asset.uploadedBy,
   };
 
-  if (hasAnyRole(user, ['SYSTEM_ADMIN', 'FACULTY_STAFF'])) {
+  if (hasAnyRole(user, ['SYSTEM_ADMIN'])) {
     return assetWithMongoProps;
   }
 
@@ -191,31 +191,34 @@ const checkFileAccess = async (id, user) => {
     return assetWithMongoProps;
   }
 
-  // Project files are readable by project members, supervisor, reviewer, and staff.
+  // Project files are readable by project members, supervisor, and assigned reviewer.
   let project = null;
-  const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(asset.ownerId || '');
-  if (asset.ownerId && isValidObjectId) {
-    project = await prisma.project.findFirst({
-      where: { id: asset.ownerId.toString(), isDeleted: false }
-    });
-  }
+  const isProjectOwnedAsset = !asset.ownerType || asset.ownerType === 'project';
+  if (isProjectOwnedAsset) {
+    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(asset.ownerId || '');
+    if (asset.ownerId && isValidObjectId) {
+      project = await prisma.project.findFirst({
+        where: { id: asset.ownerId.toString(), isDeleted: false }
+      });
+    }
 
-  if (!project) {
-    const student = await prisma.student.findFirst({
-      where: { userId: asset.uploadedBy.toString(), isDeleted: false }
-    });
-    if (student) {
-      const activeGroups = await prisma.projectGroup.findMany({
-        where: { isDeleted: false, status: { not: 'cancelled' } }
+    if (!project) {
+      const student = await prisma.student.findFirst({
+        where: { userId: asset.uploadedBy.toString(), isDeleted: false }
       });
-      const group = activeGroups.find(g => {
-        const members = g.members || [];
-        return members.some(m => toId(m.studentId) === toId(student.id));
-      });
-      if (group) {
-        project = await prisma.project.findFirst({
-          where: { groupId: group.id, isDeleted: false }
+      if (student) {
+        const activeGroups = await prisma.projectGroup.findMany({
+          where: { isDeleted: false, status: { not: 'cancelled' } }
         });
+        const group = activeGroups.find(g => {
+          const members = g.members || [];
+          return members.some(m => toId(m.studentId) === toId(student.id));
+        });
+        if (group) {
+          project = await prisma.project.findFirst({
+            where: { groupId: group.id, isDeleted: false }
+          });
+        }
       }
     }
   }

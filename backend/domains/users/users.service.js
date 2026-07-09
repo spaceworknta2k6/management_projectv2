@@ -57,6 +57,34 @@ const getUsers = async ({ search = '', role = '', status = '', page = 1, limit =
   };
 };
 
+const csvEscape = (value) => {
+  const text = value === null || value === undefined ? '' : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+};
+
+const exportUsersCsv = async ({ search = '', role = '', status = '' }) => {
+  const where = buildUserWhere({ search, role, status });
+  const users = await prisma.user.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const headers = ['id', 'fullName', 'email', 'roles', 'status', 'createdAt'];
+  const rows = users.map((user) => [
+    user.id,
+    user.fullName,
+    user.email,
+    (user.roles || []).join('|'),
+    user.status,
+    user.createdAt.toISOString(),
+  ]);
+
+  return [
+    headers.join(','),
+    ...rows.map((row) => row.map(csvEscape).join(',')),
+  ].join('\n');
+};
+
 const assertRoles = (roles) => {
   if (!Array.isArray(roles) || roles.length === 0) {
     throw { status: 400, message: 'Danh sách vai trò không hợp lệ.' };
@@ -140,6 +168,7 @@ const deleteUser = async (userId, deletedByUserId) => {
 
 module.exports = {
   getUsers,
+  exportUsersCsv,
   updateUserRole,
   updateUserStatus,
   deleteUser,

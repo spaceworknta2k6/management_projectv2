@@ -8,6 +8,7 @@ const cors = require('cors');
 const compression = require('compression');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 // Global middleware: CORS, compression, security headers, and request body parsing.
@@ -48,6 +49,7 @@ const filesRouter = require('./domains/files/files.router');
 const usersRouter = require('./domains/users/users.router');
 const rubricsRouter = require('./domains/rubrics/rubrics.router');
 const appealsRouter = require('./domains/appeals/appeals.router');
+const statsRouter = require('./domains/stats/stats.router');
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/periods', periodsRouter);
@@ -64,6 +66,7 @@ app.use('/api/v1/files', filesRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/rubrics', rubricsRouter);
 app.use('/api/v1/appeals', appealsRouter);
+app.use('/api/v1/stats', statsRouter);
 
 // Basic health check used by deployment/runtime checks.
 app.get('/health', (req, res) => {

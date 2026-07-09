@@ -28,6 +28,7 @@ const SUITES = [
   { file: 'appeals.test.js',              label: 'Appeals & Grade Publishing' },
   { file: 'files-security.test.js',      label: 'File Security' },
   { file: 'chat.test.js',                label: 'Chat Rooms & Attachments' },
+  { file: 'pdf-checklist.test.js',       label: 'PDF Checklist API Cases' },
 ];
 
 const DIVIDER = '='.repeat(70);
