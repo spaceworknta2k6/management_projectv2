@@ -15,7 +15,7 @@ const createPeriod = async (req, res, next) => {
 
 const getPeriods = async (req, res, next) => {
   try {
-    const periods = await periodsService.getAllPeriods(req.query);
+    const periods = await periodsService.getAllPeriods(req.query, req.user);
     return res.status(200).json({
       success: true,
       message: 'Lấy danh sách đợt đồ án thành công!',

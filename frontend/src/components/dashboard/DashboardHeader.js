@@ -17,7 +17,7 @@ export default function DashboardHeader({ user, onMobileMenuToggle }) {
 
   const handleLogout = () => {
     logout();
-    router.push('/auth/login');
+    window.location.replace('/auth/login');
   };
 
   return (

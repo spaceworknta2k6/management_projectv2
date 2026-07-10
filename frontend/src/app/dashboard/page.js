@@ -315,7 +315,10 @@ export default function DashboardPage() {
   const isStudent = hasAnyRole(user, ['STUDENT']);
 
   useEffect(() => {
-    if (!token || !user) return;
+    if (!token || !user) {
+      setLoading(false);
+      return;
+    }
 
     let alive = true;
 

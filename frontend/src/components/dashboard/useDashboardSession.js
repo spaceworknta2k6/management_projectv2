@@ -54,6 +54,8 @@ export default function useDashboardSession() {
     if (isLoading) return;
 
     if (!token) {
+      setNetworkError(false);
+      setReady(false);
       router.replace('/auth/login');
       return;
     }
