@@ -270,7 +270,7 @@ const runIntegrationTests = async () => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          studentId: student2Profile._id.toString()
+          email: student2User.email
         })
       });
 

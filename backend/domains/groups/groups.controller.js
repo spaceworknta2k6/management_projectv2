@@ -24,7 +24,7 @@ const inviteMember = async (req, res, next) => {
     if (!req.user.studentId) {
       return res.status(403).json({ success: false, message: 'Chỉ trưởng nhóm sinh viên mới có quyền mời thành viên.' });
     }
-    const result = await groupsService.inviteMember(req.params.id, req.body.studentId || req.body.studentCode, req.user.studentId);
+    const result = await groupsService.inviteMember(req.params.id, req.body.studentId || req.body.studentCode || req.body.email, req.user.studentId);
     return res.status(200).json({
       success: true,
       message: 'Đã gửi lời mời tham gia nhóm thành công!',

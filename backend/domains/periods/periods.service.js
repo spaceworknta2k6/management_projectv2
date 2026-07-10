@@ -181,9 +181,27 @@ const buildPeriodWhere = (query = {}) => {
   return where;
 };
 
-const getAllPeriods = async (query = {}) => {
+const getAllPeriods = async (query = {}, user = {}) => {
+  const where = buildPeriodWhere(query);
+
+  if (query.enrolledOnly === 'true' && user.studentId) {
+    const rosterEntries = await prisma.projectRoster.findMany({
+      where: {
+        studentId: toId(user.studentId),
+        status: 'active',
+        isDeleted: false,
+      },
+      select: {
+        periodId: true,
+      },
+    });
+    const periodIds = rosterEntries.map((entry) => entry.periodId);
+    if (periodIds.length === 0) return [];
+    where.id = { in: periodIds };
+  }
+
   const periods = await prisma.projectPeriod.findMany({
-    where: buildPeriodWhere(query),
+    where,
     orderBy: { createdAt: 'desc' },
   });
   return periods.map(toPublicPeriod);

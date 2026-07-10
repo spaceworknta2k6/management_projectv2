@@ -224,7 +224,7 @@ function Header({ user, onMobileMenuToggle }) {
 
   const handleLogout = () => {
     logout();
-    router.push('/auth/login');
+    window.location.replace('/auth/login');
   };
 
   return (
@@ -348,6 +348,8 @@ export default function DashboardLayout({ children }) {
     if (isLoading) return;
 
     if (!token) {
+      setNetworkError(false);
+      setReady(false);
       router.replace('/auth/login');
       return;
     }

@@ -256,6 +256,19 @@ const resolveInvitedStudent = async (studentIdentifier) => {
     });
   }
 
+  if (value.includes('@')) {
+    const user = await prisma.user.findFirst({
+      where: { email: value.toLowerCase(), isDeleted: false },
+      include: {
+        student: true,
+      },
+    });
+    if (user?.student && !user.student.isDeleted) {
+      return user.student;
+    }
+    return null;
+  }
+
   return prisma.student.findFirst({
     where: { studentCode: value, isDeleted: false }
   });

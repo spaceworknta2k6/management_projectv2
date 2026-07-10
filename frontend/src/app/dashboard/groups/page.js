@@ -16,11 +16,44 @@ import { useToast } from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { getStatus, hasAnyRole, handleApiError } from '@/lib/utils';
 import EmptyState from '@/components/ui/EmptyState';
-import { Users, Plus, Check, UserPlus, Warning, PencilSimple, Trash, MagnifyingGlass } from '@phosphor-icons/react';
+import { Users, Plus, Check, UserPlus, Warning, PencilSimple, Trash } from '@phosphor-icons/react';
 import css from './page.module.css';
 
 const PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const ACADEMIC_YEAR_START = 2019;
+const SEMESTER_OPTIONS = [
+  { value: '1', label: 'Học kỳ 1' },
+  { value: '2', label: 'Học kỳ 2' },
+  { value: '3', label: 'Học kỳ 3' },
+];
+
+function getEntityId(value) {
+  return value?._id || value?.id || value;
+}
+
+function getPeriodLabel(period) {
+  return [period?.courseCode, period?.courseName || period?.name, period?.schoolYear, period?.semester]
+    .filter(Boolean)
+    .join(' - ');
+}
+
+function getAcademicYearOptions() {
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let year = ACADEMIC_YEAR_START; year <= currentYear; year += 1) {
+    years.push(`${year}-${year + 1}`);
+  }
+  return years;
+}
+
+function normalizeSemesterValue(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === '1' || raw === 'i' || raw.includes('kỳ i') || raw.includes('ky i') || raw.includes('kỳ 1') || raw.includes('ky 1')) return '1';
+  if (raw === '2' || raw === 'ii' || raw.includes('kỳ ii') || raw.includes('ky ii') || raw.includes('kỳ 2') || raw.includes('ky 2')) return '2';
+  if (raw === '3' || raw === 'iii' || raw.includes('kỳ iii') || raw.includes('ky iii') || raw.includes('kỳ 3') || raw.includes('ky 3')) return '3';
+  return raw;
+}
 
 function getSafePositiveInt(value, fallback) {
   const parsed = Number(value);
@@ -58,7 +91,8 @@ export default function GroupsPage() {
 
   const { periods, selectedPeriodId, fetchPeriods, setSelectedPeriodId } = usePeriodStore();
   const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState(null);
   const [deletingGroup, setDeletingGroup] = useState(false);
   const [groupToCancelAndDelete, setGroupToCancelAndDelete] = useState(null);
@@ -67,6 +101,9 @@ export default function GroupsPage() {
   const [editGroupName, setEditGroupName] = useState('');
   const [editGroupError, setEditGroupError] = useState('');
   const [updatingGroup, setUpdatingGroup] = useState(false);
+  const [staffSchoolYear, setStaffSchoolYear] = useState('');
+  const [staffSemester, setStaffSemester] = useState('');
+  const [studentPeriods, setStudentPeriods] = useState([]);
 
   // Student active group
   const [myGroup, setMyGroup] = useState(null);
@@ -79,71 +116,120 @@ export default function GroupsPage() {
   const [inviting, setInviting] = useState(false);
 
   const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
+  const staffSchoolYears = useMemo(() => getAcademicYearOptions(), []);
+  const staffPeriodOptions = useMemo(() => periods.filter((period) => {
+    if (staffSchoolYear && period.schoolYear !== staffSchoolYear) return false;
+    if (staffSemester && normalizeSemesterValue(period.semester) !== staffSemester) return false;
+    return true;
+  }), [periods, staffSchoolYear, staffSemester]);
+  const selectedStudentPeriod = useMemo(
+    () => studentPeriods.find((period) => getEntityId(period) === selectedPeriodId) || null,
+    [selectedPeriodId, studentPeriods]
+  );
 
   // Load all groups (Staff only)
   const fetchAllGroups = useCallback(async (periodId) => {
-    if (!periodId) return;
-    setLoading(true);
+    if (!periodId) {
+      setGroups([]);
+      setInitialLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    setRefreshing(true);
     try {
       const res = await api.get(`/groups?periodId=${periodId}`, token);
       setGroups(res.data || []);
     } catch (err) {
       handleApiError(err, toast);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setRefreshing(false);
     }
   }, [toast, token]);
 
+  const fetchStudentPeriods = useCallback(async () => {
+    try {
+      const res = await api.get('/periods?enrolledOnly=true', token);
+      const list = res.data || [];
+      setStudentPeriods(list);
+      const hasSelected = list.some((period) => getEntityId(period) === selectedPeriodId);
+      if (!hasSelected) {
+        setSelectedPeriodId(list[0]?._id || '');
+      }
+      return list;
+    } catch (err) {
+      handleApiError(err, toast);
+      setStudentPeriods([]);
+      setSelectedPeriodId('');
+      return [];
+    }
+  }, [selectedPeriodId, setSelectedPeriodId, toast, token]);
+
   const fetchStudentGroupData = useCallback(async () => {
     if (!user?.studentId) {
-      setLoading(false);
+      setInitialLoading(false);
+      setRefreshing(false);
       return;
     }
-    setLoading(true);
+    setRefreshing(true);
     try {
-      const resPeriods = await api.get('/periods', token).catch(() => ({ data: [] }));
+      const resPeriods = await api.get('/periods?enrolledOnly=true', token).catch(() => ({ data: [] }));
       const activePeriods = resPeriods.data || [];
+      setStudentPeriods(activePeriods);
+      const scopedPeriods = selectedPeriodId
+        ? activePeriods.filter((period) => getEntityId(period) === selectedPeriodId)
+        : activePeriods.slice(0, 1);
 
       // Fetch tất cả periods song song thay vì tuần tự
       const groupsPerPeriod = await Promise.all(
-        activePeriods.map((p) =>
+        scopedPeriods.map((p) =>
           api.get(`/groups?periodId=${p._id}`, token)
             .then((res) => ({ period: p, groups: res.data || [] }))
             .catch(() => ({ period: p, groups: [] }))
         )
       );
 
-      let foundGroup = null;
+      const acceptedGroups = [];
       let invitations = [];
 
       for (const { period, groups: list } of groupsPerPeriod) {
         for (const g of list) {
           const myMemberInfo = g.members?.find(
-            (m) => (m.studentId?._id || m.studentId) === user?.studentId
+            (m) => getEntityId(m.studentId) === user?.studentId
           );
           if (!myMemberInfo) continue;
           if (myMemberInfo.status === 'accepted') {
-            foundGroup = g;
+            acceptedGroups.push({ group: g, period });
           } else if (myMemberInfo.status === 'invited') {
             invitations.push({ group: g, period });
           }
         }
       }
 
-      setMyGroup(foundGroup);
+      acceptedGroups.sort((a, b) => {
+        const groupDiff = (a.group.status === 'draft' ? 0 : 1) - (b.group.status === 'draft' ? 0 : 1);
+        if (groupDiff !== 0) return groupDiff;
+        return new Date(b.group.createdAt || 0) - new Date(a.group.createdAt || 0);
+      });
+
+      setMyGroup(acceptedGroups[0]?.group || null);
       setMyInvitations(invitations);
     } catch (err) {
       handleApiError(err, toast);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setRefreshing(false);
     }
-  }, [toast, token, user?.studentId]);
+  }, [selectedPeriodId, toast, token, user?.studentId]);
 
   useEffect(() => {
-    if (token) {
+    if (!token || !user) return;
+    if (isStaff) {
       fetchPeriods(token);
+    } else {
+      fetchStudentPeriods();
     }
-  }, [fetchPeriods, token]);
+  }, [fetchPeriods, fetchStudentPeriods, isStaff, token, user]);
 
   useEffect(() => {
     if (!token || !user) return;
@@ -154,24 +240,44 @@ export default function GroupsPage() {
     }
   }, [fetchAllGroups, fetchStudentGroupData, isStaff, selectedPeriodId, token, user]);
 
+  useEffect(() => {
+    if (!isStaff || periods.length === 0) return;
+    if (staffPeriodOptions.length === 0) {
+      if (selectedPeriodId) setSelectedPeriodId('');
+      return;
+    }
+    const hasSelectedPeriod = staffPeriodOptions.some((period) => getEntityId(period) === selectedPeriodId);
+    if (!hasSelectedPeriod) {
+      setSelectedPeriodId(staffPeriodOptions[0]._id);
+    }
+  }, [isStaff, periods.length, selectedPeriodId, setSelectedPeriodId, staffPeriodOptions]);
+
   const handleCreateGroup = async (e) => {
     e.preventDefault();
     if (!newGroupName.trim()) {
       toast.error('Vui lòng nhập tên nhóm đồ án.');
       return;
     }
-    if (!periods.length) {
+    if (!studentPeriods.length) {
       toast.error('Không tìm thấy đợt đồ án đang hoạt động.');
       return;
     }
 
-    setCreating(true);
-    // Use the first registration_open period
-    const activePeriod = periods.find((p) => p.status === 'enrollment' || p.status === 'registration_open' || p.status === 'draft') || periods[0];
+    const activePeriod = selectedStudentPeriod;
+    if (!activePeriod) {
+      toast.error('Chưa có đợt đồ án nào đang mở đăng ký nhóm.');
+      return;
+    }
 
+    if (activePeriod.status !== 'registration_open') {
+      toast.error('Học phần này chưa mở đăng ký nhóm.');
+      return;
+    }
+
+    setCreating(true);
     try {
       await api.post('/groups', {
-        periodId: activePeriod._id,
+        periodId: getEntityId(activePeriod),
         name: newGroupName.trim(),
       }, token);
       toast.success('Đã khởi tạo nhóm thành công!');
@@ -187,16 +293,18 @@ export default function GroupsPage() {
   const handleInvite = async (e) => {
     e.preventDefault();
     if (!inviteStudentCode.trim()) {
-      toast.error('Vui lòng nhập mã sinh viên cần mời.');
+      toast.error('Vui lòng nhập email hoặc mã sinh viên cần mời.');
       return;
     }
     if (!myGroup) return;
 
     setInviting(true);
     try {
-      await api.post(`/groups/${myGroup._id}/invite`, {
-        studentCode: inviteStudentCode.trim(),
-      }, token);
+      const identifier = inviteStudentCode.trim();
+      const payload = identifier.includes('@')
+        ? { email: identifier.toLowerCase() }
+        : { studentCode: identifier };
+      await api.post(`/groups/${myGroup._id}/invite`, payload, token);
       toast.success('Đã gửi lời mời tham gia nhóm!');
       setInviteStudentCode('');
       fetchStudentGroupData();
@@ -238,7 +346,7 @@ export default function GroupsPage() {
     else fetchStudentGroupData();
   };
 
-  const canInviteMembers = myGroup?.status === 'draft' && myGroup.leaderStudentId?._id === user?.studentId;
+  const canInviteMembers = myGroup?.status === 'draft' && getEntityId(myGroup.leaderStudentId) === user?.studentId;
 
   const visibleGroups = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -378,47 +486,82 @@ export default function GroupsPage() {
         </p>
       </div>
 
-      {loading ? (
+      {initialLoading ? (
         <div className={css.s5}>
           <Spinner size="lg" />
         </div>
       ) : isStaff ? (
         /* ─── Staff View ─── */
         <div>
+          <Card className={css.s47}>
+            <div className={css.s48}>
+              <div>
+                <label className={css.s46}>Năm học</label>
+                <select
+                  value={staffSchoolYear}
+                  onChange={(e) => {
+                    setStaffSchoolYear(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className={css.s36}
+                >
+                  <option value="">Tất cả năm học</option>
+                  {staffSchoolYears.map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={css.s46}>Học kỳ</label>
+                <select
+                  value={staffSemester}
+                  onChange={(e) => {
+                    setStaffSemester(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className={css.s36}
+                >
+                  <option value="">Tất cả học kỳ</option>
+                  {SEMESTER_OPTIONS.map((semester) => (
+                    <option key={semester.value} value={semester.value}>{semester.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={css.s46}>Học phần / đợt đồ án</label>
+                <select
+                  value={selectedPeriodId}
+                  onChange={(e) => {
+                    setSelectedPeriodId(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className={css.s36}
+                >
+                  {staffPeriodOptions.length === 0 ? (
+                    <option value="">Không có học phần phù hợp</option>
+                  ) : staffPeriodOptions.map((p) => (
+                    <option key={p._id} value={p._id}>
+                      {getPeriodLabel(p)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </Card>
+
           <FilterCard
             searchInput={searchInput}
             setSearchInput={setSearchInput}
             onSearch={handleSearchSubmit}
             onReset={handleResetSearch}
             placeholder="Tìm theo tên nhóm, trưởng nhóm..."
-            hasFilters={true}
-          >
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>Chọn Đợt Đồ Án</label>
-              <select
-                value={selectedPeriodId}
-                onChange={(e) => {
-                  setSelectedPeriodId(e.target.value);
-                  setCurrentPage(1);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  backgroundColor: 'var(--bg-surface)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--text-primary)',
-                  outline: 'none',
-                }}
-              >
-                {periods.map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {p.name} ({p.schoolYear})
-                  </option>
-                ))}
-              </select>
+            hasFilters={false}
+          />
+          {refreshing && (
+            <div className={css.s49}>
+              <Spinner size="sm" /> Đang cập nhật danh sách nhóm...
             </div>
-          </FilterCard>
+          )}
 
           {periods.length === 0 ? (
             <Card>
@@ -489,6 +632,32 @@ export default function GroupsPage() {
       ) : (
         /* ─── Student View ─── */
         <div>
+          <Card className={css.s47} title="Chọn học phần" subtitle="Chỉ hiển thị các học phần có tên bạn trong danh sách đăng ký">
+            {studentPeriods.length === 0 ? (
+              <p className={css.s33}>Bạn chưa có học phần nào trong danh sách đăng ký.</p>
+            ) : (
+              <select
+                value={selectedPeriodId}
+                onChange={(e) => {
+                  setSelectedPeriodId(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className={css.s36}
+              >
+                {studentPeriods.map((period) => (
+                  <option key={period._id} value={period._id}>
+                    {getPeriodLabel(period)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Card>
+          {refreshing && (
+            <div className={css.s49}>
+              <Spinner size="sm" /> Đang cập nhật nhóm của học phần...
+            </div>
+          )}
+
           {/* My invitations */}
           {myInvitations.length > 0 && (
             <div className={css.s17}>
@@ -510,13 +679,19 @@ export default function GroupsPage() {
             </div>
           )}
 
-          {myGroup ? (
+          {studentPeriods.length === 0 ? (
+            <EmptyState
+              title="Chưa có học phần"
+              description="Bạn chưa có tên trong danh sách đăng ký học phần nào nên chưa thể tạo nhóm."
+              icon={Users}
+            />
+          ) : myGroup ? (
             /* Student has group */
             <Card title={myGroup.name} subtitle={`Mã nhóm: ${myGroup._id}`}
               actions={
                 <div className={css.s21}>
                   <Badge variant={getStatus(myGroup.status).variant}>{getStatus(myGroup.status).label}</Badge>
-                  {myGroup.status === 'draft' && myGroup.leaderStudentId?._id === user?.studentId && (
+                  {myGroup.status === 'draft' && getEntityId(myGroup.leaderStudentId) === user?.studentId && (
                     <>
                       <Button variant="secondary" size="sm" onClick={() => handleEditGroup(myGroup)}>
                         <PencilSimple size={14} /> Sửa
@@ -565,18 +740,18 @@ export default function GroupsPage() {
                   </h4>
                   <form onSubmit={handleInvite} className={css.s30} noValidate>
                     <Input
-                      label="Mã sinh viên"
+                      label="Email hoặc mã sinh viên"
                       name="inviteStudentCode"
                       value={inviteStudentCode}
                       onChange={(e) => setInviteStudentCode(e.target.value)}
-                      placeholder="Ví dụ: 22021435"
+                      placeholder="Ví dụ: namnv@hust.edu.vn hoặc 22021435"
                       className={css.s37}
                     />
                     <Button variant="primary" type="submit" loading={inviting} className={css.s31}>
                       <UserPlus size={16} /> Gửi lời mời
                     </Button>
                   </form>
-                  <p className={css.s45}>Nhập MSSV của bạn cùng lớp học phần. Hệ thống sẽ tự kiểm tra sinh viên đó có trong danh sách học phần và chưa thuộc nhóm khác.</p>
+                  <p className={css.s45}>Nhập email hoặc MSSV của bạn cùng lớp học phần. Hệ thống sẽ tự kiểm tra sinh viên đó có trong danh sách học phần và chưa thuộc nhóm khác.</p>
                 </div>
               )}
             </Card>
