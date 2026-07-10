@@ -1,4 +1,4 @@
-# Episteme (Management Project v2)
+# Karl (Management Project)
 
 Hệ thống quản lý đồ án tốt nghiệp và môn học, chuyển đổi hoàn toàn sang kiến trúc SQL/Prisma và loại bỏ hoàn toàn dấu vết MongoDB/Mongoose.
 
