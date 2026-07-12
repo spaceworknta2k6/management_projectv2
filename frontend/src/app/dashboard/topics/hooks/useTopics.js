@@ -7,6 +7,7 @@ import api from '@/services/api';
 import { useToast } from '@/components/ui/Toast';
 import { hasAnyRole, handleApiError } from '@/lib/utils';
 import { ACADEMIC_UNITS } from '@/lib/academicUnits';
+import { CURRENT_ACADEMIC_TERM, isPeriodInTerm } from '@/lib/academicTerm';
 
 const initialForm = {
   ownerType: 'student',
@@ -55,10 +56,11 @@ export function useTopics(initialActiveTab = 'all') {
       ]);
 
       if (pList && pList.length > 0) {
+        const defaultPeriod = pList.find((period) => isPeriodInTerm(period, CURRENT_ACADEMIC_TERM.schoolYear, CURRENT_ACADEMIC_TERM.semester)) || pList[0];
         setForm((prev) => ({
           ...prev,
-          periodId: prev.periodId || pList[0]._id,
-          academicUnit: prev.academicUnit || pList[0].academicUnit || ACADEMIC_UNITS[0].value,
+          periodId: prev.periodId || defaultPeriod._id,
+          academicUnit: prev.academicUnit || defaultPeriod.academicUnit || ACADEMIC_UNITS[0].value,
         }));
       }
 

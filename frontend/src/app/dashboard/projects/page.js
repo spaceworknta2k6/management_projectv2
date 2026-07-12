@@ -11,9 +11,11 @@ import Input from '@/components/ui/Input';
 import FilterCard from '@/components/ui/FilterCard';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
+import AcademicTermFilter from '@/components/dashboard/AcademicTermFilter';
 import { useToast } from '@/components/ui/Toast';
 import { hasAnyRole } from '@/lib/utils';
 import { getMemberDisplay, getOwnerDisplay, getOwnerTypeLabel, isStudentProjectOwner } from '@/lib/projectOwner';
+import { getRecordPeriod, isPeriodInTerm } from '@/lib/academicTerm';
 import { FolderSimple, ArrowsClockwise, FileText } from '@phosphor-icons/react';
 import { exportToCSV } from '@/lib/export';
 import ProjectCard from './components/ProjectCard';
@@ -52,7 +54,14 @@ export default function ProjectsPage() {
   const token = useAuthStore((s) => s.token);
   const toast = useToast();
 
-  const { periods, selectedPeriodId, setSelectedPeriodId, fetchPeriods } = usePeriodStore();
+  const {
+    periods,
+    selectedPeriodId,
+    selectedSchoolYear,
+    selectedSemester,
+    setSelectedPeriodId,
+    fetchPeriods,
+  } = usePeriodStore();
 
   const initialQuery = useMemo(() => getInitialQuery(), []);
   const [currentPage, setCurrentPage] = useState(initialQuery.page);
@@ -72,6 +81,12 @@ export default function ProjectsPage() {
   const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
   const isLecturer = hasAnyRole(user, ['LECTURER']);
   const isStudent = hasAnyRole(user, ['STUDENT']);
+  const canSelectAcademicTerm = isStaff || isLecturer;
+
+  const periodOptions = useMemo(
+    () => periods.filter((period) => isPeriodInTerm(period, selectedSchoolYear, selectedSemester)),
+    [periods, selectedSchoolYear, selectedSemester]
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -116,8 +131,8 @@ export default function ProjectsPage() {
   }, [loadData, token]);
 
   const visibleProjects = useMemo(() => {
-    let list = projects;
-    if (selectedPeriodId) {
+    let list = projects.filter((project) => isPeriodInTerm(getRecordPeriod(project, periods), selectedSchoolYear, selectedSemester));
+    if (canSelectAcademicTerm && selectedPeriodId) {
       list = list.filter((p) => {
         const pId = p.periodId?._id || p.periodId;
         return pId === selectedPeriodId;
@@ -135,7 +150,7 @@ export default function ProjectsPage() {
       ];
       return values.some((v) => String(v || '').toLowerCase().includes(keyword));
     });
-  }, [projects, selectedPeriodId, search]);
+  }, [canSelectAcademicTerm, periods, projects, selectedPeriodId, selectedSchoolYear, selectedSemester, search]);
 
   const totalPages = Math.max(1, Math.ceil(visibleProjects.length / pageSize));
   const pagedProjects = visibleProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -305,23 +320,28 @@ export default function ProjectsPage() {
 
       {/* Period Selection and Filter bar */}
       <div className={`no-print ${css.filterContainer}`}>
-        <Card className={css.periodCard} noPadding>
-          <div className={css.periodCardContent}>
-            <label className={css.periodLabel}>Học phần đồ án</label>
-            <select
-              value={selectedPeriodId}
-              onChange={(e) => setSelectedPeriodId(e.target.value)}
-              className={css.periodSelect}
-            >
-              <option value="">Chọn học phần</option>
-              {periods.map((p) => (
-                <option key={p._id} value={p._id}>
-                  {p.name} ({p.courseCode})
-                </option>
-              ))}
-            </select>
-          </div>
-        </Card>
+        {canSelectAcademicTerm && (
+          <Card className={css.periodCard} noPadding>
+            <div className={css.periodCardContent}>
+              <AcademicTermFilter periods={periods} />
+              <div>
+                <label className={css.periodLabel}>Học phần đồ án</label>
+                <select
+                  value={selectedPeriodId}
+                  onChange={(e) => setSelectedPeriodId(e.target.value)}
+                  className={css.periodSelect}
+                >
+                  <option value="">Tất cả học phần trong kỳ</option>
+                  {periodOptions.map((p) => (
+                    <option key={p._id} value={p._id}>
+                      {p.name} ({p.courseCode || `Kỳ ${p.semester}`})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </Card>
+        )}
         
         <div className={css.searchWrapper}>
           <FilterCard

@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import FilterCard from '@/components/ui/FilterCard';
+import AcademicTermFilter from '@/components/dashboard/AcademicTermFilter';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Pagination from '@/components/ui/Pagination';
 import Spinner from '@/components/ui/Spinner';
@@ -17,6 +18,8 @@ import { useToast } from '@/components/ui/Toast';
 import api from '@/services/api';
 import { handleApiError } from '@/lib/utils';
 import { getAcademicUnitLabel, getTopicDomainLabel } from '@/lib/academicUnits';
+import { filterRecordsByTerm } from '@/lib/academicTerm';
+import usePeriodStore from '@/store/period.store';
 import EmptyState from '@/components/ui/EmptyState';
 import { BookOpen, Plus, FileText } from '@phosphor-icons/react';
 import { exportToCSV } from '@/lib/export';
@@ -80,6 +83,7 @@ export default function TopicsPage() {
   const [assignTopic, setAssignTopic] = useState(null);
   const [selectedSupervisorId, setSelectedSupervisorId] = useState('');
   const [assigningSupervisor, setAssigningSupervisor] = useState(false);
+  const { selectedSchoolYear, selectedSemester } = usePeriodStore();
   const {
     user,
     token,
@@ -110,6 +114,7 @@ export default function TopicsPage() {
     handleUnpublishTopic,
     filteredTopics,
   } = useTopics(initialQuery.tab);
+  const canSelectAcademicTerm = isStaff || isLecturer;
 
   const getPeriodByTopic = (topic) => {
     const periodId = topic?.periodId?._id || topic?.periodId;
@@ -143,8 +148,9 @@ export default function TopicsPage() {
   };
 
   const keyword = search.trim().toLowerCase();
+  const termTopics = filterRecordsByTerm(filteredTopics, periods, selectedSchoolYear, selectedSemester);
   const visibleTopics = keyword
-    ? filteredTopics.filter((topic) => {
+    ? termTopics.filter((topic) => {
         const values = [
           topic.title,
           topic.summary,
@@ -156,7 +162,7 @@ export default function TopicsPage() {
         ];
         return values.some((value) => String(value || '').toLowerCase().includes(keyword));
       })
-    : filteredTopics;
+    : termTopics;
 
   const totalPages = Math.max(1, Math.ceil(visibleTopics.length / pageSize));
   const pagedTopics = visibleTopics.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -340,6 +346,13 @@ export default function TopicsPage() {
       <Tabs tabs={topicTabs} activeTab={activeTab} onChange={handleTabChange} />
 
       {/* Search form */}
+      {canSelectAcademicTerm && (
+        <div style={{ marginBottom: '16px' }}>
+          <Card>
+            <AcademicTermFilter periods={periods} />
+          </Card>
+        </div>
+      )}
       <FilterCard
         searchInput={searchInput}
         setSearchInput={setSearchInput}

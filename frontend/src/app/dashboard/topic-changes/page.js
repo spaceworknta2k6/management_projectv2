@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
+import usePeriodStore from '@/store/period.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -9,9 +10,11 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import Tabs from '@/components/ui/Tabs';
+import AcademicTermFilter from '@/components/dashboard/AcademicTermFilter';
 import { useToast } from '@/components/ui/Toast';
 import { formatDateTime, hasAnyRole } from '@/lib/utils';
 import { getOwnerDisplay, getOwnerTypeLabel, isStudentProjectOwner } from '@/lib/projectOwner';
+import { filterRecordsByTerm, getRecordPeriod, isPeriodInTerm } from '@/lib/academicTerm';
 import { ArrowsClockwise, Check, FileText, Plus, X } from '@phosphor-icons/react';
 import css from '../extensions/page.module.css';
 
@@ -90,6 +93,7 @@ export default function TopicChangesPage() {
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
   const toast = useToast();
+  const { periods, selectedSchoolYear, selectedSemester, fetchPeriods } = usePeriodStore();
 
   const [projects, setProjects] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -104,13 +108,35 @@ export default function TopicChangesPage() {
   const isStudent = hasAnyRole(user, ['STUDENT']);
   const isLecturer = hasAnyRole(user, ['LECTURER']);
   const isFaculty = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
+  const canSelectAcademicTerm = isLecturer || isFaculty;
+
+  const termProjects = useMemo(
+    () => filterRecordsByTerm(projects, periods, selectedSchoolYear, selectedSemester),
+    [periods, projects, selectedSchoolYear, selectedSemester]
+  );
+
+  const termTopicIds = useMemo(() => {
+    return new Set(
+      termProjects
+        .map((project) => String(project.topicId?._id || project.topicId || ''))
+        .filter(Boolean)
+    );
+  }, [termProjects]);
+
+  const isRequestInSelectedTerm = useCallback((request) => {
+    const topicId = String(request?.topicId?._id || request?.topicId || '');
+    if (termTopicIds.has(topicId)) return true;
+
+    const period = getRecordPeriod(request?.topicId || request, periods);
+    return isPeriodInTerm(period, selectedSchoolYear, selectedSemester);
+  }, [periods, selectedSchoolYear, selectedSemester, termTopicIds]);
 
   const visibleProjects = useMemo(() => {
     if (isStudent) {
-      return projects.filter((project) => isStudentProjectOwner(project, user?.studentId));
+      return termProjects.filter((project) => isStudentProjectOwner(project, user?.studentId));
     }
-    return projects;
-  }, [isStudent, projects, user?.studentId]);
+    return termProjects;
+  }, [isStudent, termProjects, user?.studentId]);
 
   const topicOptions = visibleProjects
     .filter((project) => project.topicId && !['cancelled', 'finalized'].includes(project.status))
@@ -123,13 +149,13 @@ export default function TopicChangesPage() {
     }));
 
   const activeRequests = useMemo(
-    () => requests.filter((request) => request.status === 'pending'),
-    [requests]
+    () => requests.filter((request) => request.status === 'pending' && isRequestInSelectedTerm(request)),
+    [isRequestInSelectedTerm, requests]
   );
 
   const historyRequests = useMemo(
-    () => requests.filter((request) => historyStatuses.includes(request.status)),
-    [requests]
+    () => requests.filter((request) => historyStatuses.includes(request.status) && isRequestInSelectedTerm(request)),
+    [isRequestInSelectedTerm, requests]
   );
 
   const displayedRequests = requestView === 'history' ? historyRequests : activeRequests;
@@ -138,14 +164,16 @@ export default function TopicChangesPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const [projectsRes, requestsRes] = await Promise.all([
+      const [periodList, projectsRes, requestsRes] = await Promise.all([
+        fetchPeriods(token),
         api.get('/projects', token),
         api.get('/topic-change-requests', token),
       ]);
       setProjects(projectsRes.data || []);
       setRequests(requestsRes.data || []);
 
-      const firstTopic = (projectsRes.data || []).find((project) => project.topicId && !['cancelled', 'finalized'].includes(project.status));
+      const scopedProjects = filterRecordsByTerm(projectsRes.data || [], periodList || periods, selectedSchoolYear, selectedSemester);
+      const firstTopic = scopedProjects.find((project) => project.topicId && !['cancelled', 'finalized'].includes(project.status));
       setForm((prev) => ({
         ...prev,
         topicId: prev.topicId || firstTopic?.topicId?._id || firstTopic?.topicId || '',
@@ -155,7 +183,7 @@ export default function TopicChangesPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, toast]);
+  }, [fetchPeriods, periods, selectedSchoolYear, selectedSemester, token, toast]);
 
   useEffect(() => {
     loadData();
@@ -274,6 +302,14 @@ export default function TopicChangesPage() {
         </div>
         <Button variant="outline" onClick={loadData} icon={<ArrowsClockwise />} title="Làm mới" />
       </div>
+
+      {canSelectAcademicTerm && (
+        <div style={{ marginBottom: '16px' }}>
+          <Card>
+            <AcademicTermFilter periods={periods} />
+          </Card>
+        </div>
+      )}
 
       <div className={[css.extensionGrid, isStudent ? css.extensionGridStudent : ''].filter(Boolean).join(' ')}>
         {isStudent && (

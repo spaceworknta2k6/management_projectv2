@@ -116,6 +116,8 @@ export default function GroupsPage() {
   const [inviting, setInviting] = useState(false);
 
   const isStaff = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
+  const isLecturer = hasAnyRole(user, ['LECTURER']);
+  const canViewGroupDirectory = isStaff || isLecturer;
   const staffSchoolYears = useMemo(() => getAcademicYearOptions(), []);
   const staffPeriodOptions = useMemo(() => periods.filter((period) => {
     if (staffSchoolYear && period.schoolYear !== staffSchoolYear) return false;
@@ -224,24 +226,24 @@ export default function GroupsPage() {
 
   useEffect(() => {
     if (!token || !user) return;
-    if (isStaff) {
+    if (canViewGroupDirectory) {
       fetchPeriods(token);
     } else {
       fetchStudentPeriods();
     }
-  }, [fetchPeriods, fetchStudentPeriods, isStaff, token, user]);
+  }, [canViewGroupDirectory, fetchPeriods, fetchStudentPeriods, token, user]);
 
   useEffect(() => {
     if (!token || !user) return;
-    if (isStaff) {
+    if (canViewGroupDirectory) {
       fetchAllGroups(selectedPeriodId);
     } else {
       fetchStudentGroupData();
     }
-  }, [fetchAllGroups, fetchStudentGroupData, isStaff, selectedPeriodId, token, user]);
+  }, [canViewGroupDirectory, fetchAllGroups, fetchStudentGroupData, selectedPeriodId, token, user]);
 
   useEffect(() => {
-    if (!isStaff || periods.length === 0) return;
+    if (!canViewGroupDirectory || periods.length === 0) return;
     if (staffPeriodOptions.length === 0) {
       if (selectedPeriodId) setSelectedPeriodId('');
       return;
@@ -250,7 +252,7 @@ export default function GroupsPage() {
     if (!hasSelectedPeriod) {
       setSelectedPeriodId(staffPeriodOptions[0]._id);
     }
-  }, [isStaff, periods.length, selectedPeriodId, setSelectedPeriodId, staffPeriodOptions]);
+  }, [canViewGroupDirectory, periods.length, selectedPeriodId, setSelectedPeriodId, staffPeriodOptions]);
 
   const handleCreateGroup = async (e) => {
     e.preventDefault();
@@ -342,7 +344,7 @@ export default function GroupsPage() {
   };
 
   const reloadGroups = () => {
-    if (isStaff) fetchAllGroups(selectedPeriodId);
+    if (canViewGroupDirectory) fetchAllGroups(selectedPeriodId);
     else fetchStudentGroupData();
   };
 
@@ -365,7 +367,7 @@ export default function GroupsPage() {
   }, [currentPage, totalPages]);
 
   useEffect(() => {
-    if (!isStaff) return;
+    if (!canViewGroupDirectory) return;
     const params = new URLSearchParams();
     params.set('page', String(currentPage));
     params.set('limit', String(pageSize));
@@ -374,7 +376,7 @@ export default function GroupsPage() {
     if (typeof window === 'undefined') return;
     const currentUrl = `${window.location.pathname}${window.location.search}`;
     if (currentUrl !== nextUrl) router.replace(nextUrl, { scroll: false });
-  }, [currentPage, isStaff, pageSize, pathname, router, search]);
+  }, [canViewGroupDirectory, currentPage, pageSize, pathname, router, search]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -482,7 +484,11 @@ export default function GroupsPage() {
           Quản lý Nhóm đồ án
         </h1>
         <p className={css.s4}>
-          {isStaff ? 'Xem chi tiết các nhóm thành lập trong từng học kỳ' : 'Thành lập nhóm và kết nối với các bạn sinh viên'}
+          {canViewGroupDirectory
+            ? isLecturer && !isStaff
+              ? 'Xem các nhóm đồ án bạn đang hướng dẫn trong từng học kỳ'
+              : 'Xem chi tiết các nhóm thành lập trong từng học kỳ'
+            : 'Thành lập nhóm và kết nối với các bạn sinh viên'}
         </p>
       </div>
 
@@ -490,8 +496,8 @@ export default function GroupsPage() {
         <div className={css.s5}>
           <Spinner size="lg" />
         </div>
-      ) : isStaff ? (
-        /* ─── Staff View ─── */
+      ) : canViewGroupDirectory ? (
+        /* ─── Staff/Lecturer View ─── */
         <div>
           <Card className={css.s47}>
             <div className={css.s48}>
@@ -584,12 +590,16 @@ export default function GroupsPage() {
                     actions={
                       <div className={css.s10}>
                         <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
-                        <Button variant="secondary" size="sm" onClick={() => handleEditGroup(g)}>
-                          <PencilSimple size={14} /> Sửa
-                        </Button>
-                        <Button variant="danger" size="sm" onClick={() => setGroupToDelete(g)}>
-                          <Trash size={14} /> Xóa
-                        </Button>
+                        {isStaff && (
+                          <>
+                            <Button variant="secondary" size="sm" onClick={() => handleEditGroup(g)}>
+                              <PencilSimple size={14} /> Sửa
+                            </Button>
+                            <Button variant="danger" size="sm" onClick={() => setGroupToDelete(g)}>
+                              <Trash size={14} /> Xóa
+                            </Button>
+                          </>
+                        )}
                       </div>
                     }
                   >

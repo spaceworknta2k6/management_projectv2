@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useAuthStore from '@/store/auth.store';
+import usePeriodStore from '@/store/period.store';
 import api from '@/services/api';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -10,9 +10,11 @@ import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
 import Pagination from '@/components/ui/Pagination';
+import AcademicTermFilter from '@/components/dashboard/AcademicTermFilter';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatDateTime, hasAnyRole } from '@/lib/utils';
 import { getOwnerDisplay, getOwnerTypeLabel, isStudentProjectOwner } from '@/lib/projectOwner';
+import { filterRecordsByTerm, getRecordPeriod, isPeriodInTerm } from '@/lib/academicTerm';
 import {
   ArrowsClockwise,
   Calendar,
@@ -163,14 +165,14 @@ export default function ExtensionRequestsPage() {
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
   const toast = useToast();
-  const router = useRouter();
-  const pathname = usePathname();
   const initialQuery = useMemo(() => getInitialExtensionsQuery(), []);
+  const { periods, selectedSchoolYear, selectedSemester, fetchPeriods } = usePeriodStore();
 
   const [projects, setProjects] = useState([]);
   const [milestonesByProject, setMilestonesByProject] = useState({});
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [reviewModal, setReviewModal] = useState(null);
@@ -188,7 +190,8 @@ export default function ExtensionRequestsPage() {
 
   const isStudent = hasAnyRole(user, ['STUDENT']);
   const isLecturer = hasAnyRole(user, ['LECTURER']);
-  const isFaculty = hasAnyRole(user, ['FACULTY_STAFF']);
+  const isFaculty = hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']);
+  const canSelectAcademicTerm = isLecturer || isFaculty;
 
   const visibleProjects = useMemo(() => {
     if (isStudent) {
@@ -215,7 +218,9 @@ export default function ExtensionRequestsPage() {
   const loadData = useCallback(async () => {
     if (!token) return;
 
-    setLoading(true);
+    if (!hasLoadedRef.current) {
+      setLoading(true);
+    }
     try {
       const queryParams = new URLSearchParams({
         search,
@@ -224,19 +229,38 @@ export default function ExtensionRequestsPage() {
         limit: pageSize.toString(),
       });
 
-      const [projectsRes, requestsRes] = await Promise.all([
+      const [periodList, projectsRes, requestsRes] = await Promise.all([
+        fetchPeriods(token),
         api.get('/projects', token),
         api.get(`/extensions?${queryParams.toString()}`, token),
       ]);
 
       const projectList = projectsRes.data || [];
-      setProjects(projectList);
-      setRequests(requestsRes.data || []);
-      if (requestsRes.pagination) {
-        setPagination(requestsRes.pagination);
-      }
+      const availablePeriods = periodList || periods;
+      const termProjectList = filterRecordsByTerm(projectList, availablePeriods, selectedSchoolYear, selectedSemester);
+      const termProjectIds = new Set(termProjectList.map((project) => String(project._id)));
+      const termRequests = (requestsRes.data || []).filter((request) => {
+        const requestProjectId = String(request.projectId?._id || request.projectId || '');
+        if (termProjectIds.has(requestProjectId)) return true;
 
-      const scopedProjects = projectList.filter((project) => {
+        const requestProject = typeof request.projectId === 'object'
+          ? request.projectId
+          : projectList.find((project) => String(project._id) === requestProjectId);
+        return isPeriodInTerm(getRecordPeriod(requestProject, availablePeriods), selectedSchoolYear, selectedSemester);
+      });
+
+      setProjects(termProjectList);
+      setRequests(termRequests);
+      if (requestsRes.pagination) {
+        setPagination({
+          ...requestsRes.pagination,
+          total: termRequests.length,
+          pages: Math.max(1, Math.ceil(termRequests.length / pageSize)),
+        });
+      }
+      hasLoadedRef.current = true;
+
+      const scopedProjects = termProjectList.filter((project) => {
         if (isStudent) {
           return isStudentProjectOwner(project, user?.studentId);
         }
@@ -274,26 +298,27 @@ export default function ExtensionRequestsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, search, statusFilter, currentPage, pageSize, isStudent, user?.studentId, isLecturer, isFaculty, user?.lecturerId, toast]);
+  }, [
+    fetchPeriods,
+    periods,
+    selectedSchoolYear,
+    selectedSemester,
+    token,
+    search,
+    statusFilter,
+    currentPage,
+    pageSize,
+    isStudent,
+    user?.studentId,
+    isLecturer,
+    isFaculty,
+    user?.lecturerId,
+    toast,
+  ]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    params.set('page', String(currentPage));
-    params.set('limit', String(pageSize));
-    if (search.trim()) params.set('search', search.trim());
-    if (statusFilter.trim()) params.set('status', statusFilter.trim());
-
-    const nextUrl = `${pathname}?${params.toString()}`;
-    if (typeof window === 'undefined') return;
-    const currentUrl = `${window.location.pathname}${window.location.search}`;
-    if (currentUrl !== nextUrl) {
-      router.replace(nextUrl, { scroll: false });
-    }
-  }, [currentPage, pageSize, pathname, router, search, statusFilter]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -461,6 +486,14 @@ export default function ExtensionRequestsPage() {
         </div>
         <Button variant="outline" onClick={loadData} icon={<ArrowsClockwise />} title="Làm mới" />
       </div>
+
+      {canSelectAcademicTerm && (
+        <div style={{ marginBottom: '16px' }}>
+          <Card>
+            <AcademicTermFilter periods={periods} />
+          </Card>
+        </div>
+      )}
 
       {/* Search & Filters */}
       <Card className={css.searchCard}>

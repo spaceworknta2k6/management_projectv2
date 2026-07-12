@@ -15,6 +15,94 @@
   flex: 1;
 }
 
+.filterContainer {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.periodCard {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.periodCard:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.periodCardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  height: 100%;
+  padding: 8px 16px;
+  justify-content: center;
+}
+
+.periodLabel {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.periodSelect {
+  width: 100%;
+  height: 34px;
+  padding: 0 28px 0 0;
+  background-color: transparent;
+  border: none;
+  color: var(--text-primary);
+  outline: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.filterSearch {
+  flex: 2;
+  min-width: 320px;
+}
+
+.filterSearch > div {
+  height: 100%;
+  margin-bottom: 0;
+}
+
+.filterSearch > div > div {
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.filterSearch form {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .filterContainer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .periodCard,
+  .filterSearch {
+    width: 100%;
+    flex: none;
+  }
+}
+
 .s1 {
   display: flex;
   justify-content: center;

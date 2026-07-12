@@ -1,5 +1,9 @@
 .filterCard {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
+}
+
+.filterCard > div {
+  padding: 10px 14px;
 }
 
 .headerRow {
@@ -17,7 +21,8 @@
 
 .searchInput {
   width: 100%;
-  padding: 10px 14px 10px 42px;
+  height: 34px;
+  padding: 0 14px 0 42px;
   background-color: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

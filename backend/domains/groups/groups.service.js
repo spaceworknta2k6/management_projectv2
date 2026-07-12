@@ -675,10 +675,32 @@ const cancelLinkedWorkAndDeleteGroup = async (groupId, user) => {
   };
 };
 
-const getGroupsByPeriod = async (periodId) => {
+const getGroupsByPeriod = async (periodId, user = {}) => {
   const where = { isDeleted: false };
   if (periodId) {
     where.periodId = toId(periodId);
+  }
+
+  const isLecturerOnly = user.lecturerId && !user.roles?.some(role => ['FACULTY_STAFF', 'SYSTEM_ADMIN'].includes(role));
+  if (isLecturerOnly) {
+    const projectWhere = {
+      supervisorId: toId(user.lecturerId),
+      groupId: { not: null },
+      isDeleted: false,
+    };
+    if (periodId) {
+      projectWhere.periodId = toId(periodId);
+    }
+
+    const supervisedProjects = await prisma.project.findMany({
+      where: projectWhere,
+      select: { groupId: true },
+    });
+    const supervisedGroupIds = Array.from(new Set(supervisedProjects.map((project) => project.groupId).filter(Boolean)));
+    if (supervisedGroupIds.length === 0) {
+      return [];
+    }
+    where.id = { in: supervisedGroupIds };
   }
 
   const groups = await prisma.projectGroup.findMany({
