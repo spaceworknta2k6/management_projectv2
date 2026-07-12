@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import useAuthStore from '@/store/auth.store';
+import usePeriodStore from '@/store/period.store';
 import api from '@/services/api';
 import { useToast } from '@/components/ui/Toast';
 import { hasAnyRole } from '@/lib/utils';
+import { filterRecordsByTerm } from '@/lib/academicTerm';
 import { io } from 'socket.io-client';
 
 const getId = (value) => value?._id || value;
@@ -25,6 +27,7 @@ export function useSubmissions() {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
+  const { periods, selectedSchoolYear, selectedSemester, fetchPeriods } = usePeriodStore();
   const toast = useToast();
 
   const [projects, setProjects] = useState([]);
@@ -72,8 +75,11 @@ export function useSubmissions() {
   const loadProjects = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/projects', token);
-      let list = res.data || [];
+      const [periodList, res] = await Promise.all([
+        fetchPeriods(token),
+        api.get('/projects', token),
+      ]);
+      let list = filterRecordsByTerm(res.data || [], periodList || periods, selectedSchoolYear, selectedSemester);
       if (isStudent) {
         list = list.filter((p) => isStudentProjectOwner(p, user?.studentId) || isStudentGroupProjectMember(p, user?.studentId));
       } else if (isLecturer) {
@@ -102,7 +108,7 @@ export function useSubmissions() {
     } finally {
       setLoading(false);
     }
-  }, [isLecturer, isStudent, toast, token, user?.id, user?.lecturerId, user?.studentId]);
+  }, [fetchPeriods, isLecturer, isStudent, periods, selectedSchoolYear, selectedSemester, toast, token, user?.id, user?.lecturerId, user?.studentId]);
 
   // 2. Fetch milestones for selected project
   const loadMilestones = useCallback(async (projId) => {

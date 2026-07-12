@@ -1,7 +1,8 @@
 const { test, expect } = require('@playwright/test');
 const { execSync } = require('child_process');
+const { authHeaders, closeAuthHelper } = require('./auth-helper');
 
-const apiBaseUrl = 'http://localhost:5000/api/v1';
+const apiBaseUrl = process.env.PLAYWRIGHT_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api/v1';
 
 test.setTimeout(60000);
 
@@ -9,14 +10,9 @@ test.beforeAll(() => {
   execSync('node clean-e2e.js', { cwd: '..' });
 });
 
-async function login(request, email) {
-  const response = await request.post(`${apiBaseUrl}/auth/login`, {
-    data: { email, password: 'password123' },
-  });
-  expect(response.status()).toBe(200);
-  const body = await response.json();
-  return body.data.accessToken;
-}
+test.afterAll(async () => {
+  await closeAuthHelper();
+});
 
 async function api(request, method, path, token, data) {
   const response = await request[method](`${apiBaseUrl}${path}`, {
@@ -59,9 +55,9 @@ test('single student topic workflow', async ({ request }) => {
   const topicTitle = `Single Student Topic E2E ${runId}`;
   const milestoneTitle = `Single Student Milestone E2E ${runId}`;
 
-  const staffToken = await login(request, 'huonglt@hust.edu.vn');
-  const studentToken = await login(request, 'hoanganh@hust.edu.vn');
-  const lecturerToken = await login(request, 'haikt@hust.edu.vn');
+  const staffToken = (await authHeaders('huonglt@hust.edu.vn')).token;
+  const studentToken = (await authHeaders('hoanganh@hust.edu.vn')).token;
+  const lecturerToken = (await authHeaders('haikt@hust.edu.vn')).token;
 
   const lecturersRes = await api(request, 'get', '/auth/lecturers', staffToken);
   expect(lecturersRes.response.status()).toBe(200);
@@ -112,7 +108,13 @@ test('single student topic workflow', async ({ request }) => {
     supervisorId: supervisor._id,
   });
   expect(assignRes.response.status()).toBe(200);
-  const projectId = assignRes.body.data._id;
+  const supervisorProjectsRes = await api(request, 'get', '/projects', lecturerToken);
+  expect(supervisorProjectsRes.response.status()).toBe(200);
+  const project = supervisorProjectsRes.body.data.find((item) => {
+    const itemTopicId = item.topicId?._id || item.topicId;
+    return itemTopicId === topicId;
+  });
+  const projectId = project?._id;
   expect(projectId).toBeTruthy();
 
   const milestoneRes = await api(request, 'post', `/projects/${projectId}/milestones`, lecturerToken, {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useSubmissions } from './hooks/useSubmissions';
+import usePeriodStore from '@/store/period.store';
 import MilestoneCard from './components/MilestoneCard';
 import SubmitReportModal from './components/SubmitReportModal';
 import ReviewFeedbackModal from './components/ReviewFeedbackModal';
@@ -9,6 +10,7 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Spinner from '@/components/ui/Spinner';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import AcademicTermFilter from '@/components/dashboard/AcademicTermFilter';
 import { FileText, Plus } from '@phosphor-icons/react';
 import css from './page.module.css';
 
@@ -19,6 +21,7 @@ const getProjectOwnerLabel = (project) => (
 );
 
 export default function SubmissionsPage() {
+  const { periods } = usePeriodStore();
   const {
     user,
     projects,
@@ -97,6 +100,14 @@ export default function SubmissionsPage() {
           )}
         </div>
       </div>
+
+      {(isStaff || isLecturer) && (
+        <div style={{ marginBottom: '16px' }}>
+          <Card>
+            <AcademicTermFilter periods={periods} />
+          </Card>
+        </div>
+      )}
 
       {/* Project Selector (for Staff/Lecturer) */}
       {!loading && projects.length > 0 && (

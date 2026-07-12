@@ -128,7 +128,7 @@ const cancelLinkedWorkAndDeleteGroup = async (req, res, next) => {
 
 const getGroups = async (req, res, next) => {
   try {
-    const result = await groupsService.getGroupsByPeriod(req.query.periodId);
+    const result = await groupsService.getGroupsByPeriod(req.query.periodId, req.user);
     return res.status(200).json({
       success: true,
       message: 'Lấy danh sách nhóm đồ án thành công!',
