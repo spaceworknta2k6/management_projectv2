@@ -6,6 +6,24 @@ const { randomBytes } = require('crypto');
 const newObjectId = () => randomBytes(12).toString('hex');
 const toId = (value) => (value ? value.toString() : null);
 
+const normalizeSemester = (value) => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === '3' || raw === 'iii' || raw.includes('iii')) return '3';
+  if (raw === '2' || raw === 'ii') return '2';
+  if (raw === '1' || raw === 'i') return '1';
+  return String(value || '').trim();
+};
+
+const getCurrentAcademicTerm = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  if (month >= 8) return { schoolYear: `${year}-${year + 1}`, semester: '1' };
+  if (month >= 6) return { schoolYear: `${year - 1}-${year}`, semester: '3' };
+  return { schoolYear: `${year - 1}-${year}`, semester: '2' };
+};
+
 const populateGrader = async (graderId) => {
   if (!graderId) return null;
   const lecturer = await prisma.lecturer.findFirst({
@@ -372,7 +390,35 @@ const getScoreSheets = async (query = {}, user = {}) => {
 
 const getProjectsSummary = async (query = {}, user = {}) => {
   const projectQuery = { isDeleted: false };
-  if (query.periodId) {
+  const isStudent = Boolean(user.studentId) && !user.lecturerId && !isStaff(user);
+
+  if (isStudent) {
+    const currentTerm = getCurrentAcademicTerm();
+    const currentPeriods = await prisma.projectPeriod.findMany({
+      where: {
+        isDeleted: false,
+        schoolYear: currentTerm.schoolYear,
+      },
+      select: { id: true, semester: true }
+    });
+    const currentPeriodIds = currentPeriods
+      .filter((period) => normalizeSemester(period.semester) === currentTerm.semester)
+      .map((period) => period.id);
+
+    if (currentPeriodIds.length === 0) {
+      return [];
+    }
+
+    if (query.periodId) {
+      const requestedPeriodId = toId(query.periodId);
+      if (!currentPeriodIds.includes(requestedPeriodId)) {
+        return [];
+      }
+      projectQuery.periodId = requestedPeriodId;
+    } else {
+      projectQuery.periodId = { in: currentPeriodIds };
+    }
+  } else if (query.periodId) {
     projectQuery.periodId = toId(query.periodId);
   }
 
@@ -400,7 +446,10 @@ const getProjectsSummary = async (query = {}, user = {}) => {
   });
 
   const grades = await prisma.finalGrade.findMany({
-    where: { projectId: { in: projectIds } }
+    where: {
+      projectId: { in: projectIds },
+      ...(isStudent ? { publishedAt: { not: null } } : {})
+    }
   });
 
   const sheetsByProjectId = new Map();
@@ -417,16 +466,17 @@ const getProjectsSummary = async (query = {}, user = {}) => {
     gradesByProjectId.set(grade.projectId, { ...grade, _id: grade.id });
   }
 
-  return visibleProjects.map((project) => {
+  const result = visibleProjects.map((project) => {
     const finalGrade = gradesByProjectId.get(project.id) || null;
-    const canSeeFinalGrade = !user.studentId || finalGrade?.publishedAt;
 
     return {
       ...project,
-      sheets: sheetsByProjectId.get(project.id) || [],
-      finalGrade: canSeeFinalGrade ? finalGrade : null,
+      sheets: isStudent ? [] : (sheetsByProjectId.get(project.id) || []),
+      finalGrade,
     };
   });
+
+  return isStudent ? result.filter((project) => project.finalGrade?.publishedAt) : result;
 };
 
 const getScoreSheetById = async (id, user = {}) => {
@@ -687,7 +737,7 @@ const getFinalGrade = async (id, user = {}) => {
   const populatedProject = await populateProject(grade.projectId);
   await assertProjectAccess(populatedProject, user);
 
-  if (user.studentId && !grade.publishedAt) {
+  if (user.studentId && !user.lecturerId && !isStaff(user) && !grade.publishedAt) {
     throw { status: 403, message: 'Điểm số của dự án này chưa được công bố.' };
   }
 
@@ -704,7 +754,7 @@ const getFinalGradeByProjectId = async (projectId, user = {}) => {
   const populatedProject = await populateProject(grade.projectId);
   await assertProjectAccess(populatedProject, user);
 
-  if (user.studentId && !grade.publishedAt) {
+  if (user.studentId && !user.lecturerId && !isStaff(user) && !grade.publishedAt) {
     throw { status: 403, message: 'Điểm số của dự án này chưa được công bố.' };
   }
 
@@ -893,15 +943,61 @@ const getPublicScoreSheetVerify = async (id) => {
 };
 
 const publishFinalGradesByPeriod = async (periodId, userId) => {
+  const projects = await prisma.project.findMany({
+    where: { periodId: toId(periodId), isDeleted: false }
+  });
+  if (projects.length === 0) {
+    throw { status: 400, message: 'Học phần này chưa có dự án nào để công bố điểm.' };
+  }
+
+  const gradesByProjectId = new Map();
   const grades = await prisma.finalGrade.findMany({
     where: { periodId: toId(periodId) }
   });
-  if (!grades || grades.length === 0) {
-    return { publishedCount: 0, totalCount: 0, message: 'Không tìm thấy điểm tổng kết nào cần công bố.' };
+  for (const grade of grades) {
+    gradesByProjectId.set(grade.projectId, grade);
+  }
+
+  for (const project of projects) {
+    const sheets = await prisma.scoreSheet.findMany({
+      where: { projectId: project.id }
+    });
+    const supervisorSheet = sheets.find((sheet) => sheet.rubricRole === 'SUPERVISOR');
+    const reviewerSheet = sheets.find((sheet) => sheet.rubricRole === 'REVIEWER' || sheet.rubricRole === 'SECOND_MARKER');
+
+    if (!supervisorSheet?.lockedAt || !reviewerSheet?.lockedAt) {
+      throw {
+        status: 400,
+        message: 'Chỉ có thể công bố điểm khi cả phiếu điểm GVHD và GV chấm 2 đều đã được khóa.',
+      };
+    }
+
+    if (!gradesByProjectId.has(project.id)) {
+      throw {
+        status: 400,
+        message: 'Chưa có điểm tổng kết cho tất cả dự án trong học phần. Vui lòng tổng hợp điểm sau khi GVHD và GV chấm 2 khóa phiếu.',
+      };
+    }
+  }
+
+  const unpublishedGrades = grades.filter((grade) => !grade.publishedAt);
+  for (const grade of unpublishedGrades) {
+    const sheets = await prisma.scoreSheet.findMany({
+      where: { projectId: grade.projectId }
+    });
+    const supervisorSheet = sheets.find((sheet) => sheet.rubricRole === 'SUPERVISOR');
+    const reviewerSheet = sheets.find((sheet) => sheet.rubricRole === 'REVIEWER' || sheet.rubricRole === 'SECOND_MARKER');
+
+    if (!supervisorSheet?.lockedAt || !reviewerSheet?.lockedAt) {
+      throw {
+        status: 400,
+        message: 'Chỉ có thể công bố điểm khi cả phiếu điểm GVHD và GV chấm 2 đều đã được khóa.',
+      };
+    }
   }
 
   let publishedCount = 0;
-  for (const grade of grades) {
+  for (const grade of unpublishedGrades) {
     const flags = grade.varianceFlags || [];
     const activeVariance = flags.find(f => !f.resolvedAt);
     if (!activeVariance) {
@@ -941,17 +1037,22 @@ const publishFinalGradesByPeriod = async (periodId, userId) => {
         where: { id: period.id },
         data: {
           status: 'results_published',
-          resultPublishedAt: new Date()
+          resultPublishedAt: period.resultPublishedAt || new Date()
         }
       });
     }
   }
 
+  const message = publishedCount === 0 && totalGradesCount > 0 && totalGradesCount === publishedGradesCount
+    ? 'Học phần này đã được công bố điểm trước đó.'
+    : `Đã công bố ${publishedGradesCount}/${totalGradesCount} điểm tổng kết.`;
+
   return {
     success: true,
-    publishedCount,
-    totalCount: grades.length,
-    message: `Đã công bố thành công ${publishedCount}/${grades.length} điểm tổng kết.`,
+    publishedCount: publishedGradesCount,
+    newlyPublishedCount: publishedCount,
+    totalCount: totalGradesCount,
+    message,
   };
 };
 

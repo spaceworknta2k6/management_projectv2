@@ -133,7 +133,15 @@ const runIntegrationTests = async () => {
       });
 
       const oldPeriods = await ProjectPeriod.find({ name: TEST_PERIOD_NAME }).setOptions({ includeDeleted: true });
+      const oldPrismaPeriods = await prisma.projectPeriod.findMany({
+        where: { name: TEST_PERIOD_NAME },
+        select: { id: true },
+      });
       const oldPeriodIds = oldPeriods.map((period) => period._id);
+      const oldPeriodIdStrings = Array.from(new Set([
+        ...oldPeriodIds.map(id => id.toString()),
+        ...oldPrismaPeriods.map((period) => period.id),
+      ]));
       await Promise.all([
         AppealRequest.deleteMany({ periodId: { $in: oldPeriodIds } }),
         FinalGrade.deleteMany({ periodId: { $in: oldPeriodIds } }),
@@ -144,7 +152,6 @@ const runIntegrationTests = async () => {
         WorkflowEvent.deleteMany({ entityType: 'AppealRequest' }),
         ProjectPeriod.deleteMany({ _id: { $in: oldPeriodIds } }),
       ]);
-      const oldPeriodIdStrings = oldPeriodIds.map(id => id.toString());
       await prisma.appealRequest.deleteMany({ where: { periodId: { in: oldPeriodIdStrings } } });
       await prisma.finalGrade.deleteMany({ where: { periodId: { in: oldPeriodIdStrings } } });
       await prisma.scoreSheet.deleteMany({ where: { periodId: { in: oldPeriodIdStrings } } });
@@ -310,6 +317,11 @@ const runIntegrationTests = async () => {
       );
       await expectSuccess('Lock supervisor sheet', apiRequest(`/scores/score-sheets/${supervisorSheet.data._id}/lock`, supervisorToken, { method: 'POST', body: {} }));
 
+      const blockedPublishWithoutReviewer = await apiRequest(`/scores/final-grades/publish-by-period/${period._id}`, staffToken, { method: 'POST', body: {} });
+      if (blockedPublishWithoutReviewer.res.status !== 400 || blockedPublishWithoutReviewer.result.success) {
+        throw new Error(`Publish should fail while reviewer has not graded: ${JSON.stringify(blockedPublishWithoutReviewer.result)}`);
+      }
+
       const reviewerSheet = await expectSuccess(
         'Reviewer score sheet',
         apiRequest('/scores/score-sheets', reviewerToken, {
@@ -327,6 +339,32 @@ const runIntegrationTests = async () => {
         }),
         201
       );
+
+      const prematureGradeId = newObjectId().toString();
+      await prisma.finalGrade.create({
+        data: {
+          id: prematureGradeId,
+          mongoId: prematureGradeId,
+          projectId: project._id.toString(),
+          ownerType: 'group',
+          ownerId: group._id.toString(),
+          groupId: group._id.toString(),
+          periodId: period._id.toString(),
+          evaluationMode: 'standard',
+          componentScores: { supervisor: 8, reviewer: 8 },
+          finalScore: 8,
+          letterGrade: 'B+',
+          passStatus: 'passed',
+          varianceFlags: [],
+          formulaVersion: period.rubricVersion,
+        }
+      });
+
+      const blockedPublish = await apiRequest(`/scores/final-grades/publish-by-period/${period._id}`, staffToken, { method: 'POST', body: {} });
+      if (blockedPublish.res.status !== 400 || blockedPublish.result.success) {
+        throw new Error(`Publish should fail while reviewer sheet is unlocked: ${JSON.stringify(blockedPublish.result)}`);
+      }
+
       await expectSuccess('Lock reviewer sheet', apiRequest(`/scores/score-sheets/${reviewerSheet.data._id}/lock`, reviewerToken, { method: 'POST', body: {} }));
 
       console.log('\n--- Test 2: Aggregate and publish final grades by period ---');
@@ -342,8 +380,16 @@ const runIntegrationTests = async () => {
         'Publish final grades by period',
         apiRequest(`/scores/final-grades/publish-by-period/${period._id}`, staffToken, { method: 'POST', body: {} })
       );
-      if (publishResult.data.publishedCount !== 1 || publishResult.data.totalCount !== 1) {
+      if (publishResult.data.publishedCount !== 1 || publishResult.data.newlyPublishedCount !== 1 || publishResult.data.totalCount !== 1) {
         throw new Error(`Publish-by-period counts were wrong: ${JSON.stringify(publishResult.data)}`);
+      }
+
+      const republishResult = await expectSuccess(
+        'Republish final grades by period',
+        apiRequest(`/scores/final-grades/publish-by-period/${period._id}`, staffToken, { method: 'POST', body: {} })
+      );
+      if (republishResult.data.publishedCount !== 1 || republishResult.data.newlyPublishedCount !== 0 || republishResult.data.totalCount !== 1) {
+        throw new Error(`Republish counts were wrong: ${JSON.stringify(republishResult.data)}`);
       }
 
       const publishedGrade = await FinalGrade.findOne({ projectId: project._id });
@@ -470,6 +516,36 @@ const runIntegrationTests = async () => {
             email: RECHECK_EMAIL
           }
         });
+
+        const testPeriods = await ProjectPeriod.find({ name: TEST_PERIOD_NAME }).setOptions({ includeDeleted: true });
+        const prismaTestPeriods = await prisma.projectPeriod.findMany({
+          where: { name: TEST_PERIOD_NAME },
+          select: { id: true },
+        });
+        const testPeriodIds = testPeriods.map((period) => period._id);
+        const testPeriodIdStrings = Array.from(new Set([
+          ...testPeriodIds.map((id) => id.toString()),
+          ...prismaTestPeriods.map((period) => period.id),
+        ]));
+
+        await Promise.all([
+          AppealRequest.deleteMany({ periodId: { $in: testPeriodIds } }),
+          FinalGrade.deleteMany({ periodId: { $in: testPeriodIds } }),
+          ScoreSheet.deleteMany({ periodId: { $in: testPeriodIds } }),
+          Project.deleteMany({ periodId: { $in: testPeriodIds } }),
+          ProjectTopic.deleteMany({ periodId: { $in: testPeriodIds } }),
+          ProjectGroup.deleteMany({ periodId: { $in: testPeriodIds } }),
+          ProjectPeriod.deleteMany({ _id: { $in: testPeriodIds } }),
+        ]);
+
+        await prisma.appealRequest.deleteMany({ where: { periodId: { in: testPeriodIdStrings } } });
+        await prisma.finalGrade.deleteMany({ where: { periodId: { in: testPeriodIdStrings } } });
+        await prisma.scoreSheet.deleteMany({ where: { periodId: { in: testPeriodIdStrings } } });
+        await prisma.project.deleteMany({ where: { periodId: { in: testPeriodIdStrings } } });
+        await prisma.projectTopic.deleteMany({ where: { periodId: { in: testPeriodIdStrings } } });
+        await prisma.projectGroup.deleteMany({ where: { periodId: { in: testPeriodIdStrings } } });
+        await prisma.projectPeriod.deleteMany({ where: { id: { in: testPeriodIdStrings } } });
+
         await db.disconnect();
         console.log('Compatibility DB connection closed.');
         process.exit(process.exitCode || 0);

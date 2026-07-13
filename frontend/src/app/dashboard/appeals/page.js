@@ -8,8 +8,10 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import AcademicTermFilter from '@/components/dashboard/AcademicTermFilter';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, hasAnyRole } from '@/lib/utils';
+import { isPeriodInTerm, normalizeSemester } from '@/lib/academicTerm';
 import { Siren, ArrowsClockwise, CheckCircle, UserPlus } from '@phosphor-icons/react';
 
 const STATUS_LABELS = {
@@ -22,7 +24,14 @@ const STATUS_LABELS = {
 export default function AppealsPage() {
   const { user, token } = useAuthStore();
   const toast = useToast();
-  const { periods, selectedPeriodId, setSelectedPeriodId, fetchPeriods } = usePeriodStore();
+  const {
+    periods,
+    selectedPeriodId,
+    selectedSchoolYear,
+    selectedSemester,
+    setSelectedPeriodId,
+    fetchPeriods,
+  } = usePeriodStore();
 
   const [appeals, setAppeals] = useState([]);
   const [total, setTotal] = useState(0);
@@ -42,6 +51,10 @@ export default function AppealsPage() {
   const [selectedAppealProject, setSelectedAppealProject] = useState(null);
 
   const isStaffUser = useMemo(() => hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']), [user]);
+  const periodOptions = useMemo(
+    () => periods.filter((period) => isPeriodInTerm(period, selectedSchoolYear, selectedSemester)),
+    [periods, selectedSchoolYear, selectedSemester]
+  );
 
   const fetchAppeals = useCallback(async () => {
     if (!selectedPeriodId || !token) return;
@@ -157,6 +170,7 @@ export default function AppealsPage() {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <AcademicTermFilter periods={periods} />
         <div style={{ minWidth: '240px', flex: '1' }}>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', marginBottom: '6px', color: 'var(--text-secondary)' }}>Học phần đồ án</label>
           <select
@@ -165,8 +179,10 @@ export default function AppealsPage() {
             style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '14px', height: '42px' }}
           >
             <option value="">Chọn học phần</option>
-            {periods.map((p) => (
-              <option key={p._id} value={p._id}>{p.name} ({p.courseCode})</option>
+            {periodOptions.map((p) => (
+              <option key={p._id} value={p._id}>
+                {p.name} - Năm học {p.schoolYear}, học kỳ {normalizeSemester(p.semester)}
+              </option>
             ))}
           </select>
         </div>
@@ -199,6 +215,7 @@ export default function AppealsPage() {
               <tr style={{ backgroundColor: 'var(--bg-card-nested, #f8fafc)', borderBottom: '2px solid var(--border)' }}>
                 <th style={{ padding: '16px 20px', fontWeight: '600', color: 'var(--text-secondary)', width: '22%' }}>Sinh viên</th>
                 <th style={{ padding: '16px 20px', fontWeight: '600', color: 'var(--text-secondary)', width: '18%' }}>Đề tài</th>
+                <th style={{ padding: '16px 20px', fontWeight: '600', color: 'var(--text-secondary)', width: '12%' }}>Năm học / Học kỳ</th>
                 <th style={{ padding: '16px 20px', fontWeight: '600', color: 'var(--text-secondary)', width: '10%' }}>Điểm cũ</th>
                 <th style={{ padding: '16px 20px', fontWeight: '600', color: 'var(--text-secondary)', width: '20%' }}>Lý do & Lệ phí</th>
                 <th style={{ padding: '16px 20px', fontWeight: '600', color: 'var(--text-secondary)', width: '15%' }}>GV Chấm Lại</th>
@@ -212,6 +229,7 @@ export default function AppealsPage() {
                 const student = appeal.studentId;
                 const statusInfo = STATUS_LABELS[appeal.status] || { label: appeal.status, variant: 'neutral' };
                 const recheckSheet = appeal.recheckScoreSheetId;
+                const period = appeal.periodId;
                 return (
                   <tr key={appeal._id} style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-card-nested)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
                     <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
@@ -220,6 +238,12 @@ export default function AppealsPage() {
                     </td>
                     <td style={{ padding: '16px 20px', color: 'var(--text-primary)', verticalAlign: 'middle', fontWeight: '500' }}>
                       {appeal.projectId?.topicId?.title || '—'}
+                    </td>
+                    <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
+                      <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{period?.schoolYear || '—'}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {period?.semester ? `Học kỳ ${normalizeSemester(period.semester)}` : '—'}
+                      </div>
                     </td>
                     <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
                       {appeal.finalGradeId ? (

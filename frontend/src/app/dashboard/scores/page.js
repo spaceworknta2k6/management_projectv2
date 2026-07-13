@@ -15,7 +15,7 @@ import Spinner from '@/components/ui/Spinner';
 import AcademicTermFilter from '@/components/dashboard/AcademicTermFilter';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, hasAnyRole } from '@/lib/utils';
-import { isPeriodInTerm } from '@/lib/academicTerm';
+import { CURRENT_ACADEMIC_TERM, isPeriodInTerm } from '@/lib/academicTerm';
 import { ClipboardText, ArrowsClockwise, CheckCircle, Calculator, MagnifyingGlass, FileText, Printer, LockKey, Siren } from '@phosphor-icons/react';
 import { exportToCSV } from '@/lib/export';
 import css from './page.module.css';
@@ -127,11 +127,27 @@ export default function ScoresPage() {
   const isStaffUser = useMemo(() => hasAnyRole(user, ['FACULTY_STAFF', 'SYSTEM_ADMIN']), [user]);
   const isStudentUser = useMemo(() => (user?.roles || []).includes('STUDENT'), [user]);
   const isLecturerUser = useMemo(() => hasAnyRole(user, ['LECTURER']), [user]);
+  const isStudentOnly = isStudentUser && !isLecturerUser && !isStaffUser;
+  const canGradeScores = isLecturerUser;
   const canSelectAcademicTerm = isStaffUser || isLecturerUser;
   const periodOptions = useMemo(
     () => periods.filter((period) => isPeriodInTerm(period, selectedSchoolYear, selectedSemester)),
     [periods, selectedSchoolYear, selectedSemester]
   );
+  const isSelectedPeriodPublished = useMemo(() => {
+    if (selectedPeriodData?.status === 'results_published' || selectedPeriodData?.status === 'result_locked') {
+      return true;
+    }
+    return projects.length > 0 && projects.every((project) => project.finalGrade?.publishedAt);
+  }, [projects, selectedPeriodData]);
+  const canPublishSelectedPeriod = useMemo(() => {
+    if (projects.length === 0 || isSelectedPeriodPublished) return false;
+    return projects.every((project) => {
+      const supervisorSheet = project.sheets?.find((sheet) => sheet.rubricRole === 'SUPERVISOR');
+      const reviewerSheet = project.sheets?.find((sheet) => sheet.rubricRole === 'REVIEWER' || sheet.rubricRole === 'SECOND_MARKER');
+      return project.finalGrade && !project.finalGrade.publishedAt && supervisorSheet?.lockedAt && reviewerSheet?.lockedAt;
+    });
+  }, [isSelectedPeriodPublished, projects]);
 
   const fetchData = useCallback(async () => {
     if (!selectedPeriodId) {
@@ -169,13 +185,13 @@ export default function ScoresPage() {
         .then(res => setSelectedPeriodData(res.data))
         .catch(() => {});
       // Load my appeals nếu là sinh viên
-      if (isStudentUser) {
+      if (isStudentOnly) {
         api.get('/appeals/my', token)
           .then(res => setMyAppeals(res.data || []))
           .catch(() => {});
       }
     }
-  }, [fetchData, token, selectedPeriodId, isStudentUser]);
+  }, [fetchData, token, selectedPeriodId, isStudentOnly]);
 
   const loadFormForRole = useCallback((role, rubric, sheetsList) => {
     const existingSheet = sheetsList.find(s => s.rubricRole === role);
@@ -208,6 +224,11 @@ export default function ScoresPage() {
   }, []);
 
   const handleOpenScoreModal = async (project) => {
+    if (!canGradeScores) {
+      toast.error('Tài khoản hiện tại không có quyền nhập phiếu điểm.');
+      return;
+    }
+
     setSelectedProject(project);
     setLoadingRubric(true);
     setShowModal(true);
@@ -387,7 +408,10 @@ export default function ScoresPage() {
       setPublishingAll(true);
       const res = await api.post(`/scores/final-grades/publish-by-period/${selectedPeriodId}`, {}, token);
       toast.success(res.message || 'Đã công bố điểm cho toàn bộ đồ án trong học phần.');
-      fetchData();
+      await fetchData();
+      api.get(`/periods/${selectedPeriodId}`, token)
+        .then(periodRes => setSelectedPeriodData(periodRes.data))
+        .catch(() => {});
     } catch (err) {
       toast.error(err.message || 'Lỗi khi công bố điểm');
     } finally {
@@ -450,8 +474,20 @@ export default function ScoresPage() {
 
   const visibleProjects = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return projects;
-    return projects.filter((p) => {
+    const baseProjects = isStudentOnly
+      ? projects.filter((p) => {
+          const projectPeriod = p.periodId && typeof p.periodId === 'object'
+            ? p.periodId
+            : selectedPeriodData;
+          return (
+            p.finalGrade?.publishedAt
+            && isPeriodInTerm(projectPeriod, CURRENT_ACADEMIC_TERM.schoolYear, CURRENT_ACADEMIC_TERM.semester)
+          );
+        })
+      : projects;
+
+    if (!keyword) return baseProjects;
+    return baseProjects.filter((p) => {
       const values = [
         p.topicId?.title,
         p.groupId?.name,
@@ -461,7 +497,7 @@ export default function ScoresPage() {
       ];
       return values.some((v) => String(v || '').toLowerCase().includes(keyword));
     });
-  }, [projects, search]);
+  }, [isStudentOnly, projects, search, selectedPeriodData]);
 
   const totalPages = Math.max(1, Math.ceil(visibleProjects.length / pageSize));
   const pagedProjects = visibleProjects.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -543,18 +579,39 @@ export default function ScoresPage() {
             <div>
               <h1 className={`text-display ${css.s3}`}>
                 <ClipboardText size={28} className={css.s4} />
-                Chấm điểm & Kết quả học phần
+                {isStudentOnly ? 'Kết quả học phần' : 'Chấm điểm & Kết quả học phần'}
               </h1>
               <p className={css.s5}>
-                Nhập điểm đánh giá dành cho Giảng viên hướng dẫn & Giảng viên chấm 2
+                {isStudentOnly
+                  ? 'Xem điểm tổng kết đã được công bố trong năm học và học kỳ hiện tại'
+                  : 'Nhập điểm đánh giá dành cho Giảng viên hướng dẫn & Giảng viên chấm 2'}
               </p>
             </div>
             
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <Button variant="secondary" size="sm" onClick={handleExportExcel} className={css.buttonGap}>
-                <FileText size={16} />
-                Xuất Excel
-              </Button>
+              {!isStudentOnly && (
+                <Button variant="secondary" size="sm" onClick={handleExportExcel} className={css.buttonGap}>
+                  <FileText size={16} />
+                  Xuất Excel
+                </Button>
+              )}
+              {isStaffUser && selectedPeriodId && isSelectedPeriodPublished && (
+                <Badge variant="success">Đã công bố điểm học phần</Badge>
+              )}
+              {isStaffUser && selectedPeriodId && !isSelectedPeriodPublished && !canPublishSelectedPeriod && (
+                <Badge variant="warning">Chưa đủ điều kiện công bố</Badge>
+              )}
+              {isStaffUser && selectedPeriodId && canPublishSelectedPeriod && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleBulkPublish}
+                  isLoading={publishingAll}
+                  disabled={publishingAll}
+                >
+                  Công bố điểm học phần
+                </Button>
+              )}
               <Button variant="outline" onClick={fetchData} icon={<ArrowsClockwise />} title="Làm mới" />
             </div>
           </div>
@@ -610,7 +667,9 @@ export default function ScoresPage() {
                         <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Điểm Tổng kết</th>
                         <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Trạng thái</th>
                         <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Chênh lệch</th>
-                        <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)', width: '120px' }}>Thao tác</th>
+                        {canGradeScores && (
+                          <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)', width: '120px' }}>Thao tác</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -677,11 +736,13 @@ export default function ScoresPage() {
                                 <span style={{ color: 'var(--text-muted)' }}>—</span>
                               )}
                             </td>
-                            <td style={{ padding: '12px 16px' }}>
-                              <Button size="xs" variant="primary" onClick={() => handleOpenScoreModal(p)}>
-                                Nhập điểm
-                              </Button>
-                            </td>
+                            {canGradeScores && (
+                              <td style={{ padding: '12px 16px' }}>
+                                <Button size="xs" variant="primary" onClick={() => handleOpenScoreModal(p)}>
+                                  Nhập điểm
+                                </Button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -706,26 +767,30 @@ export default function ScoresPage() {
 
                         <div className={css.s11}>
                           <div><strong>Hình thức:</strong> {p.ownerType === 'group' ? `Nhóm: ${p.groupId?.name}` : `Cá nhân: ${p.studentId?.userId?.fullName}`}</div>
-                          <div className={css.s12}>
-                            <strong>GVHD:</strong> {p.supervisorId?.userId?.fullName || 'Chưa phân công'}{' '}
-                            {supervisorSheet ? (
-                              <Badge variant={supervisorSheet.lockedAt ? 'success' : 'neutral'}>
-                                {supervisorSheet.roundedTotal}đ
-                              </Badge>
-                            ) : (
-                              <Badge variant="warning">Chưa chấm</Badge>
-                            )}
-                          </div>
-                          <div className={css.s12}>
-                            <strong>GV Chấm 2:</strong> {p.reviewerId?.userId?.fullName || 'Chưa phân công'}{' '}
-                            {reviewerSheet ? (
-                              <Badge variant={reviewerSheet.lockedAt ? 'success' : 'neutral'}>
-                                {reviewerSheet.roundedTotal}đ
-                              </Badge>
-                            ) : (
-                              <Badge variant="warning">Chưa chấm</Badge>
-                            )}
-                          </div>
+                          {!isStudentOnly && (
+                            <>
+                              <div className={css.s12}>
+                                <strong>GVHD:</strong> {p.supervisorId?.userId?.fullName || 'Chưa phân công'}{' '}
+                                {supervisorSheet ? (
+                                  <Badge variant={supervisorSheet.lockedAt ? 'success' : 'neutral'}>
+                                    {supervisorSheet.roundedTotal}đ
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="warning">Chưa chấm</Badge>
+                                )}
+                              </div>
+                              <div className={css.s12}>
+                                <strong>GV Chấm 2:</strong> {p.reviewerId?.userId?.fullName || 'Chưa phân công'}{' '}
+                                {reviewerSheet ? (
+                                  <Badge variant={reviewerSheet.lockedAt ? 'success' : 'neutral'}>
+                                    {reviewerSheet.roundedTotal}đ
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="warning">Chưa chấm</Badge>
+                                )}
+                              </div>
+                            </>
+                          )}
                           {p.finalGrade && (
                             <div className={css.s12}>
                               <strong>Điểm tổng kết:</strong> {p.finalGrade.finalScore} ({p.finalGrade.letterGrade}){' '}
@@ -735,10 +800,12 @@ export default function ScoresPage() {
                         </div>
                         
                         <div className={css.s13}>
-                          <Button size="sm" variant="primary" icon={<CheckCircle />} onClick={() => handleOpenScoreModal(p)}>
-                            Nhập phiếu điểm
-                          </Button>
-                          {isStudentUser && selectedPeriodData?.status === 'appeal_open' && p.finalGrade?.publishedAt && (() => {
+                          {canGradeScores && (
+                            <Button size="sm" variant="primary" icon={<CheckCircle />} onClick={() => handleOpenScoreModal(p)}>
+                              Nhập phiếu điểm
+                            </Button>
+                          )}
+                          {isStudentOnly && selectedPeriodData?.status === 'appeal_open' && p.finalGrade?.publishedAt && (() => {
                             const existingAppeal = myAppeals.find(a => a.projectId?._id === p._id || a.projectId === p._id);
                             return existingAppeal ? (
                               <div style={{ marginTop: '8px' }}>
@@ -876,18 +943,18 @@ export default function ScoresPage() {
                 <div className={css.s32}>
                   <Button variant="ghost" onClick={() => setShowModal(false)} type="button">Đóng</Button>
                   
-                  {currentSheet && !currentSheet.lockedAt && !isStaffUser && (
+                  {canGradeScores && currentSheet && !currentSheet.lockedAt && (
                     <Button variant="secondary" onClick={handleLockScoreSheet} isLoading={submitting} type="button" icon={<LockKey />}>
                       Khóa Điểm
                     </Button>
                   )}
 
-                  {!currentSheet?.lockedAt && !isStaffUser ? (
+                  {canGradeScores && !currentSheet?.lockedAt ? (
                     <Button variant="primary" type="submit" form="score-form" isLoading={submitting}>
                       {currentSheet ? 'Cập Nhật Điểm' : 'Nộp Phiếu Điểm'}
                     </Button>
                   ) : (
-                    currentSheet?.lockedAt && (
+                    canGradeScores && currentSheet?.lockedAt && (
                       <Button variant="secondary" onClick={handlePrintScoreSheet} icon={<Printer />} type="button">
                         In Phiếu Điểm
                       </Button>

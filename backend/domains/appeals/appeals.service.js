@@ -78,10 +78,14 @@ const mapAppealWithRelations = async (appeal) => {
   const recheckScoreSheet = appeal.recheckScoreSheetId ? await prisma.scoreSheet.findUnique({
     where: { id: appeal.recheckScoreSheetId }
   }) : null;
+  const period = appeal.periodId ? await prisma.projectPeriod.findFirst({
+    where: { id: appeal.periodId }
+  }) : null;
 
   return {
     ...appeal,
     _id: appeal.id,
+    periodId: period ? { ...period, _id: period.id } : appeal.periodId,
     studentId: student ? {
       ...student,
       _id: student.id,

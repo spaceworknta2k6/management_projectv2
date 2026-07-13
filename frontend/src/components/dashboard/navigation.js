@@ -23,7 +23,7 @@ export const NAV_ITEMS = [
   { href: '/dashboard/projects', label: 'Dự án', icon: FolderSimple, roles: null },
   { href: '/dashboard/submissions', label: 'Nộp bài', icon: FileText, roles: ['STUDENT', 'LECTURER', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/extensions', label: 'Gia hạn', icon: Clock, roles: ['STUDENT', 'LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
-  { href: '/dashboard/scores', label: 'Điểm số', icon: ChartBar, roles: ['LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
+  { href: '/dashboard/scores', label: 'Điểm số', icon: ChartBar, roles: ['STUDENT', 'LECTURER', 'FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/appeals', label: 'Phúc khảo', icon: Siren, roles: ['FACULTY_STAFF', 'SYSTEM_ADMIN'] },
   { href: '/dashboard/notifications', label: 'Thông báo', icon: Bell, roles: null },
   { href: '/dashboard/chat', label: 'Chat', icon: ChatsCircle, roles: null },
