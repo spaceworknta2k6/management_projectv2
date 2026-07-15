@@ -366,6 +366,12 @@ const runIntegrationTests = async () => {
       }
 
       await expectSuccess('Lock reviewer sheet', apiRequest(`/scores/score-sheets/${reviewerSheet.data._id}/lock`, reviewerToken, { method: 'POST', body: {} }));
+      await prisma.finalGrade.deleteMany({ where: { projectId: project._id.toString() } });
+
+      const blockedPublishWithoutFinalGrade = await apiRequest(`/scores/final-grades/publish-by-period/${period._id}`, staffToken, { method: 'POST', body: {} });
+      if (blockedPublishWithoutFinalGrade.res.status !== 400 || blockedPublishWithoutFinalGrade.result.success) {
+        throw new Error(`Publish should fail before final grade aggregation: ${JSON.stringify(blockedPublishWithoutFinalGrade.result)}`);
+      }
 
       console.log('\n--- Test 2: Aggregate and publish final grades by period ---');
       const aggregateResult = await expectSuccess(

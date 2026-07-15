@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import useAuthStore from '@/store/auth.store';
+import usePeriodStore from '@/store/period.store';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Spinner from '@/components/ui/Spinner';
+import AcademicTermFilter from '@/components/dashboard/AcademicTermFilter';
 import { formatDate, getPrimaryRole, hasAnyRole } from '@/lib/utils';
 import { getId, isStudentProjectOwner } from '@/lib/projectOwner';
+import { filterRecordsByTerm, getRecordPeriod, isPeriodInTerm } from '@/lib/academicTerm';
 import api from '@/services/api';
 import {
   Users,
@@ -49,6 +52,22 @@ function getDaysUntil(date) {
   today.setHours(0, 0, 0, 0);
   deadline.setHours(0, 0, 0, 0);
   return Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function getNotificationEntityId(notification) {
+  return String(notification?.entityId || notification?.entity?._id || notification?.entity?.id || '');
+}
+
+function isNotificationInTerm(notification, scopedIds) {
+  const entityId = getNotificationEntityId(notification);
+  if (!entityId) return false;
+
+  const entityType = String(notification?.entityType || '').toLowerCase();
+  if (entityType.includes('change')) return scopedIds.topicChangeRequestIds.has(entityId);
+  if (entityType.includes('topic')) return scopedIds.topicIds.has(entityId);
+  if (entityType.includes('group')) return scopedIds.groupIds.has(entityId);
+  if (entityType.includes('project')) return scopedIds.projectIds.has(entityId);
+  return false;
 }
 
 function StatCard({ icon: Icon, label, value, tone = 'info' }) {
@@ -299,12 +318,19 @@ function ProjectProgressBar({ projects }) {
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
+  const {
+    periods,
+    selectedSchoolYear,
+    selectedSemester,
+    fetchPeriods,
+  } = usePeriodStore();
   const [dashboard, setDashboard] = useState({
     periods: [],
     groups: [],
     topics: [],
     projects: [],
     notifications: [],
+    topicChangeRequests: [],
     milestonesByProject: {},
   });
   const [loading, setLoading] = useState(true);
@@ -325,12 +351,13 @@ export default function DashboardPage() {
     async function loadDashboard() {
       setLoading(true);
       try {
-        const [periodsRes, groupsRes, topicsRes, projectsRes, notificationsRes] = await Promise.all([
-          isStaff ? api.get('/periods', token).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+        const [periodList, groupsRes, topicsRes, projectsRes, notificationsRes, topicChangeRequestsRes] = await Promise.all([
+          fetchPeriods(token),
           api.get('/groups', token).catch(() => ({ data: [] })),
           api.get('/topics', token).catch(() => ({ data: [] })),
           api.get('/projects', token).catch(() => ({ data: [] })),
           api.get('/notifications', token).catch(() => ({ data: [] })),
+          api.get('/topic-change-requests', token).catch(() => ({ data: [] })),
         ]);
 
         let projects = projectsRes.data || [];
@@ -351,11 +378,12 @@ export default function DashboardPage() {
         if (!alive) return;
 
         setDashboard({
-          periods: periodsRes.data || [],
+          periods: periodList || [],
           groups: groupsRes.data || [],
           topics: topicsRes.data || [],
           projects,
           notifications: notificationsRes.data || [],
+          topicChangeRequests: topicChangeRequestsRes.data || [],
           milestonesByProject: Object.fromEntries(milestonePairs),
         });
       } finally {
@@ -368,13 +396,55 @@ export default function DashboardPage() {
     return () => {
       alive = false;
     };
-  }, [token, user, role, isStaff, isLecturer, isStudent]);
+  }, [token, user, role, isStaff, isLecturer, isStudent, fetchPeriods]);
+
+  const termDashboard = useMemo(() => {
+    const availablePeriods = dashboard.periods.length > 0 ? dashboard.periods : periods;
+    const termPeriods = availablePeriods.filter((period) =>
+      isPeriodInTerm(period, selectedSchoolYear, selectedSemester)
+    );
+    const groups = filterRecordsByTerm(dashboard.groups, availablePeriods, selectedSchoolYear, selectedSemester);
+    const topics = filterRecordsByTerm(dashboard.topics, availablePeriods, selectedSchoolYear, selectedSemester);
+    const projects = filterRecordsByTerm(dashboard.projects, availablePeriods, selectedSchoolYear, selectedSemester);
+    const topicChangeRequests = dashboard.topicChangeRequests.filter((request) => {
+      const topicId = String(request.topicId?._id || request.topicId || '');
+      if (topicId && topics.some((topic) => String(topic._id || topic.id || '') === topicId)) return true;
+      return isPeriodInTerm(getRecordPeriod(request.topicId || request, availablePeriods), selectedSchoolYear, selectedSemester);
+    });
+    const groupIds = new Set(groups.map((group) => String(group._id || group.id || '')).filter(Boolean));
+    const topicIds = new Set(topics.map((topic) => String(topic._id || topic.id || '')).filter(Boolean));
+    const projectIds = new Set(projects.map((project) => String(project._id || project.id || '')).filter(Boolean));
+    const topicChangeRequestIds = new Set(
+      topicChangeRequests.map((request) => String(request._id || request.id || '')).filter(Boolean)
+    );
+
+    projects.forEach((project) => {
+      const topicId = String(project.topicId?._id || project.topicId || '');
+      if (topicId) topicIds.add(topicId);
+      const groupId = String(project.groupId?._id || project.groupId || '');
+      if (groupId) groupIds.add(groupId);
+    });
+
+    return {
+      periods: termPeriods,
+      groups,
+      topics,
+      projects,
+      topicChangeRequests,
+      notifications: dashboard.notifications.filter((notification) =>
+        isNotificationInTerm(notification, { groupIds, projectIds, topicChangeRequestIds, topicIds })
+      ),
+      milestonesByProject: Object.fromEntries(
+        Object.entries(dashboard.milestonesByProject).filter(([projectId]) => projectIds.has(String(projectId)))
+      ),
+    };
+  }, [dashboard, periods, selectedSchoolYear, selectedSemester]);
 
   const actionItems = useMemo(() => {
     const items = [];
     const studentId = getId(user?.studentId);
 
-    dashboard.notifications
+    termDashboard.notifications
       .filter((notification) => !notification.readAt)
       .slice(0, 3)
       .forEach((notification) => {
@@ -391,7 +461,7 @@ export default function DashboardPage() {
       });
 
     if (isStaff) {
-      dashboard.topics
+      termDashboard.topics
         .filter((topic) => ['submitted', 'pending_review'].includes(topic.status))
         .slice(0, 5)
         .forEach((topic) => {
@@ -407,7 +477,7 @@ export default function DashboardPage() {
           });
         });
 
-      dashboard.projects
+      termDashboard.projects
         .filter((project) => !project.reviewerId)
         .slice(0, 5)
         .forEach((project) => {
@@ -423,7 +493,7 @@ export default function DashboardPage() {
           });
         });
 
-      dashboard.projects
+      termDashboard.projects
         .filter((project) => project.status === 'ready_for_grading')
         .slice(0, 4)
         .forEach((project) => {
@@ -441,7 +511,7 @@ export default function DashboardPage() {
     }
 
     if (isStudent) {
-      dashboard.topics
+      termDashboard.topics
         .filter((topic) => topic.status === 'needs_revision' && getId(topic.proposedByStudentId) === studentId)
         .forEach((topic) => {
           items.push({
@@ -456,7 +526,7 @@ export default function DashboardPage() {
           });
         });
 
-      dashboard.projects
+      termDashboard.projects
         .filter((project) => project.status === 'assigned')
         .forEach((project) => {
           items.push({
@@ -473,8 +543,8 @@ export default function DashboardPage() {
     }
 
     if (isLecturer) {
-      dashboard.projects.forEach((project) => {
-        const milestones = dashboard.milestonesByProject[project._id] || [];
+      termDashboard.projects.forEach((project) => {
+        const milestones = termDashboard.milestonesByProject[project._id] || [];
         milestones
           .filter((milestone) => milestone.status === 'submitted')
           .forEach((milestone) => {
@@ -493,13 +563,13 @@ export default function DashboardPage() {
     }
 
     return items.sort((a, b) => a.priority - b.priority).slice(0, 8);
-  }, [dashboard, user, isStaff, isLecturer, isStudent]);
+  }, [termDashboard, user, isStaff, isLecturer, isStudent]);
 
   const deadlines = useMemo(() => {
     const rows = [];
 
-    dashboard.projects.forEach((project) => {
-      const milestones = dashboard.milestonesByProject[project._id] || [];
+    termDashboard.projects.forEach((project) => {
+      const milestones = termDashboard.milestonesByProject[project._id] || [];
       milestones
         .filter((milestone) => milestone.deadline && !['accepted', 'locked'].includes(milestone.status))
         .forEach((milestone) => {
@@ -516,27 +586,27 @@ export default function DashboardPage() {
     return rows
       .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
       .slice(0, 6);
-  }, [dashboard.projects, dashboard.milestonesByProject]);
+  }, [termDashboard.projects, termDashboard.milestonesByProject]);
 
   const stats = useMemo(() => {
-    const pendingTopics = dashboard.topics.filter((topic) =>
+    const pendingTopics = termDashboard.topics.filter((topic) =>
       ['submitted', 'pending_review'].includes(topic.status)
     ).length;
-    const unreadNotifications = dashboard.notifications.filter((notification) => !notification.readAt).length;
-    const submittedMilestones = Object.values(dashboard.milestonesByProject)
+    const unreadNotifications = termDashboard.notifications.filter((notification) => !notification.readAt).length;
+    const submittedMilestones = Object.values(termDashboard.milestonesByProject)
       .flat()
       .filter((milestone) => milestone.status === 'submitted').length;
 
     return {
-      periods: dashboard.periods.length,
-      groups: dashboard.groups.length,
-      topics: dashboard.topics.length,
-      projects: dashboard.projects.length,
+      periods: termDashboard.periods.length,
+      groups: termDashboard.groups.length,
+      topics: termDashboard.topics.length,
+      projects: termDashboard.projects.length,
       pendingTopics,
       unreadNotifications,
       submittedMilestones,
     };
-  }, [dashboard]);
+  }, [termDashboard]);
 
   if (loading) {
     return (
@@ -552,12 +622,15 @@ export default function DashboardPage() {
   return (
     <div>
       <div className={css.s17}>
-        <h1 className="text-display">
-          {greeting}, {user?.fullName || user?.name || 'người dùng'}
-        </h1>
-        <p className={css.s18}>
-          Hôm nay là {formatDate(new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-        </p>
+        <div>
+          <h1 className="text-display">
+            {greeting}, {user?.fullName || user?.name || 'người dùng'}
+          </h1>
+          <p className={css.s18}>
+            Hôm nay là {formatDate(new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+        <AcademicTermFilter periods={dashboard.periods.length > 0 ? dashboard.periods : periods} />
       </div>
 
       <div className={css.s19} >
@@ -571,10 +644,10 @@ export default function DashboardPage() {
 
       <div className={css.chartsGrid}>
         <Card title="Trạng thái đề tài" subtitle="Biểu đồ phân bố trạng thái phê duyệt đề tài">
-          <TopicDonutChart topics={dashboard.topics} />
+          <TopicDonutChart topics={termDashboard.topics} />
         </Card>
         <Card title="Tiến độ dự án" subtitle="Tỉ lệ hoàn thành và trạng thái dự án đang thực hiện">
-          <ProjectProgressBar projects={dashboard.projects} />
+          <ProjectProgressBar projects={termDashboard.projects} />
         </Card>
       </div>
 

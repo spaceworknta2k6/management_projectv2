@@ -134,6 +134,22 @@ export default function ScoresPage() {
     () => periods.filter((period) => isPeriodInTerm(period, selectedSchoolYear, selectedSemester)),
     [periods, selectedSchoolYear, selectedSemester]
   );
+
+  useEffect(() => {
+    if (!selectedPeriodId) {
+      setProjects([]);
+      setSelectedPeriodData(null);
+      return;
+    }
+
+    const selectedPeriodInCurrentTerm = periodOptions.some((period) => period._id === selectedPeriodId);
+    if (!selectedPeriodInCurrentTerm) {
+      setSelectedPeriodId('');
+      setProjects([]);
+      setSelectedPeriodData(null);
+    }
+  }, [periodOptions, selectedPeriodId, setSelectedPeriodId]);
+
   const isSelectedPeriodPublished = useMemo(() => {
     if (selectedPeriodData?.status === 'results_published' || selectedPeriodData?.status === 'result_locked') {
       return true;
@@ -178,18 +194,24 @@ export default function ScoresPage() {
   }, [token, fetchPeriods]);
 
   useEffect(() => {
-    if (token && selectedPeriodId) {
-      fetchData();
-      // Load period data để check status
-      api.get(`/periods/${selectedPeriodId}`, token)
-        .then(res => setSelectedPeriodData(res.data))
+    if (!token) return;
+    if (!selectedPeriodId) {
+      setProjects([]);
+      setSelectedPeriodData(null);
+      setLoading(false);
+      return;
+    }
+
+    fetchData();
+    // Load period data để check status
+    api.get(`/periods/${selectedPeriodId}`, token)
+      .then(res => setSelectedPeriodData(res.data))
+      .catch(() => {});
+    // Load my appeals nếu là sinh viên
+    if (isStudentOnly) {
+      api.get('/appeals/my', token)
+        .then(res => setMyAppeals(res.data || []))
         .catch(() => {});
-      // Load my appeals nếu là sinh viên
-      if (isStudentOnly) {
-        api.get('/appeals/my', token)
-          .then(res => setMyAppeals(res.data || []))
-          .catch(() => {});
-      }
     }
   }, [fetchData, token, selectedPeriodId, isStudentOnly]);
 

@@ -138,15 +138,17 @@ export default function TopicChangesPage() {
     return termProjects;
   }, [isStudent, termProjects, user?.studentId]);
 
-  const topicOptions = visibleProjects
-    .filter((project) => project.topicId && !['cancelled', 'finalized'].includes(project.status))
-    .map((project) => ({
-      projectId: project._id,
-      topicId: project.topicId._id || project.topicId,
-      title: project.topicId.title || project.topicId._id || project.topicId,
-      scope: project.topicId.scope || '',
-      plan: project.topicId.plan || '',
-    }));
+  const topicOptions = useMemo(() => (
+    visibleProjects
+      .filter((project) => project.topicId && !['cancelled', 'finalized'].includes(project.status))
+      .map((project) => ({
+        projectId: project._id,
+        topicId: project.topicId._id || project.topicId,
+        title: project.topicId.title || project.topicId._id || project.topicId,
+        scope: project.topicId.scope || '',
+        plan: project.topicId.plan || '',
+      }))
+  ), [visibleProjects]);
 
   const activeRequests = useMemo(
     () => requests.filter((request) => request.status === 'pending' && isRequestInSelectedTerm(request)),
@@ -164,30 +166,33 @@ export default function TopicChangesPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const [periodList, projectsRes, requestsRes] = await Promise.all([
+      const [, projectsRes, requestsRes] = await Promise.all([
         fetchPeriods(token),
         api.get('/projects', token),
         api.get('/topic-change-requests', token),
       ]);
       setProjects(projectsRes.data || []);
       setRequests(requestsRes.data || []);
-
-      const scopedProjects = filterRecordsByTerm(projectsRes.data || [], periodList || periods, selectedSchoolYear, selectedSemester);
-      const firstTopic = scopedProjects.find((project) => project.topicId && !['cancelled', 'finalized'].includes(project.status));
-      setForm((prev) => ({
-        ...prev,
-        topicId: prev.topicId || firstTopic?.topicId?._id || firstTopic?.topicId || '',
-      }));
     } catch (err) {
       toast.error(err.message || 'Không thể tải dữ liệu đổi đề tài.');
     } finally {
       setLoading(false);
     }
-  }, [fetchPeriods, periods, selectedSchoolYear, selectedSemester, token, toast]);
+  }, [fetchPeriods, token, toast]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!isStudent) return;
+    const hasSelectedTopic = topicOptions.some((topic) => String(topic.topicId) === String(form.topicId));
+    if (hasSelectedTopic) return;
+    setForm((prev) => ({
+      ...prev,
+      topicId: topicOptions[0]?.topicId || '',
+    }));
+  }, [form.topicId, isStudent, topicOptions]);
 
   const validateCreateForm = () => {
     if (!form.topicId) return 'Vui lòng chọn đề tài cần đổi.';
