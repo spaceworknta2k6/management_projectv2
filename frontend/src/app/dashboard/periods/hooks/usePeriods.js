@@ -31,6 +31,8 @@ const DEFAULT_FORM_STATE = {
   type: 'foundation_project',
   courseCode: 'IT3000',
   courseName: 'Đồ án cơ sở ngành',
+  cohort: '',
+  classCount: '1',
   projectType: 'foundation',
   academicUnit: ACADEMIC_UNITS[0].value,
   coordinatorLecturerId: '',
@@ -194,6 +196,8 @@ export function usePeriods() {
       type: period.type || 'foundation_project',
       courseCode: period.courseCode || '',
       courseName: period.courseName || '',
+      cohort: period.cohort || '',
+      classCount: '1',
       projectType: period.projectType || 'foundation',
       academicUnit: period.academicUnit || ACADEMIC_UNITS[0].value,
       coordinatorLecturerId: period.coordinatorLecturerId?._id || period.coordinatorLecturerId || '',
@@ -274,6 +278,13 @@ export function usePeriods() {
       { name: 'projectEnd', label: 'Kết thúc thực hiện' },
     ];
 
+    if (!editingPeriod) {
+      requiredFields.push(
+        { name: 'cohort', label: 'Khóa sinh viên' },
+        { name: 'classCount', label: 'Số lớp học phần' }
+      );
+    }
+
     const errors = {};
     for (const f of requiredFields) {
       if (form[f.name] === undefined || form[f.name] === null || !String(form[f.name]).trim()) {
@@ -299,6 +310,14 @@ export function usePeriods() {
       }
     }
 
+    if (form.cohort && !/^K\d{1,3}$/i.test(String(form.cohort).trim())) {
+      errors.cohort = 'Khóa sinh viên phải có dạng K17, K18...';
+    }
+    const classCount = parseInt(form.classCount || 1, 10);
+    if (isNaN(classCount) || classCount < 1 || classCount > 50) {
+      errors.classCount = 'Số lớp học phần phải từ 1 đến 50.';
+    }
+
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc.');
@@ -321,6 +340,7 @@ export function usePeriods() {
       type: form.type,
       courseCode: form.courseCode,
       courseName: form.courseName,
+      cohort: form.cohort.trim().toUpperCase(),
       projectType: form.projectType || (form.type === 'interdisciplinary_project' ? 'interdisciplinary' : 'foundation'),
       academicUnit: form.academicUnit,
       coordinatorLecturerId: form.coordinatorLecturerId || undefined,
@@ -347,6 +367,10 @@ export function usePeriods() {
       revisionDeadline: form.revisionDeadline ? new Date(form.revisionDeadline).toISOString() : undefined,
       archiveDeadline: form.archiveDeadline ? new Date(form.archiveDeadline).toISOString() : undefined,
     };
+
+    if (!editingPeriod) {
+      payload.classCount = classCount;
+    }
 
     try {
       if (editingPeriod) {
@@ -394,6 +418,28 @@ export function usePeriods() {
     }
   };
 
+  const handleTransitionBatch = async (periodIds, action) => {
+    try {
+      const endpointFor = (id) => {
+        let endpoint = `/periods/${id}`;
+        if (action === 'open-registration') endpoint += '/open-registration';
+        else if (action === 'start') endpoint += '/start';
+        else if (action === 'start-grading') endpoint += '/start-grading';
+        else if (action === 'publish-results') endpoint += '/publish-results';
+        else if (action === 'open-appeal') endpoint += '/open-appeal';
+        else if (action === 'lock-results') endpoint += '/lock-results';
+        else if (action === 'archive') endpoint += '/archive';
+        return endpoint;
+      };
+
+      await Promise.all(periodIds.map((id) => api.post(endpointFor(id), {}, token)));
+      toast.success('Cập nhật trạng thái tất cả lớp học phần thành công!');
+      fetchPeriods();
+    } catch (err) {
+      toast.error(err.message || 'Không thể cập nhật trạng thái các lớp học phần');
+    }
+  };
+
   const handleDeletePeriod = async (period) => {
     setDeleting(true);
     try {
@@ -403,6 +449,20 @@ export function usePeriods() {
       fetchPeriods();
     } catch (err) {
       toast.error(err.message || 'Không thể xóa học phần');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteBatch = async (periodsToDelete) => {
+    setDeleting(true);
+    try {
+      await Promise.all(periodsToDelete.map((period) => api.delete(`/periods/${period._id}`, token)));
+      toast.success('Đã xóa các lớp học phần trong đợt.');
+      setPeriodToDelete(null);
+      fetchPeriods();
+    } catch (err) {
+      toast.error(err.message || 'Không thể xóa đợt học phần');
     } finally {
       setDeleting(false);
     }
@@ -430,6 +490,8 @@ export function usePeriods() {
     handleChange,
     handleSubmit,
     handleTransition,
+    handleTransitionBatch,
     handleDeletePeriod,
+    handleDeleteBatch,
   };
 }

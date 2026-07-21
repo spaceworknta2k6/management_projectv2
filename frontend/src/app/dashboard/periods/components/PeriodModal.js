@@ -53,6 +53,27 @@ export default function PeriodModal({
               error={formErrors.courseCode}
             />
 
+            <Input
+              label="Khóa sinh viên"
+              name="cohort"
+              value={form.cohort}
+              onChange={handleChange}
+              error={formErrors.cohort}
+              placeholder="Ví dụ: K17"
+            />
+
+            <Input
+              label="Số lớp học phần"
+              name="classCount"
+              type="number"
+              min="1"
+              max="50"
+              value={form.classCount}
+              onChange={handleChange}
+              error={formErrors.classCount}
+              disabled={Boolean(editingPeriod)}
+            />
+
             <div className={css.s29}>
               <label className={css.s30}>Năm học</label>
               <select
@@ -136,29 +157,29 @@ export default function PeriodModal({
               )}
             </div>
 
-            <div className={css.s29}>
-              <label className={css.s30}>
-                Giảng viên phụ trách <span className={css.s31}>*</span>
-              </label>
-              <select
-                name="coordinatorLecturerId"
-                value={form.coordinatorLecturerId || ''}
-                onChange={handleChange}
-                className={css.s32}
-              >
-                <option value="">-- Chọn giảng viên phụ trách --</option>
-                {lecturers.map((l) => (
-                  <option key={l._id} value={l._id}>
-                    {l.userId?.fullName || l.name} ({l.lecturerCode})
-                  </option>
-                ))}
-              </select>
-              {formErrors.coordinatorLecturerId && (
-                <span className="text-error" style={{ fontSize: '12px', marginTop: '4px' }}>
-                  {formErrors.coordinatorLecturerId}
-                </span>
-              )}
-            </div>
+            {editingPeriod && (
+              <div className={css.s29}>
+                <label className={css.s30}>Giảng viên phụ trách lớp</label>
+                <select
+                  name="coordinatorLecturerId"
+                  value={form.coordinatorLecturerId || ''}
+                  onChange={handleChange}
+                  className={css.s32}
+                >
+                  <option value="">-- Chọn giảng viên phụ trách lớp --</option>
+                  {lecturers.map((l) => (
+                    <option key={l._id} value={l._id}>
+                      {l.userId?.fullName || l.name} ({l.lecturerCode})
+                    </option>
+                  ))}
+                </select>
+                {formErrors.coordinatorLecturerId && (
+                  <span className="text-error" style={{ fontSize: '12px', marginTop: '4px' }}>
+                    {formErrors.coordinatorLecturerId}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className={css.s29}>
               <label className={css.s30}>

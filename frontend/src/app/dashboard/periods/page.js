@@ -39,7 +39,9 @@ export default function PeriodsPage() {
     handleChange,
     handleSubmit,
     handleTransition,
+    handleTransitionBatch,
     handleDeletePeriod,
+    handleDeleteBatch,
   } = usePeriods();
 
   const [selectedSchoolYear, setSelectedSchoolYear] = useState(currentAcademicTerm.schoolYear);
@@ -58,14 +60,52 @@ export default function PeriodsPage() {
     periods.filter((period) => {
       const normalizedSearch = searchTerm.trim().toLowerCase();
       const courseName = (period.courseName || period.name || '').toLowerCase();
+      const classCode = (period.classCode || '').toLowerCase();
+      const cohort = (period.cohort || '').toLowerCase();
 
       return (
         period.schoolYear === selectedSchoolYear &&
         String(period.semester) === selectedSemester &&
-        (!normalizedSearch || courseName.includes(normalizedSearch))
+        (!normalizedSearch || courseName.includes(normalizedSearch) || classCode.includes(normalizedSearch) || cohort.includes(normalizedSearch))
       );
     })
   ), [periods, searchTerm, selectedSchoolYear, selectedSemester]);
+
+  const periodDisplayItems = useMemo(() => {
+    const groups = new Map();
+    const items = [];
+
+    filteredPeriods.forEach((period) => {
+      const batchKey = period.batchId;
+      if (!batchKey) {
+        items.push(period);
+        return;
+      }
+
+      if (!groups.has(batchKey)) {
+        groups.set(batchKey, {
+          ...period,
+          _id: `batch-${batchKey}`,
+          batchKey,
+          isBatchGroup: true,
+          childPeriods: [],
+        });
+        items.push(groups.get(batchKey));
+      }
+
+      groups.get(batchKey).childPeriods.push(period);
+    });
+
+    return items.map((item) => {
+      if (!item.isBatchGroup) return item;
+      const childPeriods = [...item.childPeriods].sort((a, b) => (a.classSection || '').localeCompare(b.classSection || ''));
+      return {
+        ...item,
+        childPeriods,
+        classCount: childPeriods.length,
+      };
+    });
+  }, [filteredPeriods]);
 
   return (
     <div>
@@ -157,7 +197,7 @@ export default function PeriodsPage() {
             Chưa có đợt học phần nào được định cấu hình trên hệ thống. Hãy nhấp &quot;Tạo đợt học phần&quot; để bắt đầu.
           </div>
         </Card>
-      ) : filteredPeriods.length === 0 ? (
+      ) : periodDisplayItems.length === 0 ? (
         <Card>
           <div className={css.s7}>
             Không tìm thấy đợt học phần phù hợp với bộ lọc hiện tại.
@@ -165,13 +205,14 @@ export default function PeriodsPage() {
         </Card>
       ) : (
         <div className={css.s8}>
-          {filteredPeriods.map((p) => (
+          {periodDisplayItems.map((p) => (
             <PeriodCard
               key={p._id}
               period={p}
               openEditModal={openEditModal}
               setPeriodToDelete={setPeriodToDelete}
               handleTransition={handleTransition}
+              handleTransitionBatch={handleTransitionBatch}
             />
           ))}
         </div>
@@ -203,7 +244,13 @@ export default function PeriodsPage() {
         confirmLabel="Xóa"
         loading={deleting}
         onCancel={() => setPeriodToDelete(null)}
-        onConfirm={() => handleDeletePeriod(periodToDelete)}
+        onConfirm={() => {
+          if (periodToDelete?.isBatchGroup) {
+            handleDeleteBatch(periodToDelete.childPeriods);
+            return;
+          }
+          handleDeletePeriod(periodToDelete);
+        }}
       />
     </div>
   );
