@@ -10,6 +10,7 @@ const compression = require('compression');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Global middleware: CORS, compression, security headers, and request body parsing.
 app.use(cors({
@@ -92,9 +93,9 @@ app.use((err, req, res, next) => {
 });
 
 // Boot HTTP server, then attach Socket.IO for chat and notifications.
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`Server compiled successfully in [${process.env.NODE_ENV}] mode.`);
-  console.log(`Karl API Server listening on: http://localhost:${PORT}`);
+  console.log(`Karl API Server listening on: http://${HOST}:${PORT}`);
 });
 
 const io = new Server(server, {

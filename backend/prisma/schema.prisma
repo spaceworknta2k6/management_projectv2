@@ -169,6 +169,11 @@ model ProjectPeriod {
   type                   String?
   courseCode             String?  @map("course_code")
   courseName             String?  @map("course_name")
+  batchId                String?  @map("batch_id")
+  cohort                 String?
+  classSection           String?  @map("class_section")
+  classCode              String?  @map("class_code")
+  isBatchChild           Boolean  @default(false) @map("is_batch_child")
   projectType            String?  @map("project_type")
   academicUnit           String   @default("computer_science") @map("academic_unit")
   programId              String?  @map("program_id")
@@ -210,6 +215,7 @@ model ProjectPeriod {
 
   @@index([status, isDeleted])
   @@index([academicUnit])
+  @@index([batchId, isDeleted])
   @@map("project_periods")
 }
 

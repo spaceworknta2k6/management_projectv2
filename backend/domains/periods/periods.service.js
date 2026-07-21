@@ -41,6 +41,24 @@ const normalizeSemester = (value) => {
   return String(value || '').trim();
 };
 
+const normalizeCodePart = (value) => String(value || '')
+  .trim()
+  .toUpperCase()
+  .replace(/[^A-Z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const buildCourseOfferingCode = ({ courseCode, cohort, schoolYear, semester }) => {
+  const startYear = String(schoolYear || '').split('-')[0] || 'YEAR';
+  return [
+    normalizeCodePart(courseCode),
+    normalizeCodePart(cohort),
+    startYear,
+    `HK${String(semester || '').trim()}`,
+  ].filter(Boolean).join('-');
+};
+
+const buildClassSection = (index) => `N${String(index).padStart(2, '0')}`;
+
 const toPublicPeriod = (period) => {
   if (!period) return null;
   return {
@@ -138,10 +156,79 @@ const resolveAcademicScope = async (periodData, actorId) => {
 };
 
 const createPeriod = async (periodData, actorId) => {
-  const id = newObjectId();
   const { facultyId, departmentId } = await resolveAcademicScope(periodData, actorId);
+  const classCount = parseInt(periodData.classCount || 0, 10);
+  const shouldCreateBatch = Number.isInteger(classCount) && classCount > 0;
+  const { classCount: _classCount, courseOfferingCode: _courseOfferingCode, ...persistablePeriodData } = periodData;
+
+  if (shouldCreateBatch) {
+    const cohort = String(periodData.cohort || '').trim().toUpperCase();
+    const batchId = newObjectId();
+    const courseOfferingCode = periodData.courseOfferingCode || buildCourseOfferingCode({
+      courseCode: periodData.courseCode,
+      cohort,
+      schoolYear: periodData.schoolYear,
+      semester: normalizeSemester(periodData.semester),
+    });
+
+    const periods = await prisma.$transaction(async (tx) => {
+      const createdPeriods = [];
+
+      for (let index = 1; index <= classCount; index += 1) {
+        const id = newObjectId();
+        const classSection = buildClassSection(index);
+        const normalized = normalizePeriodData({
+          ...persistablePeriodData,
+          name: `${periodData.courseName || periodData.name} (${classSection})`,
+          facultyId,
+          departmentId,
+          batchId,
+          cohort,
+          classSection,
+          classCode: `${courseOfferingCode}(${classSection})`,
+          coordinatorLecturerId: null,
+          isBatchChild: true,
+          status: 'draft',
+          createdBy: actorId,
+          updatedBy: actorId,
+        });
+
+        const period = await tx.projectPeriod.create({
+          data: {
+            id,
+            mongoId: id,
+            ...normalized,
+          },
+        });
+
+        await tx.workflowEvent.create({
+          data: {
+            id: newObjectId(),
+            mongoId: newObjectId(),
+            entityType: 'ProjectPeriod',
+            entityId: period.id,
+            fromStatus: '',
+            toStatus: 'draft',
+            actorId,
+            actorRoles: ['FACULTY_STAFF'],
+            action: 'CREATE_PERIOD_CLASS',
+            reason: `Tu dong tao lop hoc phan ${period.classCode}`,
+            metadata: {},
+          },
+        });
+
+        createdPeriods.push(period);
+      }
+
+      return createdPeriods;
+    });
+
+    return periods.map(toPublicPeriod);
+  }
+
+  const id = newObjectId();
   const normalized = normalizePeriodData({
-    ...periodData,
+    ...persistablePeriodData,
     facultyId,
     departmentId,
     status: 'draft',
