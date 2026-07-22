@@ -47,11 +47,7 @@ UI_test/
 
 # Các file tài liệu cá nhân
 .agents/
-reports/
-tools/
 AGENTS.md
-nghiepvu.md
-presentation_plan.md
 /projects/
 /reports/
 MANAGEMENT_PROJECT_GAP_ANALYSIS.md
@@ -61,4 +57,3 @@ backend/Dockerfile
 backend/.dockerignore
 backend/README.md
 
-presentation/
